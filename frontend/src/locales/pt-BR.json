@@ -366,6 +366,8 @@
     "connectionError": "Erro na conexão — reconecte para corrigir",
     "close": "Encerrar conta",
     "reopen": "Reabrir conta",
+    "confirmDisconnect": "Desconectar integração?",
+    "confirmDisconnectDesc": "Isso vai desconectar {{connection}} da sua conta. Você pode reconectar depois.",
     "accountClosed": "Conta encerrada",
     "accountReopened": "Conta reaberta",
     "closedBanner": "Esta conta está encerrada",

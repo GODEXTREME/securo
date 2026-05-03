@@ -29,6 +29,7 @@ export function ConnectionSettingsDialog({
 }: ConnectionSettingsDialogProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
 
   const [payeeSource, setPayeeSource] = useState<PayeeSource>('auto')
   const [importPending, setImportPending] = useState(true)
@@ -53,6 +54,45 @@ export function ConnectionSettingsDialog({
     },
     onError: () => toast.error(t('common.error')),
   })
+
+  const disconnectMutation = useMutation({
+    mutationFn: () => connections.delete(connection!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      toast.success(t('accounts.disconnected'))
+      onClose()
+    },
+    onError: () => toast.error(t('common.error')),
+  })
+
+  if (showDisconnectConfirm) {
+    return (
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('accounts.confirmDisconnect')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {t('accounts.confirmDisconnectDesc', { connection: connection?.institution_name })}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDisconnectConfirm(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => disconnectMutation.mutate()}
+              disabled={disconnectMutation.isPending}
+            >
+              {disconnectMutation.isPending ? t('common.loading') : t('accounts.disconnect')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -86,13 +126,22 @@ export function ConnectionSettingsDialog({
             />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            {t('common.cancel')}
+        <DialogFooter className="flex items-center justify-between">
+          <Button
+            variant="ghost"
+            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={() => setShowDisconnectConfirm(true)}
+          >
+            {t('accounts.disconnect')}
           </Button>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? t('common.loading') : t('common.save')}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              {mutation.isPending ? t('common.loading') : t('common.save')}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

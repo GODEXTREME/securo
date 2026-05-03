@@ -366,6 +366,8 @@
     "connectionError": "Connection error — reconnect to fix",
     "close": "Close account",
     "reopen": "Reopen account",
+    "confirmDisconnect": "Disconnect integration?",
+    "confirmDisconnectDesc": "This will disconnect {{connection}} from your account. You can reconnect it later.",
     "accountClosed": "Account closed",
     "accountReopened": "Account reopened",
     "closedBanner": "This account is closed",
