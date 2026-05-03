@@ -525,9 +525,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts: Category Spending Bars + Balance Flow */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5" style={{ gridAutoRows: 'minmax(380px, auto)' }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5" style={{ gridAutoRows: 'auto' }}>
         {/* Category Spending Bars */}
-        <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col max-h-[420px]">
+        <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col min-h-[120px] max-h-[340px]">
           <div className="px-5 py-4 border-b border-border shrink-0 flex items-center justify-between">
             <p className="text-sm font-semibold text-foreground">{t('dashboard.spendingByCategory')}</p>
             <button
@@ -610,7 +610,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Cumulative Spending Comparison */}
-        <div className="bg-card rounded-xl border border-border shadow-sm max-h-[420px] flex flex-col">
+        <div className="bg-card rounded-xl border border-border shadow-sm min-h-[340px] max-h-[600px] flex flex-col">
           <div className="px-5 pt-5 pb-3 shrink-0">
             <div className="flex items-start justify-between mb-0.5">
               <div>
