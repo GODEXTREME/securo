@@ -241,7 +241,7 @@ export default function AccountsPage() {
                           </p>
                         </div>
                       </Link>
-                      <div className="flex items-center gap-1 mr-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 mr-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <button
                           className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                           onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
@@ -398,7 +398,7 @@ export default function AccountsPage() {
                                   </p>
                                 </div>
                               </Link>
-                              <div className="flex items-center gap-1 mr-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="flex items-center gap-1 mr-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                 <button
                                   className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                                   onClick={(e) => { e.preventDefault(); setEditingAccount(acc); setDialogOpen(true) }}
