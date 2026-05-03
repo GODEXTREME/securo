@@ -22,6 +22,7 @@ ALLOWED_SETTINGS = {
     "registration_enabled",
     "credit_card_accounting_mode",
     "use_provider_categories",
+    "accounts_view_mode",
 }
 
 
@@ -124,6 +125,7 @@ async def update_setting(
         "registration_enabled": {"true", "false"},
         "credit_card_accounting_mode": {"cash", "accrual"},
         "use_provider_categories": {"true", "false"},
+        "accounts_view_mode": {"grouped", "compact"},
     }
     if key in SETTING_VALIDATORS and data.value not in SETTING_VALIDATORS[key]:
         raise HTTPException(
@@ -148,6 +150,15 @@ async def accounting_mode(
     _user: User = Depends(current_active_user),
 ):
     mode = await admin_service.get_credit_card_accounting_mode(session)
+    return {"mode": mode}
+
+
+@router.get("/accounts-view-mode")
+async def accounts_view_mode(
+    session: AsyncSession = Depends(get_async_session),
+    _user: User = Depends(current_active_user),
+):
+    mode = await admin_service.get_accounts_view_mode(session)
     return {"mode": mode}
 
 

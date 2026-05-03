@@ -901,6 +901,10 @@ export const admin = {
     const { data } = await api.get('/admin/accounting-mode')
     return data
   },
+  accountsViewMode: async (): Promise<{ mode: 'grouped' | 'compact' }> => {
+    const { data } = await api.get('/admin/accounts-view-mode')
+    return data
+  },
 }
 
 // Global search (powers the command palette)

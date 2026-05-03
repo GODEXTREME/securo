@@ -303,6 +303,10 @@
     "editAccount": "Edit Account",
     "manualAccounts": "Manual Accounts",
     "bankConnections": "Bank Connections",
+    "viewGrouped": "Grouped",
+    "viewCompact": "Compact",
+    "accountCount_one": "{{count}} account",
+    "accountCount_other": "{{count}} accounts",
     "noManualAccounts": "No manual accounts yet",
     "noBankConnections": "No bank connections",
     "noAccountsFound": "No accounts found",
@@ -1016,6 +1020,12 @@
       "providerCategoriesTitle": "Categories",
       "providerCategories": "Use integration categories",
       "providerCategoriesDesc": "When off, synced transactions arrive uncategorized so only your Rules apply.",
+      "accountsViewTitle": "Accounts View",
+      "accountsViewSubtitle": "Default visualization for the Accounts page.",
+      "accountsViewGrouped": "Grouped",
+      "accountsViewGroupedDesc": "Each integration shown as a card with all its accounts visible.",
+      "accountsViewCompact": "Compact",
+      "accountsViewCompactDesc": "Integrations shown as collapsible cards with account count, expand to view accounts.",
       "updated": "Setting updated"
     }
   },

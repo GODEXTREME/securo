@@ -3,7 +3,7 @@ import { getAccountName } from '@/lib/account-utils'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { accounts, connections, currencies } from '@/lib/api'
+import { accounts, admin as adminApi, connections, currencies } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,9 @@ import {
   Plus,
   Settings,
   Archive,
+  ChevronDown,
+  Rows3,
+  LayoutList,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { BankConnectDialog } from '@/components/bank-connect-dialog'
@@ -82,6 +85,21 @@ export default function AccountsPage() {
   const [closingAccountId, setClosingAccountId] = useState<string | null>(null)
   const [reconnectConnId, setReconnectConnId] = useState<string | null>(null)
   const [reconnectItemId, setReconnectItemId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'grouped' | 'compact' | null>(null)
+  const [expandedConnections, setExpandedConnections] = useState<Record<string, boolean>>({})
+
+  const { data: viewModeSetting } = useQuery({
+    queryKey: ['accounts-view-mode'],
+    queryFn: () => adminApi.accountsViewMode().catch(() => ({ mode: 'grouped' as const })),
+    retry: false,
+  })
+
+  const defaultViewMode = (viewModeSetting?.mode === 'compact' ? 'compact' : 'grouped') as 'grouped' | 'compact'
+  const effectiveViewMode = viewMode ?? defaultViewMode
+
+  const toggleConnection = (id: string) => {
+    setExpandedConnections((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
 
   const { data: accountsList, isLoading: accountsLoading } = useQuery({
     queryKey: ['accounts'],
@@ -189,7 +207,33 @@ export default function AccountsPage() {
         section={t('accounts.title')}
         title={t('accounts.title')}
         action={
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode('grouped')}
+                title={t('accounts.viewGrouped')}
+                className={`flex items-center justify-center h-8 w-8 rounded-md transition-colors ${
+                  effectiveViewMode === 'grouped'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Rows3 size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('compact')}
+                title={t('accounts.viewCompact')}
+                className={`flex items-center justify-center h-8 w-8 rounded-md transition-colors ${
+                  effectiveViewMode === 'compact'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <LayoutList size={15} />
+              </button>
+            </div>
             <Button variant="outline" className="gap-1.5" onClick={() => setConnectorSelectOpen(true)}>
               <Plus size={16} />
               {t('accounts.connectBank')}
@@ -295,16 +339,27 @@ export default function AccountsPage() {
             <div className="space-y-3">
               {connectionsList.map((conn) => {
                 const connAccounts = bankAccounts.filter((a) => a.connection_id === conn.id)
+                const isCompact = effectiveViewMode === 'compact'
+                const isExpanded = !isCompact || expandedConnections[conn.id] === true
                 return (
                   <div key={conn.id} className="bg-card rounded-xl border border-border shadow-sm">
                     {/* Connection header */}
-                    <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                    <div
+                      className={`flex items-center justify-between px-5 py-3.5 ${isExpanded ? 'border-b border-border' : ''} ${isCompact ? 'cursor-pointer hover:bg-muted/40 transition-colors' : ''}`}
+                      onClick={isCompact ? () => toggleConnection(conn.id) : undefined}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {isCompact && (
+                          <ChevronDown
+                            size={16}
+                            className={`text-muted-foreground shrink-0 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                          />
+                        )}
+                        <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                           <Building2 size={14} className="text-muted-foreground" />
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-semibold text-foreground">{conn.institution_name}</p>
                             <Badge
                               variant={conn.status === 'active' ? 'default' : 'secondary'}
@@ -312,6 +367,11 @@ export default function AccountsPage() {
                             >
                               {conn.status}
                             </Badge>
+                            {isCompact && (
+                              <span className="text-[11px] text-muted-foreground">
+                                · {t('accounts.accountCount', { count: connAccounts.length })}
+                              </span>
+                            )}
                           </div>
                           {conn.last_sync_at && (
                             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -320,7 +380,7 @@ export default function AccountsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -350,7 +410,7 @@ export default function AccountsPage() {
                       </div>
                     </div>
                     {/* Reconnect banner */}
-                    {conn.status !== 'active' && (
+                    {isExpanded && conn.status !== 'active' && (
                       <div className="mx-5 mt-3 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
                         <span className="text-sm text-amber-800">
                           {t('accounts.connectionError')}
@@ -370,7 +430,7 @@ export default function AccountsPage() {
                       </div>
                     )}
                     {/* Accounts list */}
-                    {connAccounts.length > 0 ? (
+                    {isExpanded && (connAccounts.length > 0 ? (
                       <div className="divide-y divide-muted">
                         {connAccounts.map((acc) => {
                           const cfg = getTypeConfig(acc.type)
@@ -436,7 +496,7 @@ export default function AccountsPage() {
                       <div className="px-5 py-4">
                         <p className="text-sm text-muted-foreground">{t('accounts.noAccountsFound')}</p>
                       </div>
-                    )}
+                    ))}
                   </div>
                 )
               })}

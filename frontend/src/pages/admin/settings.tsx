@@ -19,7 +19,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/page-header'
-import { Search, Plus, Trash2, Shield, ShieldOff, UserCog, Users, Scale, Tag } from 'lucide-react'
+import { Search, Plus, Trash2, Shield, ShieldOff, UserCog, Users, Scale, Tag, LayoutList } from 'lucide-react'
 import type { AdminUser } from '@/types'
 
 export default function AdminSettingsPage() {
@@ -144,6 +144,26 @@ export default function AdminSettingsPage() {
   })
 
   const useProviderCats = providerCatsSetting?.value !== 'false'
+
+  // Accounts view mode: grouped (default) or compact
+  const { data: accountsViewSetting } = useQuery({
+    queryKey: ['admin', 'settings', 'accounts_view_mode'],
+    queryFn: () => adminApi.getSetting('accounts_view_mode').catch(() => null),
+    retry: false,
+  })
+
+  const updateAccountsViewMutation = useMutation({
+    mutationFn: (value: string) => adminApi.updateSetting('accounts_view_mode', value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'settings', 'accounts_view_mode'] })
+      toast.success(t('admin.settings.updated'))
+    },
+    onError: () => {
+      toast.error(t('common.error'))
+    },
+  })
+
+  const accountsViewMode = (accountsViewSetting?.value === 'compact' ? 'compact' : 'grouped') as 'grouped' | 'compact'
 
   function resetCreateForm() {
     setFormEmail('')
@@ -318,6 +338,47 @@ export default function AdminSettingsPage() {
             <span
               className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${useProviderCats ? 'translate-x-6' : 'translate-x-1'}`}
             />
+          </button>
+        </div>
+      </div>
+
+      {/* Accounts view mode */}
+      <div className="rounded-xl border border-border/60 bg-card overflow-hidden mb-8">
+        <div className="px-5 py-4 border-b border-border/40">
+          <div className="flex items-center gap-2 mb-0.5">
+            <LayoutList size={15} className="text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">{t('admin.settings.accountsViewTitle')}</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('admin.settings.accountsViewSubtitle')}</p>
+        </div>
+        <div className="divide-y divide-border/40">
+          <button
+            type="button"
+            onClick={() => updateAccountsViewMutation.mutate('grouped')}
+            disabled={updateAccountsViewMutation.isPending}
+            className="flex items-start gap-3 w-full px-5 py-4 text-left hover:bg-muted/40 transition-colors"
+          >
+            <div className={`mt-0.5 h-4 w-4 rounded-full border-2 shrink-0 ${accountsViewMode === 'grouped' ? 'border-primary bg-primary' : 'border-muted-foreground/40'}`}>
+              {accountsViewMode === 'grouped' && <div className="h-full w-full rounded-full bg-primary ring-2 ring-background ring-inset" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">{t('admin.settings.accountsViewGrouped')}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('admin.settings.accountsViewGroupedDesc')}</p>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => updateAccountsViewMutation.mutate('compact')}
+            disabled={updateAccountsViewMutation.isPending}
+            className="flex items-start gap-3 w-full px-5 py-4 text-left hover:bg-muted/40 transition-colors"
+          >
+            <div className={`mt-0.5 h-4 w-4 rounded-full border-2 shrink-0 ${accountsViewMode === 'compact' ? 'border-primary bg-primary' : 'border-muted-foreground/40'}`}>
+              {accountsViewMode === 'compact' && <div className="h-full w-full rounded-full bg-primary ring-2 ring-background ring-inset" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">{t('admin.settings.accountsViewCompact')}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('admin.settings.accountsViewCompactDesc')}</p>
+            </div>
           </button>
         </div>
       </div>

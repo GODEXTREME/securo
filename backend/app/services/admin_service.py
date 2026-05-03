@@ -223,6 +223,17 @@ async def get_credit_card_accounting_mode(session: AsyncSession) -> str:
     return "cash"
 
 
+async def get_accounts_view_mode(session: AsyncSession) -> str:
+    """Return the global Accounts page view mode: 'grouped' or 'compact'.
+
+    Global app setting — affects how bank connections are displayed on the
+    Accounts page. Defaults to 'grouped' (current behavior) when unset."""
+    setting = await get_app_setting(session, "accounts_view_mode")
+    if setting and setting.value in ("grouped", "compact"):
+        return setting.value
+    return "grouped"
+
+
 async def use_provider_categories(session: AsyncSession) -> bool:
     """Whether sync should map provider-supplied categories (e.g. Pluggy's
     `category` field) onto the user's seeded categories via PLUGGY_CATEGORY_MAP.

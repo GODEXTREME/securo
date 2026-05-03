@@ -303,6 +303,10 @@
     "editAccount": "Editar Conta",
     "manualAccounts": "Contas Manuais",
     "bankConnections": "Conexões Bancárias",
+    "viewGrouped": "Agrupado",
+    "viewCompact": "Compacto",
+    "accountCount_one": "{{count}} conta",
+    "accountCount_other": "{{count}} contas",
     "noManualAccounts": "Nenhuma conta manual ainda",
     "noBankConnections": "Nenhuma conexão bancária",
     "noAccountsFound": "Nenhuma conta encontrada",
@@ -1016,6 +1020,12 @@
       "providerCategoriesTitle": "Categorias",
       "providerCategories": "Usar categorias da integração",
       "providerCategoriesDesc": "Quando desativado, as transações sincronizadas chegam sem categoria, apenas suas Regras se aplicam.",
+      "accountsViewTitle": "Visualização de Contas",
+      "accountsViewSubtitle": "Visualização padrão da página de Contas.",
+      "accountsViewGrouped": "Agrupado",
+      "accountsViewGroupedDesc": "Cada integração aparece como um card com todas as contas visíveis.",
+      "accountsViewCompact": "Compacto",
+      "accountsViewCompactDesc": "Integrações em cards colapsáveis com contagem de contas, expanda para ver as contas.",
       "updated": "Configuração atualizada"
     }
   },
