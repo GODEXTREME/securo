@@ -314,8 +314,11 @@ export function TransactionsFilterBar({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              sideOffset={6}
-              className="w-[240px] p-1"
+              alignOffset={-10}
+              sideOffset={8}
+              side="bottom"
+              avoidCollisions={true}
+              className="w-[min(240px,_calc(100vw_-_32px))] p-1"
             >
               <DropdownMenuLabel className="px-2 py-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
                 {t('transactions.filtersBar.filterBy')}
@@ -338,7 +341,8 @@ export function TransactionsFilterBar({
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent
                       sideOffset={8}
-                      className="max-h-[320px] w-[240px] overflow-y-auto p-1"
+                      avoidCollisions={true}
+                      className="max-h-[320px] w-[min(240px,_calc(100vw_-_32px))] overflow-y-auto p-1"
                     >
                       {accounts.length === 0 ? (
                         <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">
@@ -397,7 +401,8 @@ export function TransactionsFilterBar({
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent
                       sideOffset={8}
-                      className="max-h-[320px] w-[240px] overflow-y-auto p-1"
+                      avoidCollisions={true}
+                      className="max-h-[320px] w-[min(240px,_calc(100vw_-_32px))] overflow-y-auto p-1"
                     >
                       <CheckRow
                         checked={filterUncategorized}
@@ -464,7 +469,8 @@ export function TransactionsFilterBar({
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent
                       sideOffset={8}
-                      className="max-h-[320px] w-[240px] overflow-y-auto p-1"
+                      avoidCollisions={true}
+                      className="max-h-[320px] w-[min(240px,_calc(100vw_-_32px))] overflow-y-auto p-1"
                     >
                       <DropdownMenuItem
                         onSelect={() => onPayeeChange('')}
@@ -624,7 +630,8 @@ export function TransactionsFilterBar({
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent
                       sideOffset={8}
-                      className="w-[220px] p-1"
+                      avoidCollisions={true}
+                      className="w-[min(220px,_calc(100vw_-_32px))] p-1"
                     >
                       <DropdownMenuItem
                         onSelect={() => onDateRangeChange('', '')}
@@ -781,8 +788,10 @@ export function TransactionsFilterBar({
         {/* Custom range popover — anchored to the filter bar above */}
         <PopoverContent
           align="end"
-          sideOffset={8}
-          className="w-auto p-0"
+          alignOffset={-10}
+          sideOffset={12}
+          avoidCollisions={true}
+          className="w-auto p-0 max-w-[calc(100vw_-_32px)]"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <div className="border-b border-border/70 px-4 py-3">
