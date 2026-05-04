@@ -82,13 +82,10 @@ services:
     command: celery -A app.worker beat --loglevel=info
 
   watchtower:
-    image: containrrr/watchtower
+    image: containrrr/watchtower:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /root/.docker/config.json:/config.json:ro
-    command: --interval 300 --cleanup
-    environment:
-      WATCHTOWER_POLL_INTERVAL: 300
+    command: --interval 300 --cleanup --container-name-filter "securo-"
     restart: unless-stopped
 
 volumes:
