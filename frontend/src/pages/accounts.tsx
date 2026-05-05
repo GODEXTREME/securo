@@ -171,58 +171,61 @@ export default function AccountsPage() {
     const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
 
     return (
-      <div className="group flex items-center px-5 py-3 hover:bg-muted/50 transition-colors">
-        <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="group flex flex-col px-5 py-3 hover:bg-muted/50 transition-colors border-b border-muted last:border-0">
+        {/* First row: Icon + Name */}
+        <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 mb-2">
           <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
             <Icon size={14} className={cfg.color} />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
-            <p className="text-xs text-muted-foreground">
-              {t(cfg.label)}
-              {dueText && <> · <span className={dueClass}>{dueText}</span></>}
-            </p>
-          </div>
+          <p className="text-sm font-medium text-foreground">{getAccountName(acc)}</p>
         </Link>
-        <div className="flex items-center gap-1 mr-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-          <button
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
-            title={t('common.edit')}
-          >
-            <Pencil size={13} />
-          </button>
-          <button
-            className="p-1.5 rounded-md text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
-            onClick={() => setClosingAccountId(acc.id)}
-            title={t('accounts.close')}
-          >
-            <Archive size={13} />
-          </button>
-          {!acc.connection_id && (
-            <button
-              className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
-              onClick={() => setDeletingId(acc.id)}
-              disabled={deleteMutation.isPending}
-              title={t('common.delete')}
-            >
-              <Trash2 size={13} />
-            </button>
-          )}
-        </div>
-        <div className="text-right">
-          <p className={`text-xs sm:text-sm font-semibold tabular-nums ${(acc.type === 'credit_card' ? bal > 0 : bal < 0) ? 'text-rose-500' : 'text-foreground'}`}>
+
+        {/* Second row: Type + Value */}
+        <div className="flex items-center justify-between mb-2 ml-11">
+          <p className="text-xs text-muted-foreground">
+            {t(cfg.label)}
+            {dueText && <> · <span className={dueClass}>{dueText}</span></>}
+          </p>
+          <p className={`text-xs sm:text-sm font-semibold tabular-nums ${(isCC ? bal > 0 : bal < 0) ? 'text-rose-500' : 'text-foreground'}`}>
             {mask(formatCurrency(bal, acc.currency, locale))}
           </p>
-          {isCC && acc.available_credit != null ? (
-            <p className="text-[10px] text-muted-foreground tabular-nums">
-              {t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
-            </p>
-          ) : acc.balance_primary != null && acc.currency !== userCurrency && (
-            <p className="text-[10px] text-muted-foreground tabular-nums">
-              {mask(formatCurrency(acc.balance_primary, userCurrency, locale))}
-            </p>
-          )}
+        </div>
+
+        {/* Third row: Additional info (for CC) + Buttons */}
+        <div className="flex items-center justify-between ml-11">
+          <div className="text-xs text-muted-foreground">
+            {isCC && acc.available_credit != null && (
+              <p>{t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}</p>
+            )}
+          </div>
+
+          {/* Buttons */}
+          <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+            <button
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
+              title={t('common.edit')}
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              className="p-1.5 rounded-md text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
+              onClick={() => setClosingAccountId(acc.id)}
+              title={t('accounts.close')}
+            >
+              <Archive size={13} />
+            </button>
+            {!acc.connection_id && (
+              <button
+                className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                onClick={() => setDeletingId(acc.id)}
+                disabled={deleteMutation.isPending}
+                title={t('common.delete')}
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )
