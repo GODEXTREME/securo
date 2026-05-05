@@ -3,7 +3,7 @@ import { getAccountName } from '@/lib/account-utils'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { accounts, admin as adminApi, connections, currencies } from '@/lib/api'
+import { accounts, currencies } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -17,9 +17,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { Account, BankConnection } from '@/types'
+import type { Account } from '@/types'
 import {
   Building2,
   PiggyBank,
@@ -28,19 +27,12 @@ import {
   Wallet,
   Pencil,
   Trash2,
-  RefreshCw,
-  Unlink,
   Plus,
-  Settings,
   Archive,
-  ChevronDown,
-  Rows3,
-  LayoutList,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { BankConnectDialog } from '@/components/bank-connect-dialog'
 import { ConnectorSelectDialog } from '@/components/connector-select-dialog'
-import { ConnectionSettingsDialog } from '@/components/connection-settings-dialog'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 
@@ -80,36 +72,13 @@ export default function AccountsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [connectorSelectOpen, setConnectorSelectOpen] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
-  const [settingsConnection, setSettingsConnection] = useState<BankConnection | null>(null)
-  const [disconnectingConnection, setDisconnectingConnection] = useState<BankConnection | null>(null)
   const [closingAccountId, setClosingAccountId] = useState<string | null>(null)
-  const [reconnectConnId, setReconnectConnId] = useState<string | null>(null)
-  const [reconnectItemId, setReconnectItemId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'grouped' | 'compact' | null>(null)
-  const [expandedConnections, setExpandedConnections] = useState<Record<string, boolean>>({})
-
-  const { data: viewModeSetting } = useQuery({
-    queryKey: ['accounts-view-mode'],
-    queryFn: () => adminApi.accountsViewMode().catch(() => ({ mode: 'grouped' as const })),
-    retry: false,
-  })
-
-  const defaultViewMode = (viewModeSetting?.mode === 'compact' ? 'compact' : 'grouped') as 'grouped' | 'compact'
-  const effectiveViewMode = viewMode ?? defaultViewMode
-
-  const toggleConnection = (id: string) => {
-    setExpandedConnections((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
 
   const { data: accountsList, isLoading: accountsLoading } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accounts.list(),
   })
 
-  const { data: connectionsList, isLoading: connectionsLoading } = useQuery({
-    queryKey: ['connections'],
-    queryFn: connections.list,
-  })
 
   const { data: closedAccountsList } = useQuery({
     queryKey: ['accounts', 'closed'],
@@ -117,32 +86,7 @@ export default function AccountsPage() {
   })
   const closedAccounts = closedAccountsList?.filter((a) => a.is_closed) ?? []
 
-  const syncMutation = useMutation({
-    mutationFn: (id: string) => connections.sync(id),
-    onSuccess: (result) => {
-      invalidateFinancialQueries(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['connections'] })
-      toast.success(t('accounts.syncDone'))
-      const merged = (result as BankConnection & { merged_count?: number })?.merged_count
-      if (merged && merged > 0) {
-        toast.info(t('accounts.mergedCount', { count: merged }))
-      }
-    },
-    onError: () => toast.error(t('accounts.syncError')),
-  })
 
-  const disconnectMutation = useMutation({
-    mutationFn: (id: string) => connections.delete(id),
-    onSuccess: () => {
-      invalidateFinancialQueries(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['connections'] })
-      queryClient.invalidateQueries({ queryKey: ['assets'] })
-      queryClient.invalidateQueries({ queryKey: ['asset-groups'] })
-      queryClient.invalidateQueries({ queryKey: ['portfolio-trend'] })
-      setDisconnectingConnection(null)
-      toast.success(t('accounts.disconnected'))
-    },
-  })
 
   const createMutation = useMutation({
     mutationFn: (data: { name: string; type: string; balance?: number; currency?: string }) =>
@@ -197,9 +141,92 @@ export default function AccountsPage() {
     onError: () => toast.error(t('common.error')),
   })
 
-  const isLoading = accountsLoading || connectionsLoading
-  const manualAccounts = accountsList?.filter((a) => a.connection_id === null) ?? []
-  const bankAccounts = accountsList?.filter((a) => a.connection_id !== null) ?? []
+  const isLoading = accountsLoading
+
+  // Separate accounts by type and connection
+  const allAccounts = accountsList ?? []
+  const bankingAccounts = allAccounts.filter((a) => a.type !== 'credit_card' && !a.is_closed)
+  const creditCardAccounts = allAccounts.filter((a) => a.type === 'credit_card' && !a.is_closed)
+
+  // Calculate totals for Banking Accounts
+  const bankingTotal = bankingAccounts.reduce((sum, acc) => sum + Number(acc.current_balance), 0)
+
+  // Calculate totals for Credit Cards
+  const creditCardSpent = creditCardAccounts.reduce((sum, acc) => sum + Number(acc.current_balance), 0)
+  const creditCardLimit = creditCardAccounts.reduce((sum, acc) => sum + (Number(acc.credit_limit) || 0), 0)
+  const creditCardAvailable = creditCardLimit - creditCardSpent
+
+  // Component to render an account card
+  const AccountCard = ({ acc }: { acc: Account }) => {
+    const cfg = getTypeConfig(acc.type)
+    const Icon = cfg.icon
+    const bal = Number(acc.current_balance)
+    const isCC = acc.type === 'credit_card'
+    const dueIn = isCC ? daysUntil(acc.next_due_date) : null
+    const dueText =
+      dueIn == null ? null
+        : dueIn < 0 ? t('accounts.overdue')
+        : dueIn === 0 ? t('accounts.dueToday')
+        : t('accounts.dueIn', { count: dueIn })
+    const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
+
+    return (
+      <div className="group flex items-center px-5 py-3 hover:bg-muted/50 transition-colors">
+        <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+          <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
+            <Icon size={14} className={cfg.color} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
+            <p className="text-xs text-muted-foreground">
+              {t(cfg.label)}
+              {dueText && <> · <span className={dueClass}>{dueText}</span></>}
+            </p>
+          </div>
+        </Link>
+        <div className="flex items-center gap-1 mr-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+          <button
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
+            title={t('common.edit')}
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            className="p-1.5 rounded-md text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
+            onClick={() => setClosingAccountId(acc.id)}
+            title={t('accounts.close')}
+          >
+            <Archive size={13} />
+          </button>
+          {!acc.connection_id && (
+            <button
+              className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
+              onClick={() => setDeletingId(acc.id)}
+              disabled={deleteMutation.isPending}
+              title={t('common.delete')}
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+        <div className="text-right">
+          <p className={`text-xs sm:text-sm font-semibold tabular-nums ${(acc.type === 'credit_card' ? bal > 0 : bal < 0) ? 'text-rose-500' : 'text-foreground'}`}>
+            {mask(formatCurrency(bal, acc.currency, locale))}
+          </p>
+          {isCC && acc.available_credit != null ? (
+            <p className="text-[10px] text-muted-foreground tabular-nums">
+              {t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
+            </p>
+          ) : acc.balance_primary != null && acc.currency !== userCurrency && (
+            <p className="text-[10px] text-muted-foreground tabular-nums">
+              {mask(formatCurrency(acc.balance_primary, userCurrency, locale))}
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -208,32 +235,6 @@ export default function AccountsPage() {
         title={t('accounts.title')}
         action={
           <div className="flex gap-2 items-center">
-            <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode('grouped')}
-                title={t('accounts.viewGrouped')}
-                className={`flex items-center justify-center h-8 w-8 rounded-md transition-colors ${
-                  effectiveViewMode === 'grouped'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Rows3 size={15} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('compact')}
-                title={t('accounts.viewCompact')}
-                className={`flex items-center justify-center h-8 w-8 rounded-md transition-colors ${
-                  effectiveViewMode === 'compact'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <LayoutList size={15} />
-              </button>
-            </div>
             <Button variant="outline" className="gap-1.5" onClick={() => setConnectorSelectOpen(true)}>
               <Plus size={16} />
               {t('accounts.connectBank')}
@@ -252,258 +253,66 @@ export default function AccountsPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Manual Accounts */}
-          <div className="bg-card rounded-xl border border-border shadow-sm">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-              <h2 className="text-sm font-medium text-muted-foreground">{t('accounts.manualAccounts')}</h2>
-            </div>
-            {manualAccounts.length > 0 ? (
-              <div className="divide-y divide-muted">
-                {manualAccounts.map((acc) => {
-                  const cfg = getTypeConfig(acc.type)
-                  const Icon = cfg.icon
-                  const bal = Number(acc.current_balance)
-                  const isCC = acc.type === 'credit_card'
-                  const dueIn = isCC ? daysUntil(acc.next_due_date) : null
-                  const dueText =
-                    dueIn == null ? null
-                      : dueIn < 0 ? t('accounts.overdue')
-                      : dueIn === 0 ? t('accounts.dueToday')
-                      : t('accounts.dueIn', { count: dueIn })
-                  const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
-                  return (
-                    <div key={acc.id} className="group flex items-center px-5 py-3 hover:bg-muted/50 transition-colors">
-                      <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-                          <Icon size={14} className={cfg.color} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {t(cfg.label)}
-                            {dueText && <> · <span className={dueClass}>{dueText}</span></>}
-                          </p>
-                        </div>
-                      </Link>
-                      <div className="flex items-center gap-1 mr-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <button
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                          onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
-                          title={t('common.edit')}
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                          onClick={() => setClosingAccountId(acc.id)}
-                          title={t('accounts.close')}
-                        >
-                          <Archive size={13} />
-                        </button>
-                        <button
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                          onClick={() => setDeletingId(acc.id)}
-                          disabled={deleteMutation.isPending}
-                          title={t('common.delete')}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-xs sm:text-sm font-semibold tabular-nums ${(acc.type === 'credit_card' ? bal > 0 : bal < 0) ? 'text-rose-500' : 'text-foreground'}`}>
-                          {mask(formatCurrency(bal, acc.currency, locale))}
-                        </p>
-                        {isCC && acc.available_credit != null ? (
-                          <p className="text-[10px] text-muted-foreground tabular-nums">
-                            {t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
-                          </p>
-                        ) : acc.balance_primary != null && acc.currency !== userCurrency && (
-                          <p className="text-[10px] text-muted-foreground tabular-nums">
-                            {mask(formatCurrency(acc.balance_primary, userCurrency, locale))}
-                          </p>
-                        )}
-                      </div>
+          {/* Banking Accounts Section */}
+          {bankingAccounts.length > 0 || creditCardAccounts.length > 0 ? (
+            <>
+              {bankingAccounts.length > 0 && (
+                <div className="bg-card rounded-xl border border-border shadow-sm">
+                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+                    <div className="flex-1">
+                      <h2 className="text-sm font-medium text-muted-foreground">{t('accounts.bankingAccounts')}</h2>
                     </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="px-5 py-8 text-center">
-                <p className="text-sm text-muted-foreground">{t('accounts.noManualAccounts')}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Bank Connections */}
-          {connectionsList && connectionsList.length > 0 ? (
-            <div className="space-y-3">
-              {connectionsList.map((conn) => {
-                const connAccounts = bankAccounts.filter((a) => a.connection_id === conn.id)
-                const isCompact = effectiveViewMode === 'compact'
-                const isExpanded = !isCompact || expandedConnections[conn.id] === true
-                return (
-                  <div key={conn.id} className="bg-card rounded-xl border border-border shadow-sm">
-                    {/* Connection header */}
-                    <div
-                      className={`flex items-center justify-between px-5 py-3.5 ${isExpanded ? 'border-b border-border' : ''} ${isCompact ? 'cursor-pointer hover:bg-muted/40 transition-colors' : ''}`}
-                      onClick={isCompact ? () => toggleConnection(conn.id) : undefined}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {isCompact && (
-                          <ChevronDown
-                            size={16}
-                            className={`text-muted-foreground shrink-0 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
-                          />
-                        )}
-                        <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                          <Building2 size={14} className="text-muted-foreground" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-semibold text-foreground">{conn.institution_name}</p>
-                            <Badge
-                              variant={conn.status === 'active' ? 'default' : 'secondary'}
-                              className="text-[10px] px-1.5 py-0 h-4"
-                            >
-                              {conn.status}
-                            </Badge>
-                            {isCompact && (
-                              <span className="text-[11px] text-muted-foreground">
-                                · {t('accounts.accountCount', { count: connAccounts.length })}
-                              </span>
-                            )}
-                          </div>
-                          {conn.last_sync_at && (
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                              {t('accounts.lastSync')}: {new Date(conn.last_sync_at).toLocaleString(locale)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => setSettingsConnection(conn)}
-                        >
-                          <Settings size={14} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => syncMutation.mutate(conn.id)}
-                          disabled={syncMutation.isPending}
-                        >
-                          <RefreshCw size={14} className={syncMutation.isPending ? 'animate-spin' : ''} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-500"
-                          onClick={() => setDisconnectingConnection(conn)}
-                          disabled={disconnectMutation.isPending}
-                        >
-                          <Unlink size={14} />
-                        </Button>
-                      </div>
+                    <div className="text-right">
+                      <p className="text-xs sm:text-sm font-semibold tabular-nums text-foreground">
+                        {mask(formatCurrency(bankingTotal, userCurrency, locale))}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">{t('accounts.total')}</p>
                     </div>
-                    {/* Reconnect banner */}
-                    {isExpanded && conn.status !== 'active' && (
-                      <div className="mx-5 mt-3 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
-                        <span className="text-sm text-amber-800">
-                          {t('accounts.connectionError')}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-amber-300 text-amber-700 hover:bg-amber-100 gap-1.5 h-8"
-                          onClick={() => {
-                            setReconnectConnId(conn.id)
-                            setReconnectItemId(conn.external_id)
-                          }}
-                        >
-                          <RefreshCw size={12} />
-                          {t('accounts.reconnect')}
-                        </Button>
-                      </div>
-                    )}
-                    {/* Accounts list */}
-                    {isExpanded && (connAccounts.length > 0 ? (
-                      <div className="divide-y divide-muted">
-                        {connAccounts.map((acc) => {
-                          const cfg = getTypeConfig(acc.type)
-                          const Icon = cfg.icon
-                          const bal = Number(acc.current_balance)
-                          const isCC = acc.type === 'credit_card'
-                          const dueIn = isCC ? daysUntil(acc.next_due_date) : null
-                          const dueText =
-                            dueIn == null ? null
-                              : dueIn < 0 ? t('accounts.overdue')
-                              : dueIn === 0 ? t('accounts.dueToday')
-                              : t('accounts.dueIn', { count: dueIn })
-                          const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
-                          return (
-                            <div key={acc.id} className="group flex items-center px-5 py-3 hover:bg-muted/50 transition-colors">
-                              <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                                <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-                                  <Icon size={14} className={cfg.color} />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {t(cfg.label)}
-                                    {dueText && <> · <span className={dueClass}>{dueText}</span></>}
-                                  </p>
-                                </div>
-                              </Link>
-                              <div className="flex items-center gap-1 mr-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                <button
-                                  className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                                  onClick={(e) => { e.preventDefault(); setEditingAccount(acc); setDialogOpen(true) }}
-                                  title={t('common.edit')}
-                                >
-                                  <Pencil size={13} />
-                                </button>
-                                <button
-                                  className="p-1.5 rounded-md text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                                  onClick={(e) => { e.preventDefault(); setClosingAccountId(acc.id) }}
-                                  title={t('accounts.close')}
-                                >
-                                  <Archive size={13} />
-                                </button>
-                              </div>
-                              <div className="text-right">
-                                <p className={`text-xs sm:text-sm font-semibold tabular-nums ${(acc.type === 'credit_card' ? bal > 0 : bal < 0) ? 'text-rose-500' : 'text-foreground'}`}>
-                                  {mask(formatCurrency(bal, acc.currency, locale))}
-                                </p>
-                                {isCC && acc.available_credit != null ? (
-                                  <p className="text-[10px] text-muted-foreground tabular-nums">
-                                    {t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
-                                  </p>
-                                ) : acc.balance_primary != null && acc.currency !== userCurrency && (
-                                  <p className="text-[10px] text-muted-foreground tabular-nums">
-                                    {mask(formatCurrency(acc.balance_primary, userCurrency, locale))}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <div className="px-5 py-4">
-                        <p className="text-sm text-muted-foreground">{t('accounts.noAccountsFound')}</p>
-                      </div>
+                  </div>
+                  <div className="divide-y divide-muted">
+                    {bankingAccounts.map((acc) => (
+                      <AccountCard key={acc.id} acc={acc} />
                     ))}
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              )}
+
+              {creditCardAccounts.length > 0 && (
+                <div className="bg-card rounded-xl border border-border shadow-sm">
+                  <div className="px-5 py-3.5 border-b border-border">
+                    <h2 className="text-sm font-medium text-muted-foreground mb-3">{t('accounts.creditCards')}</h2>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t('accounts.spent')}</p>
+                        <p className="text-sm font-semibold tabular-nums text-foreground">
+                          {mask(formatCurrency(creditCardSpent, userCurrency, locale))}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t('accounts.limit')}</p>
+                        <p className="text-sm font-semibold tabular-nums text-foreground">
+                          {mask(formatCurrency(creditCardLimit, userCurrency, locale))}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t('accounts.available')}</p>
+                        <p className={`text-sm font-semibold tabular-nums ${creditCardAvailable < 0 ? 'text-rose-500' : 'text-foreground'}`}>
+                          {mask(formatCurrency(creditCardAvailable, userCurrency, locale))}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-muted">
+                    {creditCardAccounts.map((acc) => (
+                      <AccountCard key={acc.id} acc={acc} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="bg-card rounded-xl border border-dashed border-border p-8 text-center">
-              <p className="text-sm text-muted-foreground">{t('accounts.noBankConnections')}</p>
+              <p className="text-sm text-muted-foreground">{t('accounts.noAccountsFound')}</p>
             </div>
           )}
 
@@ -570,29 +379,6 @@ export default function AccountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirm disconnect dialog */}
-      <Dialog open={!!disconnectingConnection} onOpenChange={() => setDisconnectingConnection(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('accounts.confirmDisconnectTitle')}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {t('accounts.confirmDisconnectDesc', { institution: disconnectingConnection?.institution_name ?? '' })}
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDisconnectingConnection(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => disconnectingConnection && disconnectMutation.mutate(disconnectingConnection.id)}
-              disabled={disconnectMutation.isPending}
-            >
-              {disconnectMutation.isPending ? t('common.loading') : t('accounts.disconnect')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Confirm close dialog */}
       <Dialog open={!!closingAccountId} onOpenChange={() => setClosingAccountId(null)}>
@@ -637,20 +423,6 @@ export default function AccountsPage() {
         provider={selectedProvider ?? undefined}
       />
 
-      {/* Reconnect Dialog */}
-      <BankConnectDialog
-        open={!!reconnectConnId}
-        onClose={() => { setReconnectConnId(null); setReconnectItemId(null) }}
-        reconnectConnectionId={reconnectConnId ?? undefined}
-        updateItemId={reconnectItemId ?? undefined}
-      />
-
-      {/* Connection Settings Dialog */}
-      <ConnectionSettingsDialog
-        open={!!settingsConnection}
-        onClose={() => setSettingsConnection(null)}
-        connection={settingsConnection}
-      />
 
       {/* Account Dialog */}
       <AccountDialog
