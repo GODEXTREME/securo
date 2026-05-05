@@ -193,14 +193,14 @@ export default function AccountsPage() {
 
         {/* Third row: Additional info (for CC) + Buttons */}
         <div className="flex items-center justify-between ml-11">
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground flex-1">
             {isCC && acc.available_credit != null && (
               <p>{t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}</p>
             )}
           </div>
 
           {/* Buttons */}
-          <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 ml-auto opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
             <button
               className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
