@@ -154,7 +154,7 @@ export default function AccountsPage() {
   // Calculate totals for Credit Cards
   const creditCardSpent = creditCardAccounts.reduce((sum, acc) => sum + Number(acc.current_balance), 0)
   const creditCardLimit = creditCardAccounts.reduce((sum, acc) => sum + (Number(acc.credit_limit) || 0), 0)
-  const creditCardAvailable = creditCardLimit - creditCardSpent
+  const creditCardAvailable = creditCardLimit - (creditCardSpent < 0 ? Math.abs(creditCardSpent) : -creditCardSpent)
 
   // Component to render an account card
   const AccountCard = ({ acc }: { acc: Account }) => {
@@ -170,34 +170,34 @@ export default function AccountsPage() {
         : t('accounts.dueIn', { count: dueIn })
     const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
 
+    const creditLimit = acc.credit_limit ? Number(acc.credit_limit) : 0
+
     return (
       <div className="group flex flex-col px-5 py-3 hover:bg-muted/50 transition-colors border-b border-muted last:border-0">
-        {/* Line 1: Icon + Name */}
-        <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 mb-2">
-          <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-            <Icon size={14} className={cfg.color} />
-          </div>
-          <p className="text-sm font-medium text-foreground">{getAccountName(acc)}</p>
-        </Link>
-
         {isCC ? (
-          // Credit Card: 2 more lines
+          // Credit Card: 2 lines
           <>
-            {/* Line 2: Due Date + Value */}
+            {/* Line 1: Icon + Name + Spent/Limit */}
             <div className="flex items-center justify-between mb-2">
+              <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
+                  <Icon size={14} className={cfg.color} />
+                </div>
+                <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
+              </Link>
+              <p className="text-xs sm:text-sm font-semibold tabular-nums ml-auto text-foreground">
+                {mask(formatCurrency(Math.abs(bal), acc.currency, locale))} / {mask(formatCurrency(creditLimit, acc.currency, locale))}
+              </p>
+            </div>
+
+            {/* Line 2: Due Date + Buttons */}
+            <div className="flex items-center justify-between">
               {dueText && (
                 <p className={`text-xs ${dueClass}`}>
                   {dueText}
                 </p>
               )}
-              <p className={`text-xs sm:text-sm font-semibold tabular-nums ml-auto ${bal > 0 ? 'text-rose-500' : 'text-foreground'}`}>
-                {mask(formatCurrency(bal, acc.currency, locale))}
-              </p>
-            </div>
-
-            {/* Line 3: Buttons + Available Credit */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ml-auto">
                 <button
                   className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
@@ -213,48 +213,54 @@ export default function AccountsPage() {
                   <Archive size={13} />
                 </button>
               </div>
-
-              {acc.available_credit != null && (
-                <p className="text-xs text-muted-foreground ml-auto">
-                  {t('accounts.limit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
-                </p>
-              )}
             </div>
           </>
         ) : (
-          // Banking Account: 1 more line
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-              <button
-                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
-                title={t('common.edit')}
-              >
-                <Pencil size={13} />
-              </button>
-              <button
-                className="p-1.5 rounded-md text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                onClick={() => setClosingAccountId(acc.id)}
-                title={t('accounts.close')}
-              >
-                <Archive size={13} />
-              </button>
-              {!acc.connection_id && (
-                <button
-                  className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                  onClick={() => setDeletingId(acc.id)}
-                  disabled={deleteMutation.isPending}
-                  title={t('common.delete')}
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
+          // Banking Account: 2 lines
+          <>
+            {/* Line 1: Icon + Name + Value */}
+            <div className="flex items-center justify-between mb-2">
+              <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
+                  <Icon size={14} className={cfg.color} />
+                </div>
+                <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
+              </Link>
+              <p className={`text-xs sm:text-sm font-semibold tabular-nums ml-auto ${bal < 0 ? 'text-rose-500' : 'text-foreground'}`}>
+                {mask(formatCurrency(bal, acc.currency, locale))}
+              </p>
             </div>
 
-            <p className={`text-xs sm:text-sm font-semibold tabular-nums ml-auto ${bal < 0 ? 'text-rose-500' : 'text-foreground'}`}>
-              {mask(formatCurrency(bal, acc.currency, locale))}
-            </p>
-          </div>
+            {/* Line 2: Buttons */}
+            <div className="flex items-center justify-end">
+              <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <button
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
+                  title={t('common.edit')}
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                  onClick={() => setClosingAccountId(acc.id)}
+                  title={t('accounts.close')}
+                >
+                  <Archive size={13} />
+                </button>
+                {!acc.connection_id && (
+                  <button
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                    onClick={() => setDeletingId(acc.id)}
+                    disabled={deleteMutation.isPending}
+                    title={t('common.delete')}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
     )
@@ -316,8 +322,8 @@ export default function AccountsPage() {
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t('accounts.spent')}</p>
-                        <p className="text-sm font-semibold tabular-nums text-foreground">
-                          {mask(formatCurrency(creditCardSpent, userCurrency, locale))}
+                        <p className="text-sm font-semibold tabular-nums text-rose-500">
+                          {mask(formatCurrency(Math.abs(creditCardSpent), userCurrency, locale))}
                         </p>
                       </div>
                       <div>
