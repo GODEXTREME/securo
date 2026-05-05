@@ -171,30 +171,28 @@ export default function AccountsPage() {
     const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
 
     return (
-      <div className="group px-5 py-3 hover:bg-muted/50 transition-colors border-b border-muted last:border-0">
-        {isCC ? (
-          // Credit Card Layout
-          <>
-            {/* Line 1: Icon + Name + Value */}
-            <div className="flex items-center justify-between mb-2">
-              <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-                  <Icon size={14} className={cfg.color} />
-                </div>
-                <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
-              </Link>
-              <p className={`text-xs sm:text-sm font-semibold tabular-nums ml-2 ${bal > 0 ? 'text-rose-500' : 'text-foreground'}`}>
-                {mask(formatCurrency(bal, acc.currency, locale))}
-              </p>
-            </div>
+      <div className="group flex flex-col px-5 py-3 hover:bg-muted/50 transition-colors border-b border-muted last:border-0">
+        {/* Line 1: Icon + Name */}
+        <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 mb-2">
+          <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
+            <Icon size={14} className={cfg.color} />
+          </div>
+          <p className="text-sm font-medium text-foreground">{getAccountName(acc)}</p>
+        </Link>
 
-            {/* Line 2: Due Date */}
-            <div className="mb-2">
+        {isCC ? (
+          // Credit Card: 2 more lines
+          <>
+            {/* Line 2: Due Date + Value */}
+            <div className="flex items-center justify-between mb-2">
               {dueText && (
                 <p className={`text-xs ${dueClass}`}>
                   {dueText}
                 </p>
               )}
+              <p className={`text-xs sm:text-sm font-semibold tabular-nums ml-auto ${bal > 0 ? 'text-rose-500' : 'text-foreground'}`}>
+                {mask(formatCurrency(bal, acc.currency, locale))}
+              </p>
             </div>
 
             {/* Line 3: Buttons + Available Credit */}
@@ -217,23 +215,16 @@ export default function AccountsPage() {
               </div>
 
               {acc.available_credit != null && (
-                <p className="text-xs text-muted-foreground">
-                  {t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
+                <p className="text-xs text-muted-foreground ml-auto">
+                  {t('accounts.limit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
                 </p>
               )}
             </div>
           </>
         ) : (
-          // Banking Account Layout
+          // Banking Account: 1 more line
           <div className="flex items-center justify-between">
-            <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-              <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-                <Icon size={14} className={cfg.color} />
-              </div>
-              <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
-            </Link>
-
-            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ml-2">
+            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
               <button
                 className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 onClick={() => { setEditingAccount(acc); setDialogOpen(true) }}
@@ -260,7 +251,7 @@ export default function AccountsPage() {
               )}
             </div>
 
-            <p className={`text-xs sm:text-sm font-semibold tabular-nums ml-2 ${bal < 0 ? 'text-rose-500' : 'text-foreground'}`}>
+            <p className={`text-xs sm:text-sm font-semibold tabular-nums ml-auto ${bal < 0 ? 'text-rose-500' : 'text-foreground'}`}>
               {mask(formatCurrency(bal, acc.currency, locale))}
             </p>
           </div>
