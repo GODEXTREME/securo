@@ -180,24 +180,11 @@ export default function AccountsPage() {
           <p className="text-sm font-medium text-foreground">{getAccountName(acc)}</p>
         </Link>
 
-        {/* Second row: Type + Value */}
+        {/* Second row: Value + Buttons */}
         <div className="flex items-center justify-between mb-2 ml-11">
-          <p className="text-xs text-muted-foreground">
-            {t(cfg.label)}
-            {dueText && <> · <span className={dueClass}>{dueText}</span></>}
-          </p>
           <p className={`text-xs sm:text-sm font-semibold tabular-nums ${(isCC ? bal > 0 : bal < 0) ? 'text-rose-500' : 'text-foreground'}`}>
             {mask(formatCurrency(bal, acc.currency, locale))}
           </p>
-        </div>
-
-        {/* Third row: Additional info (for CC) + Buttons */}
-        <div className="flex items-center justify-between ml-11">
-          <div className="text-xs text-muted-foreground">
-            {isCC && acc.available_credit != null && (
-              <p>{t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}</p>
-            )}
-          </div>
 
           {/* Buttons */}
           <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -226,6 +213,18 @@ export default function AccountsPage() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Third row: Additional info (for CC) */}
+        <div className="ml-11">
+          {dueText && (
+            <p className={`text-xs ${dueClass}`}>
+              {dueText}
+            </p>
+          )}
+          {isCC && acc.available_credit != null && (
+            <p className="text-xs text-muted-foreground">{t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}</p>
+          )}
         </div>
       </div>
     )
