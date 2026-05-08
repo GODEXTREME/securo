@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { getAccountName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { categories as categoriesApi, rules as rulesApi, accounts as accountsApi, payees as payeesApi } from '@/lib/api'
+import { categories as categoriesApi, rules as rulesApi, accounts as accountsApi, payees as payeesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import type { Category, Payee, Rule, RuleCondition, RuleAction } from '@/types'
+import { CategoryGroupedSelect } from '@/components/category-grouped-select'
 import { Trash2, Plus, RefreshCw, X, Package, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PageHeader } from '@/components/page-header'
@@ -125,6 +126,11 @@ export default function RulesPage() {
   const { data: categoriesList } = useQuery({
     queryKey: ['categories'],
     queryFn: categoriesApi.list,
+  })
+
+  const { data: categoryGroupsList } = useQuery({
+    queryKey: ['category-groups'],
+    queryFn: categoryGroupsApi.list,
   })
 
   const { data: accountsList } = useQuery({
@@ -330,6 +336,7 @@ export default function RulesPage() {
         onClose={() => { setDialogOpen(false); setEditing(null) }}
         rule={editing}
         categories={categories}
+        categoryGroups={categoryGroupsList}
         accounts={accountsList ?? []}
         payees={payees}
         onSave={(data) => {
@@ -444,12 +451,13 @@ function RulePacksDialog({ open, onClose }: { open: boolean; onClose: () => void
 }
 
 function RuleDialog({
-  open, onClose, rule, categories, accounts, payees, onSave, loading,
+  open, onClose, rule, categories, categoryGroups, accounts, payees, onSave, loading,
 }: {
   open: boolean
   onClose: () => void
   rule: Rule | null
   categories: Category[]
+  categoryGroups?: { id: string; name: string; categories?: { id: string; name: string; group_id?: string | null }[] }[]
   accounts: { id: string; name: string }[]
   payees: Payee[]
   onSave: (data: Partial<Rule>) => void
@@ -633,17 +641,15 @@ function RuleDialog({
                     <option value="append_notes">{t('rules.appendNotes')}</option>
                   </select>
                   {action.op === 'set_category' ? (
-                    <select
+                    <CategoryGroupedSelect
                       className={`${selectClass} w-0 flex-1 min-w-0`}
                       value={action.value}
                       onChange={(e) => updateAction(i, 'value', e.target.value)}
                       required
-                    >
-                      <option value="">{t('rules.selectCategory')}</option>
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
+                      categories={categories}
+                      categoryGroups={categoryGroups}
+                      placeholder={t('rules.selectCategory')}
+                    />
                   ) : action.op === 'set_payee' ? (
                     <select
                       className={`${selectClass} w-0 flex-1 min-w-0`}

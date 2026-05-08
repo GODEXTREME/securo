@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import type { Budget } from '@/types'
+import { CategoryGroupedSelect } from '@/components/category-grouped-select'
 import { Pencil, Trash2, Plus, Repeat, CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
@@ -264,23 +265,14 @@ export default function BudgetsPage() {
               <>
                 <div className="space-y-2">
                   <Label>{t('budgets.category')}</Label>
-                  <select
+                  <CategoryGroupedSelect
                     name="category_id"
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                     required
-                  >
-                    <option value="">{t('budgets.selectCategory')}</option>
-                    {groupsList?.map((group) => (
-                      <optgroup key={group.id} label={group.name}>
-                        {group.categories.map((cat) => (
-                          <option key={cat.id} value={cat.id}>{cat.name}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                    {categoriesList?.filter((c) => !c.group_id).map((cat) => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
+                    categories={categoriesList ?? []}
+                    categoryGroups={groupsList}
+                    placeholder={t('budgets.selectCategory')}
+                  />
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" name="is_recurring" className="rounded border-border" />

@@ -3,7 +3,7 @@ import { getAccountName } from '@/lib/account-utils'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { transactions, categories as categoriesApi, accounts as accountsApi, recurring, payees as payeesApi, admin, groups as groupsApi } from '@/lib/api'
+import { transactions, categories as categoriesApi, accounts as accountsApi, recurring, payees as payeesApi, admin, groups as groupsApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -249,6 +249,11 @@ export default function TransactionsPage() {
   const { data: categoriesList } = useQuery({
     queryKey: ['categories'],
     queryFn: categoriesApi.list,
+  })
+
+  const { data: categoryGroupsList } = useQuery({
+    queryKey: ['category-groups'],
+    queryFn: categoryGroupsApi.list,
   })
 
   const { data: accountsList } = useQuery({
@@ -1283,6 +1288,7 @@ export default function TransactionsPage() {
         duplicateDraft={duplicateDraft}
         formResetKey={formResetKey}
         categories={categoriesList ?? []}
+        categoryGroups={categoryGroupsList}
         accounts={accountsList ?? []}
         recurringMatch={editingTx ? recurringList?.find(r => r.description === editingTx.description && r.type === editingTx.type) : undefined}
         onSave={handleTransactionSave}

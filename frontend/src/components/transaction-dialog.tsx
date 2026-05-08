@@ -26,6 +26,7 @@ import {
 import { TransactionAttachments } from '@/components/transaction-attachments'
 import type { AttachmentPreview } from '@/components/transaction-attachments'
 import { TransactionSplitsSection } from '@/components/transaction-splits-section'
+import { CategoryGroupedSelect } from '@/components/category-grouped-select'
 import type { Transaction, RecurringTransaction, TransactionSplitsInput } from '@/types'
 import { toast } from 'sonner'
 
@@ -64,6 +65,7 @@ export function TransactionDialog({
   onClose,
   transaction,
   categories,
+  categoryGroups,
   accounts,
   recurringMatch,
   onSave,
@@ -79,6 +81,7 @@ export function TransactionDialog({
   onClose: () => void
   transaction: Transaction | null
   categories: { id: string; name: string; icon: string }[]
+  categoryGroups?: { id: string; name: string; categories?: { id: string; name: string; group_id?: string | null }[] }[]
   accounts: { id: string; name: string; type?: string }[]
   recurringMatch?: RecurringTransaction
   onSave: (data: Partial<Transaction>, recurringData?: { frequency: string; end_date?: string }, pendingFiles?: File[], action?: SaveAction) => void
@@ -148,6 +151,7 @@ export function TransactionDialog({
               transaction={transaction}
               duplicateDraft={duplicateDraft}
               categories={categories}
+              categoryGroups={categoryGroups}
               accounts={accounts}
               recurringMatch={recurringMatch}
               onSave={onSave}
@@ -263,6 +267,7 @@ function TransactionForm({
   transaction,
   duplicateDraft,
   categories,
+  categoryGroups,
   accounts,
   recurringMatch,
   onSave,
@@ -279,6 +284,7 @@ function TransactionForm({
   transaction: Transaction | null
   duplicateDraft: Partial<Transaction> | null
   categories: { id: string; name: string; icon: string }[]
+  categoryGroups?: { id: string; name: string; categories?: { id: string; name: string; group_id?: string | null }[] }[]
   accounts: { id: string; name: string; type?: string }[]
   recurringMatch?: RecurringTransaction
   onSave: (data: Partial<Transaction>, recurringData?: { frequency: string; end_date?: string }, pendingFiles?: File[], action?: SaveAction) => void
@@ -652,16 +658,14 @@ function TransactionForm({
         </div>
         <div className="space-y-2">
           <Label>{t('transactions.category')}</Label>
-          <select
+          <CategoryGroupedSelect
             className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-ring/30 focus-visible:ring-[2px]"
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-          >
-            <option value="">{t('transactions.noCategory')}</option>
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
-            ))}
-          </select>
+            categories={categories}
+            categoryGroups={categoryGroups}
+            placeholder={t('transactions.noCategory')}
+          />
         </div>
       </div>
       <div className={cn("grid gap-4", isSynced ? "grid-cols-1" : "grid-cols-2")}>
