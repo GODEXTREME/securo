@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 import type { CreditCardBill, Transaction } from '@/types'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, ArrowLeftRight, ChevronLeft, ChevronRight, Clock, HelpCircle, Paperclip, Pencil, X } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, CalendarClock, ChevronLeft, ChevronRight, Clock, HelpCircle, Paperclip, Pencil, X } from 'lucide-react'
 import { CategoryIcon } from '@/components/category-icon'
 import { TransactionDialog, extractApiError } from '@/components/transaction-dialog'
 import { TransferDialog } from '@/components/transfer-dialog'
@@ -1391,6 +1391,15 @@ export default function AccountDetailPage() {
                                   : undefined}
                               >
                                 {tx.installment_number}/{tx.total_installments}
+                              </span>
+                            )}
+                            {tx.effective_bill_date && (
+                              <span
+                                className="ml-2 inline-flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 font-normal bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/30 rounded px-1.5 py-0.5"
+                                title={t('transactions.billOverrideTooltip', 'Movida para a fatura com vencimento em {{date}}', { date: formatDateStr(tx.effective_bill_date, locale) })}
+                              >
+                                <CalendarClock className="h-3 w-3" />
+                                {formatDateStr(tx.effective_bill_date, locale)}
                               </span>
                             )}
                             {(tx.attachment_count ?? 0) > 0 && (

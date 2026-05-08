@@ -23,13 +23,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertTriangle, ArrowLeftRight, Check, Download, HelpCircle, Info, Paperclip, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, Check, Copy, Download, HelpCircle, Info, Paperclip, Users, X } from 'lucide-react'
 import type { Transaction } from '@/types'
 import { PageHeader } from '@/components/page-header'
 import { CategoryIcon } from '@/components/category-icon'
 import { TransactionDialog, extractApiError, type SaveAction } from '@/components/transaction-dialog'
+import { TransactionsColumnPicker } from '@/components/transactions-column-picker'
+import { type ColumnDef, type ColumnId, useTransactionsGridState } from '@/components/transactions-grid-columns'
 import { TransferDialog } from '@/components/transfer-dialog'
 import { LinkTransferDialog } from '@/components/link-transfer-dialog'
+import { BulkAddToGroupDialog, type BulkAddToGroupSubmission } from '@/components/bulk-add-to-group-dialog'
 import { TransactionsFilterBar } from '@/components/transactions-filter-bar'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
@@ -121,7 +124,9 @@ export default function TransactionsPage() {
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [linkTransferDialogOpen, setLinkTransferDialogOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const grid = useTransactionsGridState()
   const [bulkCategory, setBulkCategory] = useState<string>('')
+  const [bulkAddToGroupOpen, setBulkAddToGroupOpen] = useState(false)
   const [bulkTagInput, setBulkTagInput] = useState<string>('')
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
   const highlightId = searchParams.get('highlight')
@@ -222,7 +227,7 @@ export default function TransactionsPage() {
   }, [highlightId, searchQuery, filterPayee, filterCategoryIds, page])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['transactions', page, filterAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterGroupId, filterType, filterFrom, filterTo, searchQuery, tagFilters],
+    queryKey: ['transactions', page, filterAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterGroupId, filterType, filterFrom, filterTo, searchQuery, tagFilters, grid.sortBy, grid.sortDir],
     queryFn: () =>
       transactions.list({
         page,
@@ -237,6 +242,7 @@ export default function TransactionsPage() {
         to: filterTo || undefined,
         q: searchQuery || undefined,
         tags: tagFilters.length > 0 ? tagFilters : undefined,
+        ...grid.apiSort,
       }),
   })
 
@@ -367,6 +373,27 @@ export default function TransactionsPage() {
     },
   })
 
+  const bulkAddToGroupMutation = useMutation({
+    mutationFn: ({ ids, payload }: { ids: string[]; payload: BulkAddToGroupSubmission }) =>
+      transactions.bulkAddToGroup(ids, payload.groupId, {
+        share_type: payload.share_type,
+        member_splits: payload.member_splits,
+      }),
+    onSuccess: (result) => {
+      invalidateAfterTxMutation()
+      setSelectedIds(new Set())
+      setBulkAddToGroupOpen(false)
+      if (result.skipped > 0) {
+        toast.success(t('transactions.bulkAddToGroupPartial', { added: result.updated, skipped: result.skipped }))
+      } else {
+        toast.success(t('transactions.bulkAddToGroupSuccess', { count: result.updated }))
+      }
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error))
+    },
+  })
+
   const linkTransferMutation = useMutation({
     mutationFn: (ids: [string, string]) => transactions.linkTransfer(ids),
     onSuccess: () => {
@@ -426,19 +453,20 @@ export default function TransactionsPage() {
   // Tag filtering is now applied server-side, so the visible list and the
   // page count both reflect the same filtered total — issue #88.
   const filteredItems = data?.items ?? []
+  const selectableItems = filteredItems.filter(tx => !tx.is_shared)
 
   const toggleSelectAll = () => {
-    if (!filteredItems.length) return
-    const allSelected = filteredItems.every(tx => selectedIds.has(tx.id))
+    if (!selectableItems.length) return
+    const allSelected = selectableItems.every(tx => selectedIds.has(tx.id))
     if (allSelected) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(filteredItems.map(tx => tx.id)))
+      setSelectedIds(new Set(selectableItems.map(tx => tx.id)))
     }
   }
 
-  const allSelected = filteredItems.length > 0 && filteredItems.every(tx => selectedIds.has(tx.id))
-  const someSelected = filteredItems.some(tx => selectedIds.has(tx.id)) && !allSelected
+  const allSelected = selectableItems.length > 0 && selectableItems.every(tx => selectedIds.has(tx.id))
+  const someSelected = selectableItems.some(tx => selectedIds.has(tx.id)) && !allSelected
 
   // Resolve the currently-selected transactions into a valid debit/credit pair
   // for the "Link as transfer" action. Returns null if the pair is invalid
@@ -510,6 +538,320 @@ export default function TransactionsPage() {
     updateMutation.mutate({ id: editingTx.id, ...data })
   }
 
+  // Open the Add Transaction dialog seeded from an existing row's
+  // fields (issue #158). Identity-bearing fields (id, transfer_pair,
+  // installment series, splits) are dropped so the dialog treats the
+  // result as a brand-new transaction; the user can tweak the date or
+  // any other field before saving.
+  const handleDuplicateTransaction = (tx: Transaction) => {
+    const draft: Partial<Transaction> = {
+      description: tx.description,
+      amount: tx.amount,
+      currency: tx.currency,
+      type: tx.type,
+      date: tx.date,
+      account_id: tx.account_id,
+      category_id: tx.category_id,
+      payee_id: tx.payee_id,
+      payee: tx.payee,
+      payee_name: tx.payee_name,
+      notes: tx.notes,
+    }
+    setEditingTx(null)
+    setDuplicateDraft(draft)
+    setFormResetKey(k => k + 1)
+    setDialogOpen(true)
+  }
+
+  // Resize: track which column is being dragged so we can clear listeners
+  // when the gesture ends. The width is committed to grid state on every
+  // pointermove for live feedback (cheap — single React state update).
+  const resizingRef = useRef<{ id: ColumnId; startX: number; startWidth: number } | null>(null)
+  const startResize = (e: React.PointerEvent<HTMLSpanElement>, col: ColumnDef) => {
+    e.preventDefault()
+    e.stopPropagation()
+    resizingRef.current = { id: col.id, startX: e.clientX, startWidth: grid.widthOf(col.id) }
+    const onMove = (ev: PointerEvent) => {
+      const r = resizingRef.current
+      if (!r) return
+      grid.setWidth(r.id, r.startWidth + (ev.clientX - r.startX))
+    }
+    const onUp = () => {
+      resizingRef.current = null
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  const renderHeaderCell = (col: ColumnDef) => {
+    const isSorted = grid.sortBy === col.id
+    const sortIndicator = isSorted ? (grid.sortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : null
+    const alignClass = col.align === 'right' ? 'text-right' : 'text-left'
+    const justify = col.align === 'right' ? 'justify-end' : 'justify-start'
+    const cursorClass = col.sortable ? 'cursor-pointer select-none hover:text-foreground' : ''
+    // Match the amount/attachments body cells' pr-5 so right-aligned
+    // headers line up with their values (issue #161 polish).
+    const padX = col.align === 'right' ? 'pr-5' : ''
+    return (
+      <TableHead
+        key={col.id}
+        style={{ width: grid.widthOf(col.id), minWidth: grid.widthOf(col.id) }}
+        className={`relative text-xs font-medium text-muted-foreground py-3 ${alignClass} ${padX}`}
+        onClick={() => { if (col.sortable) grid.toggleSort(col.id) }}
+      >
+        <div className={`flex items-center gap-1 ${justify} ${cursorClass}`}>
+          <span className="truncate">{t(col.labelKey)}</span>
+          {sortIndicator}
+        </div>
+        <span
+          onPointerDown={(e) => startResize(e, col)}
+          onClick={(e) => e.stopPropagation()}
+          aria-hidden="true"
+          className="absolute right-0 top-0 h-full w-2 -mr-1 cursor-col-resize select-none hover:bg-primary/40 active:bg-primary/60"
+        />
+      </TableHead>
+    )
+  }
+
+  const stripHashtags = (notes: string) => notes.replace(/#[\wÀ-ž-]+/g, '').trim()
+
+  const renderAmountCell = (tx: Transaction) => {
+    const displayAmount = tx.is_shared && tx.viewer_share != null
+      ? Number(tx.viewer_share)
+      : Number(tx.amount)
+    return (
+      <>
+        <span
+          className={`text-xs md:text-sm font-bold tabular-nums ${
+            tx.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'
+          }`}
+        >
+          {mask(
+            `${tx.type === 'credit' ? '+' : '−'}${formatCurrency(
+              Math.abs(displayAmount),
+              tx.currency,
+              locale,
+            )}`,
+          )}
+        </span>
+        {tx.is_shared && (
+          <p className="text-[10px] text-muted-foreground tabular-nums">
+            {t('splitGroups.sharedRowParent', {
+              total: formatCurrency(Math.abs(Number(tx.amount)), tx.currency, locale),
+            })}
+          </p>
+        )}
+        {!tx.is_shared && tx.viewer_share != null
+          && Math.abs(Number(tx.viewer_share)) !== Math.abs(Number(tx.amount)) && (
+          <p className="text-[10px] text-muted-foreground tabular-nums">
+            {t('splitGroups.ownerRowYourShare', {
+              share: formatCurrency(Math.abs(Number(tx.viewer_share)), tx.currency, locale),
+            })}
+          </p>
+        )}
+        {tx.amount_primary != null && tx.currency !== userCurrency && (
+          <div className="flex items-center justify-end gap-1">
+            {tx.fx_fallback && (
+              <span title={t('transactions.fxFallbackTooltip')}><AlertTriangle size={11} className="text-amber-500 shrink-0" /></span>
+            )}
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {mask(formatCurrency(Math.abs(tx.amount_primary), userCurrency, locale))}
+            </span>
+          </div>
+        )}
+      </>
+    )
+  }
+
+  const renderDescriptionCell = (tx: Transaction) => {
+    const showInlineDate = !grid.isVisible('date')
+    const showInlineNotes = !grid.isVisible('notes')
+    const showInlineTags = !grid.isVisible('tags')
+    const noteText = tx.notes ? stripHashtags(tx.notes) : ''
+    const noteTags = tx.notes ? parseHashtags(tx.notes) : []
+    return (
+      <div className="flex items-center gap-2 md:gap-3">
+        <CategoryIcon icon={tx.category?.icon} color={tx.category?.color} size="lg" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-foreground truncate">{tx.description}</p>
+            {tx.group_id && (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900 px-1.5 py-0.5 rounded-full"
+                title={t('splitGroups.sharedRowTooltip')}
+              >
+                {tx.is_shared && tx.parent_owner_name
+                  ? t('splitGroups.sharedRowBadgeAuthor', {
+                      author: tx.parent_owner_name,
+                      group: groupNameById.get(tx.group_id) ?? '',
+                    })
+                  : t('splitGroups.ownerRowBadge', {
+                      group: groupNameById.get(tx.group_id) ?? '',
+                    })}
+              </span>
+            )}
+            {!!tx.transfer_pair_id && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
+                <ArrowLeftRight className="h-3 w-3" />
+                {t('transactions.transfer')}
+                <span title={t('transactions.transferTooltip')}><HelpCircle className="h-3 w-3 text-blue-400" /></span>
+              </span>
+            )}
+            {recurringList?.some(r => r.description === tx.description && r.type === tx.type) && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/5 border border-primary/10 px-1.5 py-0.5 rounded-full">
+                {t('transactions.recurringBadge')}
+              </span>
+            )}
+            {tx.installment_number != null && tx.total_installments != null && (
+              <span
+                className="inline-flex items-center text-[10px] font-bold tabular-nums text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/20 border border-amber-200 dark:border-amber-500/30 px-1.5 py-0.5 rounded-full"
+                title={tx.installment_total_amount != null
+                  ? t('transactions.installmentTooltip', { count: tx.total_installments, total: tx.installment_total_amount })
+                  : undefined}
+              >
+                {tx.installment_number}/{tx.total_installments}
+              </span>
+            )}
+            {(tx.attachment_count ?? 0) > 0 && (
+              <Paperclip size={12} className="text-muted-foreground shrink-0" />
+            )}
+          </div>
+          {showInlineDate && (
+            <p className="text-xs text-muted-foreground mt-0.5">{new Date(tx.date + 'T00:00:00').toLocaleDateString(locale)}</p>
+          )}
+          {(showInlineNotes || showInlineTags) && tx.notes && (
+            <div className="mt-1 space-y-0.5">
+              {showInlineNotes && noteText && (
+                <p className="text-xs text-muted-foreground italic leading-snug">{noteText}</p>
+              )}
+              {showInlineTags && noteTags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {noteTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-block text-[11px] font-medium bg-primary/5 text-primary border border-primary/10 px-1.5 py-0 rounded-full leading-5 cursor-pointer hover:bg-primary/10 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); addTagFilter(tag) }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const renderBodyCell = (col: ColumnDef, tx: Transaction) => {
+    const widthStyle = { width: grid.widthOf(col.id), minWidth: grid.widthOf(col.id) }
+    const alignClass = col.align === 'right' ? 'text-right' : ''
+    const baseClass = `py-2.5 ${alignClass}`
+    switch (col.id) {
+      case 'date':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} text-sm text-muted-foreground tabular-nums`}>
+            {new Date(tx.date + 'T00:00:00').toLocaleDateString(locale)}
+          </TableCell>
+        )
+      case 'description':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} pl-2 max-w-0`}>
+            {renderDescriptionCell(tx)}
+          </TableCell>
+        )
+      case 'category':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={baseClass}>
+            {tx.category ? (
+              <span className="text-sm text-muted-foreground">{tx.category.name}</span>
+            ) : (
+              <span className="text-xs text-muted-foreground italic">{t('transactions.noCategory')}</span>
+            )}
+          </TableCell>
+        )
+      case 'account':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} text-sm text-muted-foreground`}>
+            {getAccountName(accountsList?.find((a) => a.id === tx.account_id) ?? { name: '', display_name: null }) || (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </TableCell>
+        )
+      case 'amount':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} pr-5`}>
+            {renderAmountCell(tx)}
+          </TableCell>
+        )
+      case 'payee':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} text-sm text-muted-foreground`}>
+            {tx.payee_name ?? tx.payee ?? <span className="text-muted-foreground">—</span>}
+          </TableCell>
+        )
+      case 'notes': {
+        const text = tx.notes ? stripHashtags(tx.notes) : ''
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} text-xs text-muted-foreground italic max-w-0 truncate`}>
+            {text || <span className="not-italic">—</span>}
+          </TableCell>
+        )
+      }
+      case 'tags': {
+        const tags = tx.notes ? parseHashtags(tx.notes) : []
+        return (
+          <TableCell key={col.id} style={widthStyle} className={baseClass}>
+            {tags.length === 0 ? (
+              <span className="text-muted-foreground">—</span>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-block text-[11px] font-medium bg-primary/5 text-primary border border-primary/10 px-1.5 py-0 rounded-full leading-5 cursor-pointer hover:bg-primary/10"
+                    onClick={(e) => { e.stopPropagation(); addTagFilter(tag) }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </TableCell>
+        )
+      }
+      case 'attachments':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} pr-5 text-sm text-muted-foreground tabular-nums`}>
+            {(tx.attachment_count ?? 0) > 0 ? (
+              <span className="inline-flex items-center gap-1 justify-end w-full">
+                <Paperclip size={12} />{tx.attachment_count}
+              </span>
+            ) : <span>—</span>}
+          </TableCell>
+        )
+      case 'type':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} text-sm`}>
+            <span className={tx.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'}>
+              {tx.type === 'credit' ? t('transactions.typeIncome') : t('transactions.typeExpense')}
+            </span>
+          </TableCell>
+        )
+      case 'status':
+        return (
+          <TableCell key={col.id} style={widthStyle} className={`${baseClass} text-sm text-muted-foreground capitalize`}>
+            {tx.status === 'pending'
+              ? t('transactions.statusPending')
+              : t('transactions.statusPosted')}
+          </TableCell>
+        )
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -517,20 +859,29 @@ export default function TransactionsPage() {
         title={t('transactions.title')}
         action={
           <div className="flex items-center gap-2">
+            <TransactionsColumnPicker state={grid} />
             <Button
               variant="outline"
               disabled={exporting}
               onClick={async () => {
                 setExporting(true)
                 try {
-                  await transactions.export({
-                    account_ids: filterAccountIds.length > 0 ? filterAccountIds : undefined,
-                    category_ids: filterCategoryIds.length > 0 ? filterCategoryIds : undefined,
-                    uncategorized: filterUncategorized ? true : undefined,
-                    from: filterFrom || undefined,
-                    to: filterTo || undefined,
-                    q: searchQuery || undefined,
-                  })
+                  if (selectedIds.size > 0) {
+                    // Selection-only export bypasses other filters and
+                    // hits the backend's `transaction_ids` short-circuit.
+                    await transactions.export({
+                      transaction_ids: Array.from(selectedIds),
+                    })
+                  } else {
+                    await transactions.export({
+                      account_ids: filterAccountIds.length > 0 ? filterAccountIds : undefined,
+                      category_ids: filterCategoryIds.length > 0 ? filterCategoryIds : undefined,
+                      uncategorized: filterUncategorized ? true : undefined,
+                      from: filterFrom || undefined,
+                      to: filterTo || undefined,
+                      q: searchQuery || undefined,
+                    })
+                  }
                   toast.success(t('transactions.exportSuccess'))
                 } catch {
                   toast.error(t('transactions.exportError'))
@@ -540,8 +891,30 @@ export default function TransactionsPage() {
               }}
             >
               <Download size={16} className="mr-1.5" />
-              {exporting ? t('transactions.exporting') : t('transactions.exportCsv')}
+              {exporting
+                ? t('transactions.exporting')
+                : selectedIds.size > 0
+                  ? t('transactions.exportSelected', { count: selectedIds.size })
+                  : t('transactions.exportCsv')}
             </Button>
+            {/* Duplicate (issue #158): only when a single row is
+                selected. Pre-fills the Add Transaction dialog from
+                that row's fields; identity-bearing fields (id,
+                transfer_pair_id, splits) are not copied. Hidden for
+                shared rows and transfers — they can't be duplicated. */}
+            {selectedIds.size === 1 && (() => {
+              const selectedTx = filteredItems.find(tx => selectedIds.has(tx.id))
+              if (!selectedTx || selectedTx.is_shared || selectedTx.transfer_pair_id) return null
+              return (
+                <Button
+                  variant="outline"
+                  onClick={() => handleDuplicateTransaction(selectedTx)}
+                >
+                  <Copy size={16} className="mr-1.5" />
+                  {t('transactions.duplicate')}
+                </Button>
+              )
+            })()}
             <Button variant="outline" onClick={() => setTransferDialogOpen(true)}>
               <ArrowLeftRight size={16} className="mr-1.5" />
               {t('transactions.transfer')}
@@ -653,10 +1026,11 @@ export default function TransactionsPage() {
             ))}
           </div>
         ) : (
-          <Table>
+          <div className="overflow-x-auto">
+          <Table style={{ tableLayout: 'fixed' }}>
             <TableHeader>
               <TableRow className="border-b border-border hover:bg-transparent">
-                <TableHead className="w-[40px] py-3 pl-4 pr-0">
+                <TableHead style={{ width: 40, minWidth: 40 }} className="py-3 pl-4 pr-0">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -665,10 +1039,7 @@ export default function TransactionsPage() {
                     className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
                   />
                 </TableHead>
-                <TableHead className="text-xs font-medium text-muted-foreground py-3 pl-2">{t('transactions.description')}</TableHead>
-                <TableHead className="hidden md:table-cell text-xs font-medium text-muted-foreground py-3 w-[180px]">{t('transactions.category')}</TableHead>
-                <TableHead className="hidden lg:table-cell text-xs font-medium text-muted-foreground py-3 w-[160px]">{t('transactions.account')}</TableHead>
-                <TableHead className="text-xs font-medium text-muted-foreground py-3 pr-5 text-right w-[120px] md:w-[180px]">{t('transactions.amount')}</TableHead>
+                {grid.visibleColumns.map(renderHeaderCell)}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -689,7 +1060,7 @@ export default function TransactionsPage() {
                     setDialogOpen(true)
                   }}
                 >
-                  <TableCell className="py-2.5 pl-4 pr-0 w-[40px]">
+                  <TableCell style={{ width: 40, minWidth: 40 }} className="py-2.5 pl-4 pr-0">
                     {/* Bulk operations are scoped to user.id so they
                         silently skip shared rows — hide the checkbox
                         on those to avoid the dead-end UX. */}
@@ -703,156 +1074,19 @@ export default function TransactionsPage() {
                       />
                     )}
                   </TableCell>
-                  <TableCell className="py-2.5 pl-2 max-w-0">
-                    <div className="flex items-center gap-2 md:gap-3">
-                      <CategoryIcon icon={tx.category?.icon} color={tx.category?.color} size="lg" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-foreground truncate">{tx.description}</p>
-                          {tx.group_id && (
-                            <span
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900 px-1.5 py-0.5 rounded-full"
-                              title={t('splitGroups.sharedRowTooltip')}
-                            >
-                              {tx.is_shared && tx.parent_owner_name
-                                ? t('splitGroups.sharedRowBadgeAuthor', {
-                                    author: tx.parent_owner_name,
-                                    group: groupNameById.get(tx.group_id) ?? '',
-                                  })
-                                : t('splitGroups.ownerRowBadge', {
-                                    group: groupNameById.get(tx.group_id) ?? '',
-                                  })}
-                            </span>
-                          )}
-                          {!!tx.transfer_pair_id && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
-                              <ArrowLeftRight className="h-3 w-3" />
-                              {t('transactions.transfer')}
-                              <span title={t('transactions.transferTooltip')}><HelpCircle className="h-3 w-3 text-blue-400" /></span>
-                            </span>
-                          )}
-                          {recurringList?.some(r => r.description === tx.description && r.type === tx.type) && (
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/5 border border-primary/10 px-1.5 py-0.5 rounded-full">
-                              {t('transactions.recurringBadge')}
-                            </span>
-                          )}
-                          {tx.installment_number != null && tx.total_installments != null && (
-                            <span
-                              className="inline-flex items-center text-[10px] font-bold tabular-nums text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/20 border border-amber-200 dark:border-amber-500/30 px-1.5 py-0.5 rounded-full"
-                              title={tx.installment_total_amount != null
-                                ? t('transactions.installmentTooltip', { count: tx.total_installments, total: tx.installment_total_amount })
-                                : undefined}
-                            >
-                              {tx.installment_number}/{tx.total_installments}
-                            </span>
-                          )}
-                          {(tx.attachment_count ?? 0) > 0 && (
-                            <Paperclip size={12} className="text-muted-foreground shrink-0" />
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{new Date(tx.date + 'T00:00:00').toLocaleDateString(locale)}</p>
-                        {tx.notes && (
-                          <div className="mt-1 space-y-0.5">
-                            {tx.notes.replace(/#[\w\u00C0-\u017E-]+/g, '').trim() && (
-                              <p className="text-xs text-muted-foreground italic leading-snug">
-                                {tx.notes.replace(/#[\w\u00C0-\u017E-]+/g, '').trim()}
-                              </p>
-                            )}
-                            {parseHashtags(tx.notes).length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {parseHashtags(tx.notes).map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className="inline-block text-[11px] font-medium bg-primary/5 text-primary border border-primary/10 px-1.5 py-0 rounded-full leading-5 cursor-pointer hover:bg-primary/10 transition-colors"
-                                    onClick={(e) => { e.stopPropagation(); addTagFilter(tag) }}
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell py-2.5">
-                    {tx.category ? (
-                      <span className="text-sm text-muted-foreground">{tx.category.name}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">{t('transactions.noCategory')}</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell py-2.5 text-sm text-muted-foreground">
-                    {getAccountName(accountsList?.find((a) => a.id === tx.account_id) ?? { name: '', display_name: null }) || (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="py-2.5 pr-3 md:pr-5 text-right">
-                    {(() => {
-                      // For shared rows we show the viewer's share (the
-                      // portion that's actually theirs in financial
-                      // terms), with the parent's full amount on a small
-                      // secondary line for context.
-                      const displayAmount = tx.is_shared && tx.viewer_share != null
-                        ? Number(tx.viewer_share)
-                        : Number(tx.amount)
-                      return (
-                        <span
-                          className={`text-xs md:text-sm font-bold tabular-nums ${
-                            tx.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'
-                          }`}
-                        >
-                          {mask(
-                            `${tx.type === 'credit' ? '+' : '−'}${formatCurrency(
-                              Math.abs(displayAmount),
-                              tx.currency,
-                              locale,
-                            )}`,
-                          )}
-                        </span>
-                      )
-                    })()}
-                    {tx.is_shared && (
-                      <p className="text-[10px] text-muted-foreground tabular-nums">
-                        {t('splitGroups.sharedRowParent', {
-                          total: formatCurrency(Math.abs(Number(tx.amount)), tx.currency, locale),
-                        })}
-                      </p>
-                    )}
-                    {/* Owner of a split: show your-share secondary line.
-                        Skip when the owner is the sole member (share ==
-                        amount) — would just duplicate the figure. */}
-                    {!tx.is_shared && tx.viewer_share != null
-                      && Math.abs(Number(tx.viewer_share)) !== Math.abs(Number(tx.amount)) && (
-                      <p className="text-[10px] text-muted-foreground tabular-nums">
-                        {t('splitGroups.ownerRowYourShare', {
-                          share: formatCurrency(Math.abs(Number(tx.viewer_share)), tx.currency, locale),
-                        })}
-                      </p>
-                    )}
-                    {tx.amount_primary != null && tx.currency !== userCurrency && (
-                      <div className="flex items-center justify-end gap-1">
-                        {tx.fx_fallback && (
-                          <span title={t('transactions.fxFallbackTooltip')}><AlertTriangle size={11} className="text-amber-500 shrink-0" /></span>
-                        )}
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          {mask(formatCurrency(Math.abs(tx.amount_primary), userCurrency, locale))}
-                        </span>
-                      </div>
-                    )}
-                  </TableCell>
+                  {grid.visibleColumns.map(col => renderBodyCell(col, tx))}
                 </TableRow>
               ))}
               {filteredItems.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={grid.visibleColumns.length + 1} className="text-center py-16 text-muted-foreground">
                     {t('transactions.noResults')}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          </div>
         )}
       </div>
 
@@ -881,11 +1115,14 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* Bulk Action Bar */}
+      {/* Bulk Action Bar — aligned with the main content area: clears the
+          fixed sidebar on lg+ and matches the page's max-w-7xl + p-6 wrapper
+          so the bar visually sits over the transactions list, not the
+          full viewport. */}
       <div
-        className={`fixed bottom-0 left-0 right-0 z-50 transition-transform duration-200 ease-out ${selectedIds.size > 0 ? 'translate-y-0' : 'translate-y-full'}`}
+        className={`fixed bottom-0 left-0 right-0 lg:left-60 z-50 transition-transform duration-200 ease-out ${selectedIds.size > 0 ? 'translate-y-0' : 'translate-y-full'}`}
       >
-        <div className="mx-auto max-w-5xl px-3 md:px-4 pb-4 md:pb-6">
+        <div className="mx-auto max-w-7xl px-3 md:px-6 pb-4 md:pb-6">
           <div className="flex items-stretch gap-1.5 bg-card border border-border shadow-xl rounded-2xl p-2">
             {/* Selection count */}
             <div className="flex items-center gap-2 pl-3 pr-4 text-sm font-medium text-foreground whitespace-nowrap">
@@ -915,6 +1152,22 @@ export default function TransactionsPage() {
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
+
+            <div className="w-px bg-border/60 self-stretch" />
+
+            {/* Add to group — opens a dialog to configure share type and
+                members. Mirrors the per-tx splits options (issue #156). */}
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={bulkAddToGroupMutation.isPending}
+              onClick={() => setBulkAddToGroupOpen(true)}
+              title={t('transactions.addToGroup')}
+              className="h-8 px-3 shrink-0 text-sm"
+            >
+              <Users size={15} className="lg:mr-1.5" />
+              <span className="hidden lg:inline">{t('transactions.addToGroup')}</span>
+            </Button>
 
             <div className="w-px bg-border/60 self-stretch" />
 
@@ -979,6 +1232,17 @@ export default function TransactionsPage() {
         </div>
       </div>
 
+      {/* Bulk Add-to-Group Dialog */}
+      <BulkAddToGroupDialog
+        open={bulkAddToGroupOpen}
+        onClose={() => setBulkAddToGroupOpen(false)}
+        selectedCount={selectedIds.size}
+        onSubmit={(payload) =>
+          bulkAddToGroupMutation.mutate({ ids: Array.from(selectedIds), payload })
+        }
+        isPending={bulkAddToGroupMutation.isPending}
+      />
+
       {/* Link Transfer Dialog */}
       <LinkTransferDialog
         open={linkTransferDialogOpen}
@@ -1010,6 +1274,10 @@ export default function TransactionsPage() {
           setEditingTx(null)
           setDuplicateDraft(null)
           setPendingTransferCategoryUpdate(null)
+          // Drop any prior mutation error so reopening the dialog
+          // doesn't surface a stale message (issue #155).
+          createMutation.reset()
+          updateMutation.reset()
         }}
         transaction={editingTx}
         duplicateDraft={duplicateDraft}

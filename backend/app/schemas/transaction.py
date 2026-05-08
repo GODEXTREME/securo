@@ -1,12 +1,13 @@
 import uuid
 from datetime import date as _Date
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.category import CategoryRead
 from app.schemas.transaction_split import (
+    TransactionSplitInput,
     TransactionSplitRead,
     TransactionSplitsInput,
 )
@@ -99,6 +100,18 @@ class TransactionRead(TransactionBase):
 class BulkCategorizeRequest(BaseModel):
     transaction_ids: list[uuid.UUID]
     category_id: Optional[uuid.UUID] = None
+
+
+class BulkAddToGroupRequest(BaseModel):
+    transaction_ids: list[uuid.UUID]
+    group_id: uuid.UUID
+    # Bulk supports `equal` and `percent` only — `exact` amounts can't
+    # generalize across transactions of different totals.
+    share_type: Literal["equal", "percent"] = "equal"
+    # Subset of group members to include. Each entry's `share_pct` is
+    # required when share_type='percent' (and must sum to 100). For
+    # share_type='equal' only `group_member_id` is read.
+    member_splits: list[TransactionSplitInput] = Field(default_factory=list)
 
 
 class TransferCreate(BaseModel):

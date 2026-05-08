@@ -11,8 +11,11 @@ from app.models.transaction import Transaction
 from app.models.transaction_attachment import TransactionAttachment
 from app.models.account import Account
 from app.models.bank_connection import BankConnection
+from app.models.category import Category
+from app.models.group import Group, GroupMember
 from app.models.payee import Payee
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransferCreate
+from app.schemas.transaction_split import TransactionSplitInput, TransactionSplitsInput
 from app.services import split_service
 from app.services.credit_card_service import apply_effective_date
 from app.services.rule_service import apply_rules_to_transaction
@@ -68,6 +71,9 @@ async def get_transactions(
     bill_id: Optional[uuid.UUID] = None,
     group_id: Optional[uuid.UUID] = None,
     unbilled_only: bool = False,
+    sort_by: Optional[str] = None,
+    sort_dir: str = "desc",
+    transaction_ids: Optional[list[uuid.UUID]] = None,
 ) -> tuple[list[Transaction], int]:
     # In "accrual" mode, bucket/order by effective_date so list filters
     # line up with the cash-flow view used by the dashboard and reports.
@@ -113,6 +119,7 @@ async def get_transactions(
         .outerjoin(Account)
         .outerjoin(BankConnection)
         .outerjoin(Payee, Transaction.payee_id == Payee.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
         .options(
             selectinload(Transaction.category),
             selectinload(Transaction.account),
@@ -120,6 +127,8 @@ async def get_transactions(
             selectinload(Transaction.splits),
         )
     )
+    if transaction_ids:
+        base_query = base_query.where(Transaction.id.in_(transaction_ids))
     if use_group_scope:
         from app.models.group import GroupMember
         from app.models.transaction_split import TransactionSplit
@@ -217,9 +226,18 @@ async def get_transactions(
                 # because pending txs there have effective_date pointing
                 # forward to a later bill (ingrid's case stays clean).
                 # Issue #92, abdalanervoso's empty-May.
+                #
+                # Manual override (effective_bill_date) bypasses the
+                # exclusion entirely: the user has hand-corrected the
+                # bucketing and that signal beats both cycle-math
+                # classification and sync-pending caution. Without this
+                # carve-out, a pending tx whose override doesn't snap to
+                # an existing bill's due_date (so bill_id stays null)
+                # gets filtered out of every closed-bill view (issue #162).
                 _not(_and(
                     Transaction.source == "sync",
                     Transaction.status == "pending",
+                    Transaction.effective_bill_date.is_(None),
                     Transaction.effective_date != active_due_subq,
                 )),
             ]
@@ -238,10 +256,32 @@ async def get_transactions(
         # /transactions list and other generic callers leave it False.
         if unbilled_only:
             base_query = base_query.where(Transaction.bill_id.is_(None))
-        if from_date:
-            base_query = base_query.where(filter_date_col >= from_date)
-        if to_date:
-            base_query = base_query.where(filter_date_col <= to_date)
+        # Forward-pointing override catch (issue #162): a manual override
+        # pointing past this cycle's right edge (e.g., user wants the tx
+        # on a future bill that doesn't exist yet) won't fit any closed
+        # bill window either — past bills are by definition behind us.
+        # Honor the user's explicit intent by including those orphans in
+        # the in-progress cycle so the tx stays visible until a real bill
+        # eventually anchors it. Limited to `unbilled_only` so the global
+        # /transactions list isn't reshaped by the same rule.
+        if unbilled_only and to_date is not None:
+            from sqlalchemy import and_ as _and
+            window_clauses = []
+            if from_date:
+                window_clauses.append(filter_date_col >= from_date)
+            window_clauses.append(filter_date_col <= to_date)
+            base_query = base_query.where(or_(
+                _and(*window_clauses),
+                _and(
+                    Transaction.effective_bill_date.is_not(None),
+                    Transaction.effective_bill_date > to_date,
+                ),
+            ))
+        else:
+            if from_date:
+                base_query = base_query.where(filter_date_col >= from_date)
+            if to_date:
+                base_query = base_query.where(filter_date_col <= to_date)
     if search:
         term = f"%{search}%"
         base_query = base_query.where(
@@ -276,8 +316,26 @@ async def get_transactions(
     # Apply ordering (and pagination unless skipped). Bill-view callers
     # order by purchase date so the in-cycle list matches the bank's own
     # statement ordering regardless of accounting mode.
-    order_col = bill_view_date_col if in_bill_view else date_col
-    query = base_query.order_by(order_col.desc(), Transaction.created_at.desc())
+    default_order_col = bill_view_date_col if in_bill_view else date_col
+    sort_columns: dict[str, object] = {
+        "date": default_order_col,
+        "amount": Transaction.amount,
+        "description": Transaction.description,
+        "payee": Payee.name,
+        "category": Category.name,
+        "account": Account.name,
+        "type": Transaction.type,
+        "status": Transaction.status,
+    }
+    chosen_col = sort_columns.get(sort_by) if sort_by else None
+    if chosen_col is None:
+        # Default: by date desc, with created_at as tiebreaker.
+        query = base_query.order_by(default_order_col.desc(), Transaction.created_at.desc())
+    else:
+        direction = (chosen_col.asc() if sort_dir == "asc" else chosen_col.desc())
+        # Always tie-break on date desc + created_at desc so equal values
+        # stay in a sensible order (e.g. multiple txs with the same amount).
+        query = base_query.order_by(direction, default_order_col.desc(), Transaction.created_at.desc())
     if not skip_pagination:
         query = query.offset((page - 1) * limit).limit(limit)
 
@@ -1035,6 +1093,99 @@ async def bulk_remove_tags(
 
     await session.commit()
     return touched
+
+
+async def bulk_add_to_group(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    transaction_ids: list[uuid.UUID],
+    group_id: uuid.UUID,
+    share_type: str = "equal",
+    member_splits: Optional[list[TransactionSplitInput]] = None,
+) -> dict[str, int]:
+    """Apply the same group-split configuration to every selected transaction.
+
+    Supports `share_type` of "equal" or "percent" only — exact amounts
+    can't generalize across transactions of different totals.
+
+    Conservative semantics (issue #156): transactions that are transfers
+    or already have splits are skipped — never overwritten — so the
+    operation can't destroy prior splitting work.
+    """
+    if share_type not in ("equal", "percent"):
+        raise ValueError(
+            "Bulk add-to-group only supports share_type 'equal' or 'percent' — "
+            "use the per-transaction dialog for exact amounts"
+        )
+
+    if not transaction_ids:
+        return {"updated": 0, "skipped": 0}
+
+    # The caller may own the group OR be a linked member of it.
+    linked_group_ids = (
+        select(GroupMember.group_id)
+        .where(GroupMember.linked_user_id == user_id)
+        .distinct()
+    )
+    group_result = await session.execute(
+        select(Group).where(
+            Group.id == group_id,
+            or_(Group.user_id == user_id, Group.id.in_(linked_group_ids)),
+        )
+    )
+    group = group_result.scalar_one_or_none()
+    if group is None:
+        raise ValueError("Group not found")
+
+    members_result = await session.execute(
+        select(GroupMember).where(GroupMember.group_id == group_id)
+    )
+    members = members_result.scalars().all()
+    if not members:
+        raise ValueError("Group has no members")
+
+    valid_member_ids = {m.id for m in members}
+
+    # If the caller didn't specify, default to all members (the previous
+    # behavior). Otherwise honor the subset they chose.
+    if not member_splits:
+        chosen = [TransactionSplitInput(group_member_id=m.id) for m in members]
+    else:
+        chosen = list(member_splits)
+
+    if not chosen:
+        raise ValueError("At least one member must be selected")
+
+    for entry in chosen:
+        if entry.group_member_id not in valid_member_ids:
+            raise ValueError("One or more split members not found")
+
+    payload = TransactionSplitsInput(share_type=share_type, splits=chosen)
+
+    txs_result = await session.execute(
+        select(Transaction)
+        .where(
+            Transaction.id.in_(transaction_ids),
+            Transaction.user_id == user_id,
+        )
+        .options(selectinload(Transaction.splits))
+    )
+    txs = txs_result.scalars().all()
+
+    updated = 0
+    skipped = 0
+    for tx in txs:
+        if tx.transfer_pair_id is not None or tx.splits:
+            skipped += 1
+            continue
+        await split_service.replace_splits(session, tx, payload, user_id)
+        updated += 1
+
+    # Account for ids that didn't match (wrong user, deleted, etc.)
+    skipped += len(set(transaction_ids)) - len(txs)
+
+    await session.commit()
+    return {"updated": updated, "skipped": skipped}
 
 
 async def delete_transaction(

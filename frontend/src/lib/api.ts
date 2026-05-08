@@ -272,6 +272,8 @@ export const transactions = {
     include_opening_balance?: boolean
     exclude_transfers?: boolean
     tags?: string[]
+    sort_by?: string
+    sort_dir?: 'asc' | 'desc'
   }): Promise<PaginatedResponse<Transaction>> => {
     const { data } = await api.get('/transactions', {
       params,
@@ -327,6 +329,22 @@ export const transactions = {
     const { data } = await api.patch('/transactions/bulk-remove-tags', {
       transaction_ids: transactionIds,
       tags,
+    })
+    return data
+  },
+  bulkAddToGroup: async (
+    transactionIds: string[],
+    groupId: string,
+    options?: {
+      share_type?: 'equal' | 'percent'
+      member_splits?: { group_member_id: string; share_pct?: number }[]
+    },
+  ): Promise<{ updated: number; skipped: number }> => {
+    const { data } = await api.patch('/transactions/bulk-add-to-group', {
+      transaction_ids: transactionIds,
+      group_id: groupId,
+      ...(options?.share_type ? { share_type: options.share_type } : {}),
+      ...(options?.member_splits ? { member_splits: options.member_splits } : {}),
     })
     return data
   },
@@ -390,6 +408,7 @@ export const transactions = {
     from?: string
     to?: string
     q?: string
+    transaction_ids?: string[]
   }): Promise<void> => {
     const { data } = await api.get('/transactions/export', {
       params,
@@ -615,8 +634,13 @@ export const rules = {
     const { data } = await api.get('/rules/packs')
     return data
   },
-  installPack: async (packCode: string): Promise<{ installed: number }> => {
-    const { data } = await api.post(`/rules/packs/${packCode}/install`)
+  installPack: async (
+    packCode: string,
+    createMissingCategories = false,
+  ): Promise<{ installed: number; unresolved: number; categories_created: number }> => {
+    const { data } = await api.post(`/rules/packs/${packCode}/install`, null, {
+      params: { create_missing_categories: createMissingCategories },
+    })
     return data
   },
 }

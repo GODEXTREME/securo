@@ -453,30 +453,64 @@ CURRENCY_TO_PACK = {
 }
 
 
-def _resolve_category_name(internal_key: str, lang: str) -> str:
-    """Resolve internal category key to the localized name."""
-    data = DEFAULT_CATEGORIES_I18N.get(internal_key, {})
-    return data.get(lang, data.get("en", internal_key))
+def _resolve_categories_by_internal_key(
+    categories_by_name: dict[str, str],
+) -> dict[str, str]:
+    """Map default-category internal keys (e.g. 'transport') to the user's actual
+    category UUID by matching against any language variant of the default name.
+
+    Rule templates reference categories by their internal key, but the user's
+    categories are stored under a localized name. If we resolve the key using
+    only the language passed in, an "en"-named category ("Transport") won't
+    match a "pt-BR" lookup ("Transporte"), so every rule gets silently
+    dropped. Walking all language variants makes pack install work no matter
+    which language the user's categories were created in.
+    """
+    key_to_id: dict[str, str] = {}
+    non_name_fields = {"icon", "color", "treat_as_transfer"}
+    for internal_key, data in DEFAULT_CATEGORIES_I18N.items():
+        for field, value in data.items():
+            if field in non_name_fields:
+                continue
+            cat_id = categories_by_name.get(value)
+            if cat_id:
+                key_to_id[internal_key] = cat_id
+                break
+    return key_to_id
 
 
-def _build_rules_from_templates(templates: list[dict], categories: dict[str, str], lang: str) -> list[dict]:
-    """Convert rule templates (with internal keys) to rules with resolved category UUIDs."""
-    resolved = []
+def _build_rules_from_templates(
+    templates: list[dict], key_to_category_id: dict[str, str]
+) -> tuple[list[dict], int]:
+    """Convert rule templates (with internal keys) to rules with resolved category UUIDs.
+
+    Returns (resolved_rules, unresolved_count) — unresolved is how many
+    templates were dropped because their `set_category` target category
+    doesn't exist for this user. Callers use it to distinguish "pack
+    already installed" (every rule skipped because the name already
+    exists) from "pack can't be installed" (rules skipped because the
+    user has no matching category).
+    """
+    resolved: list[dict] = []
+    unresolved = 0
     for rule_data in templates:
         actions = []
+        dropped_for_missing_category = False
         for action in rule_data["actions"]:
             if action["op"] == "set_category":
-                cat_name = _resolve_category_name(action["value"], lang)
-                cat_id = categories.get(cat_name)
+                cat_id = key_to_category_id.get(action["value"])
                 if not cat_id:
+                    dropped_for_missing_category = True
                     continue
                 actions.append({"op": "set_category", "value": cat_id})
             else:
                 actions.append(action)
         if not actions:
+            if dropped_for_missing_category:
+                unresolved += 1
             continue
         resolved.append({**rule_data, "actions": actions})
-    return resolved
+    return resolved, unresolved
 
 
 async def _get_existing_rule_names(session: AsyncSession, user_id: uuid.UUID) -> set[str]:
@@ -488,11 +522,17 @@ async def _get_existing_rule_names(session: AsyncSession, user_id: uuid.UUID) ->
 
 
 async def create_default_rules(session: AsyncSession, user_id: uuid.UUID, lang: str = "pt-BR") -> list[Rule]:
-    """Create universal default categorization rules for a new user."""
+    """Create universal default categorization rules for a new user.
+
+    `lang` is accepted for backwards compatibility but no longer affects
+    category resolution — categories are matched by internal key across all
+    language variants.
+    """
     result = await session.execute(select(Category).where(Category.user_id == user_id))
     categories = {cat.name: str(cat.id) for cat in result.scalars().all()}
+    key_to_id = _resolve_categories_by_internal_key(categories)
 
-    resolved = _build_rules_from_templates(UNIVERSAL_RULES, categories, lang)
+    resolved, _unresolved = _build_rules_from_templates(UNIVERSAL_RULES, key_to_id)
 
     rules = []
     for rule_data in resolved:
@@ -512,20 +552,159 @@ async def create_default_rules(session: AsyncSession, user_id: uuid.UUID, lang: 
     return rules
 
 
-async def install_rule_pack(session: AsyncSession, user_id: uuid.UUID, pack_code: str, lang: str = "pt-BR") -> list[Rule]:
-    """Install a country-specific rule pack for a user. Skips rules whose name already exists."""
+class RulePackInstallResult:
+    """Outcome of installing a country-specific rule pack."""
+
+    __slots__ = ("rules", "unresolved", "categories_created")
+
+    def __init__(
+        self,
+        rules: list[Rule],
+        unresolved: int,
+        categories_created: int = 0,
+    ) -> None:
+        self.rules = rules
+        self.unresolved = unresolved
+        self.categories_created = categories_created
+
+
+def _required_internal_keys(pack: dict) -> set[str]:
+    """Return the set of category internal keys referenced by a pack's rules."""
+    keys: set[str] = set()
+    for rule in pack["rules"]:
+        for action in rule["actions"]:
+            if action["op"] == "set_category":
+                keys.add(action["value"])
+    return keys
+
+
+async def _ensure_categories_for_keys(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    internal_keys: set[str],
+    lang: str,
+) -> int:
+    """Create any default categories from `internal_keys` that the user is missing.
+
+    Idempotent — categories are matched across language variants, so a
+    user with English defaults won't get Portuguese duplicates if `lang`
+    happens to be pt-BR. Returns the count of newly-created categories.
+    """
+    from app.models.category_group import CategoryGroup
+    from app.services.category_group_service import (
+        CATEGORY_TO_GROUP,
+        DEFAULT_GROUPS_I18N,
+    )
+    from app.services.category_service import DEFAULT_CATEGORIES_I18N
+
+    non_name_fields = {"icon", "color", "treat_as_transfer", "position"}
+
+    def variants(data: dict) -> set[str]:
+        return {v for k, v in data.items() if k not in non_name_fields}
+
+    existing_cats = list(
+        (
+            await session.execute(
+                select(Category).where(Category.user_id == user_id)
+            )
+        ).scalars().all()
+    )
+    existing_cat_names = {c.name for c in existing_cats}
+
+    missing_keys = [
+        key
+        for key in internal_keys
+        if (data := DEFAULT_CATEGORIES_I18N.get(key))
+        and not (variants(data) & existing_cat_names)
+    ]
+    if not missing_keys:
+        return 0
+
+    existing_groups = list(
+        (
+            await session.execute(
+                select(CategoryGroup).where(CategoryGroup.user_id == user_id)
+            )
+        ).scalars().all()
+    )
+
+    needed_group_keys = {
+        gk for gk in (CATEGORY_TO_GROUP.get(k) for k in missing_keys) if gk
+    }
+    groups_by_key: dict[str, CategoryGroup] = {}
+    for gkey in needed_group_keys:
+        gdata = DEFAULT_GROUPS_I18N.get(gkey)
+        if not gdata:
+            continue
+        match = next(
+            (g for g in existing_groups if g.name in variants(gdata)), None
+        )
+        if match:
+            groups_by_key[gkey] = match
+            continue
+        group = CategoryGroup(
+            user_id=user_id,
+            name=gdata.get(lang, gdata["en"]),
+            icon=gdata["icon"],
+            color=gdata["color"],
+            position=gdata["position"],
+            is_system=True,
+        )
+        session.add(group)
+        groups_by_key[gkey] = group
+    await session.flush()
+
+    for key in missing_keys:
+        data = DEFAULT_CATEGORIES_I18N[key]
+        target_group = groups_by_key.get(CATEGORY_TO_GROUP.get(key))
+        cat = Category(
+            user_id=user_id,
+            name=data.get(lang, data["en"]),
+            icon=data["icon"],
+            color=data["color"],
+            is_system=True,
+            group_id=target_group.id if target_group else None,
+            treat_as_transfer=data.get("treat_as_transfer", False),
+        )
+        session.add(cat)
+    await session.commit()
+    return len(missing_keys)
+
+
+async def install_rule_pack(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    pack_code: str,
+    lang: str = "pt-BR",
+    create_missing_categories: bool = False,
+) -> RulePackInstallResult:
+    """Install a country-specific rule pack for a user. Skips rules whose name already exists.
+
+    When `create_missing_categories=True`, creates any default categories
+    referenced by the pack that the user is missing — so users in a
+    degenerate state (or who never had defaults seeded) can opt into
+    "install pack, fill in what's needed". `lang` controls the names of
+    any newly-created categories.
+    """
     pack = RULE_PACKS.get(pack_code)
     if not pack:
-        return []
+        return RulePackInstallResult([], 0)
+
+    categories_created = 0
+    if create_missing_categories:
+        categories_created = await _ensure_categories_for_keys(
+            session, user_id, _required_internal_keys(pack), lang
+        )
 
     result = await session.execute(select(Category).where(Category.user_id == user_id))
     categories = {cat.name: str(cat.id) for cat in result.scalars().all()}
+    key_to_id = _resolve_categories_by_internal_key(categories)
 
-    resolved = _build_rules_from_templates(pack["rules"], categories, lang)
+    resolved, unresolved = _build_rules_from_templates(pack["rules"], key_to_id)
 
     existing_names = await _get_existing_rule_names(session, user_id)
 
-    rules = []
+    rules: list[Rule] = []
     for rule_data in resolved:
         if rule_data["name"] in existing_names:
             continue
@@ -542,7 +721,7 @@ async def install_rule_pack(session: AsyncSession, user_id: uuid.UUID, pack_code
         rules.append(rule)
 
     await session.commit()
-    return rules
+    return RulePackInstallResult(rules, unresolved, categories_created)
 
 
 async def get_installed_packs(session: AsyncSession, user_id: uuid.UUID) -> dict[str, bool]:

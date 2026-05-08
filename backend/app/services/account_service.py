@@ -594,9 +594,17 @@ async def get_account_summary(
                 # different bill. If effective_date matches, the tx is
                 # pre-classified to this bill and we include it (the
                 # in-progress case abdalanervoso reported empty).
+                #
+                # Manual override (effective_bill_date) bypasses the
+                # exclusion entirely — the user explicitly hand-corrected
+                # the bucketing, so the totals must reflect that even if
+                # the override doesn't snap to a real bill due_date and
+                # bill_id stays null (issue #162). Mirrors the same
+                # carve-out in get_transactions.
                 _not(_and(
                     Transaction.source == "sync",
                     Transaction.status == "pending",
+                    Transaction.effective_bill_date.is_(None),
                     Transaction.effective_date != active_due_subq,
                 )),
                 bucket_date >= date_from,
@@ -607,10 +615,22 @@ async def get_account_summary(
         # txs so an in-progress cycle's bar/total doesn't double-count past-
         # bill txs whose date falls in the window (see get_transactions).
         if unbilled_only:
+            # Forward-pointing override catch (issue #162): mirror
+            # get_transactions so the in-progress cycle's totals include
+            # txs whose manual override points past the cycle window.
+            # Without this the tx list and totals diverge — the tx shows
+            # in the list (after the catch in get_transactions) but its
+            # amount drops out of the strip pill / summary card.
+            future_override = _and(
+                Transaction.effective_bill_date.is_not(None),
+                Transaction.effective_bill_date > date_to,
+            )
             return query.where(
                 Transaction.bill_id.is_(None),
-                bucket_date >= date_from,
-                bucket_date <= date_to,
+                or_(
+                    _and(bucket_date >= date_from, bucket_date <= date_to),
+                    future_override,
+                ),
             )
         return query.where(bucket_date >= date_from, bucket_date <= date_to)
 

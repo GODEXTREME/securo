@@ -23,7 +23,30 @@ def _tag_owner(group: Group, user_id: uuid.UUID) -> Group:
     `is_owner` as derived per-request, not stored on the model.
     """
     group.is_owner = group.user_id == user_id  # type: ignore[attr-defined]
+    if getattr(group, "members", None):
+        for m in group.members:
+            _tag_member_self(m, user_id, group.user_id)
     return group
+
+
+def _tag_member_self(
+    member: GroupMember, user_id: uuid.UUID, group_owner_id: uuid.UUID
+) -> GroupMember:
+    """Override `is_self` per-request so the "(you)" tag tracks the
+    requesting user rather than the stored flag (which only marks the
+    owner's own member). Falls back to the stored flag for an owner
+    whose self-member isn't linked to a Securo account.
+    """
+    is_linked_to_caller = (
+        member.linked_user_id is not None and member.linked_user_id == user_id
+    )
+    is_owner_self_unlinked = (
+        group_owner_id == user_id
+        and member.linked_user_id is None
+        and bool(member.is_self)
+    )
+    member.is_self = is_linked_to_caller or is_owner_self_unlinked
+    return member
 
 
 async def _resolve_member_email(
@@ -176,14 +199,15 @@ async def list_members(
     # stale snapshot after upstream mutations like `_clear_self_flag`.
     # A direct query always reflects the current row state.
     # Visible to owners AND linked members (read-only context).
-    if not await get_group_visible(session, group_id, user_id):
+    group = await get_group_visible(session, group_id, user_id)
+    if not group:
         return None
     result = await session.execute(
         select(GroupMember)
         .where(GroupMember.group_id == group_id)
         .order_by(GroupMember.created_at)
     )
-    return list(result.scalars().all())
+    return [_tag_member_self(m, user_id, group.user_id) for m in result.scalars().all()]
 
 
 async def create_member(

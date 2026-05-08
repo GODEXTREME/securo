@@ -10,7 +10,7 @@ import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.group import Group, GroupMember
@@ -87,12 +87,21 @@ async def _validate_members(
     member_ids: list[uuid.UUID],
     user_id: uuid.UUID,
 ) -> uuid.UUID:
-    """Ensure all members belong to a single group owned by `user_id`.
-    Returns that group's id."""
+    """Ensure all members belong to a single group VISIBLE to `user_id`
+    (owner OR linked member). Returns that group's id."""
+    # A group is visible if the user owns it or is linked as a member.
+    linked_group_ids = (
+        select(GroupMember.group_id)
+        .where(GroupMember.linked_user_id == user_id)
+        .distinct()
+    )
     result = await session.execute(
         select(GroupMember, Group)
         .join(Group, GroupMember.group_id == Group.id)
-        .where(GroupMember.id.in_(member_ids), Group.user_id == user_id)
+        .where(
+            GroupMember.id.in_(member_ids),
+            or_(Group.user_id == user_id, Group.id.in_(linked_group_ids)),
+        )
     )
     rows = result.all()
     if len(rows) != len(set(member_ids)):

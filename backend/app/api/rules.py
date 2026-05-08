@@ -88,15 +88,30 @@ async def list_rule_packs(
 @router.post("/packs/{pack_code}/install", response_model=dict)
 async def install_rule_pack(
     pack_code: str,
+    create_missing_categories: bool = False,
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(current_active_user),
 ):
-    """Install a country-specific rule pack."""
+    """Install a country-specific rule pack.
+
+    `create_missing_categories=true` opts into seeding any default
+    categories the pack needs that the user doesn't already have.
+    """
     if pack_code not in rule_service.RULE_PACKS:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule pack not found")
     lang = (user.preferences or {}).get("language", "pt-BR")
-    rules = await rule_service.install_rule_pack(session, user.id, pack_code, lang)
-    return {"installed": len(rules)}
+    result = await rule_service.install_rule_pack(
+        session,
+        user.id,
+        pack_code,
+        lang,
+        create_missing_categories=create_missing_categories,
+    )
+    return {
+        "installed": len(result.rules),
+        "unresolved": result.unresolved,
+        "categories_created": result.categories_created,
+    }
 
 
 @router.post("/apply-all", response_model=dict)

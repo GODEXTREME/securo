@@ -50,6 +50,38 @@ class TestAdminUserCRUD:
         assert data["is_active"] is True
         assert data["is_superuser"] is False
 
+    async def test_create_user_seeds_defaults(
+        self, client: AsyncClient, admin_auth_headers: dict, test_superuser: User
+    ):
+        # Regression for #154: admin-created users were left without default
+        # categories, rules, or a wallet because on_after_register bails when
+        # called programmatically (request=None).
+        create_resp = await client.post(
+            "/api/admin/users",
+            json={
+                "email": "seeded@example.com",
+                "password": "password123",
+                "preferences": {"language": "en", "currency_display": "USD"},
+            },
+            headers=admin_auth_headers,
+        )
+        assert create_resp.status_code == 201
+
+        login_resp = await client.post(
+            "/api/auth/login",
+            data={"username": "seeded@example.com", "password": "password123"},
+        )
+        token = login_resp.json()["access_token"]
+        user_headers = {"Authorization": f"Bearer {token}"}
+
+        cats = (await client.get("/api/categories", headers=user_headers)).json()
+        rules = (await client.get("/api/rules", headers=user_headers)).json()
+        accounts = (await client.get("/api/accounts", headers=user_headers)).json()
+
+        assert len(cats) > 0, "admin-created user should have default categories"
+        assert len(rules) > 0, "admin-created user should have default rules"
+        assert len(accounts) == 1, "admin-created user should have a default wallet"
+
     async def test_create_duplicate_user(self, client: AsyncClient, admin_auth_headers: dict, test_superuser: User):
         # Create first
         await client.post(

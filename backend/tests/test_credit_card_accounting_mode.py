@@ -1561,3 +1561,136 @@ class TestEffectiveBillDateFiltersList:
             accounting_mode="cash",
         )
         assert any(t.id == tx.id for t in apr_txs)
+
+    @pytest.mark.asyncio
+    async def test_override_on_pending_sync_tx_shows_in_target_bill(
+        self, session, test_user, cc_account
+    ):
+        """A pending sync tx with a manual `effective_bill_date` whose value
+        does NOT exactly match any bill's due_date (so `bill_id` stays null)
+        must still appear in the bill view whose cycle window contains the
+        override. The sync-pending exclusion clause exists to keep auto-
+        classified pending charges out of the wrong bill — but a manual
+        override is the user's explicit correction and beats that caution
+        (issue #162: txs disappearing after setting effective_bill_date)."""
+        from app.services.transaction_service import get_transactions
+        from app.models.credit_card_bill import CreditCardBill
+        from datetime import datetime, timezone
+
+        may = CreditCardBill(
+            user_id=test_user.id, account_id=cc_account.id,
+            external_id="bill-may", due_date=date(2026, 5, 16),
+            total_amount=Decimal("100"), currency="BRL",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        session.add(may)
+        await session.flush()
+
+        # Pending sync tx, override 2026-05-10 (within May's [Apr 17, May 16]
+        # window but NOT equal to May's due_date 2026-05-16, so the
+        # auto-relink leaves bill_id null).
+        tx = await _make_tx(
+            session, test_user.id, cc_account.id,
+            date(2026, 5, 11), Decimal("105"),
+            effective_date=date(2026, 5, 10),
+            source="sync",
+        )
+        tx.status = "pending"
+        tx.effective_bill_date = date(2026, 5, 10)
+        await session.commit()
+
+        may_txs, _ = await get_transactions(
+            session, test_user.id, account_id=cc_account.id,
+            bill_id=may.id,
+            from_date=date(2026, 4, 17), to_date=date(2026, 5, 16),
+            accounting_mode="cash",
+        )
+        assert any(t.id == tx.id for t in may_txs), (
+            "pending sync tx with manual override in window must be "
+            "visible in the target bill view"
+        )
+
+    @pytest.mark.asyncio
+    async def test_summary_includes_pending_sync_with_override(
+        self, session, test_user, cc_account
+    ):
+        """get_account_summary mirrors get_transactions: a pending sync tx
+        with `effective_bill_date` in the cycle window must contribute to
+        the totals card and bar chart even when the override doesn't snap
+        to a bill's due_date (so bill_id stays null). Without this the
+        strip pill totals diverge from the tx list (issue #162)."""
+        from app.services.account_service import get_account_summary
+        from app.models.credit_card_bill import CreditCardBill
+        from datetime import datetime, timezone
+
+        may = CreditCardBill(
+            user_id=test_user.id, account_id=cc_account.id,
+            external_id="bill-may-sum", due_date=date(2026, 5, 16),
+            total_amount=Decimal("0"), currency="BRL",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        session.add(may)
+        await session.flush()
+
+        tx = await _make_tx(
+            session, test_user.id, cc_account.id,
+            date(2026, 5, 11), Decimal("105"),
+            effective_date=date(2026, 5, 10),
+            source="sync",
+        )
+        tx.status = "pending"
+        tx.effective_bill_date = date(2026, 5, 10)
+        await session.commit()
+
+        summary = await get_account_summary(
+            session, cc_account.id, test_user.id,
+            date_from=date(2026, 4, 17), date_to=date(2026, 5, 16),
+            bill_id=may.id,
+        )
+        assert summary["monthly_expenses"] == 105.0
+
+    @pytest.mark.asyncio
+    async def test_override_past_in_progress_window_lands_in_in_progress(
+        self, session, test_user, cc_account
+    ):
+        """User sets `effective_bill_date` to a date past the in-progress
+        cycle's right edge — typically because they want the tx on a future
+        bill that doesn't exist yet. Closed bill windows can't host such
+        forward-pointing overrides (they're by definition past), so the
+        in-progress cycle catches them as the only forward-looking bucket.
+        Otherwise the tx vanishes (issue #162)."""
+        from app.services.transaction_service import get_transactions
+        from app.services.account_service import get_account_summary
+
+        # Tx with override well past the in-progress cycle's right edge
+        tx = await _make_tx(
+            session, test_user.id, cc_account.id,
+            date(2026, 3, 22), Decimal("59.90"),
+            effective_date=date(2026, 6, 11),
+            source="sync",
+        )
+        tx.status = "posted"
+        tx.effective_bill_date = date(2026, 6, 11)
+        await session.commit()
+
+        # In-progress cycle window for close=11/due=16 around early May:
+        # cycle = [Apr 12, May 11]. Override 6/11 lies past 5/11.
+        in_prog_txs, _ = await get_transactions(
+            session, test_user.id, account_id=cc_account.id,
+            from_date=date(2026, 4, 12), to_date=date(2026, 5, 11),
+            unbilled_only=True,
+            accounting_mode="cash",
+        )
+        assert any(t.id == tx.id for t in in_prog_txs), (
+            "tx with override past the in-progress cycle must be visible "
+            "in the in-progress view as the catch-all bucket"
+        )
+
+        summary = await get_account_summary(
+            session, cc_account.id, test_user.id,
+            date_from=date(2026, 4, 12), date_to=date(2026, 5, 11),
+            unbilled_only=True,
+        )
+        assert summary["monthly_expenses"] == 59.90

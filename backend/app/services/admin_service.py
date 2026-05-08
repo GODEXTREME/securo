@@ -44,7 +44,13 @@ async def create_user(
     user_manager: UserManager,
     data: AdminUserCreate,
 ) -> User:
+    from decimal import Decimal
+
     from fastapi_users.schemas import BaseUserCreate
+
+    from app.models.account import Account
+    from app.services.category_service import create_default_categories
+    from app.services.rule_service import create_default_rules
 
     create_schema = BaseUserCreate(
         email=data.email,
@@ -65,6 +71,25 @@ async def create_user(
         session.add(user)
         await session.commit()
         await session.refresh(user)
+
+    # Seed default wallet, categories, and rules. The on_after_register
+    # hook (auth.py) short-circuits when called programmatically with
+    # request=None — which is exactly this path — so admin-created users
+    # would otherwise land with no defaults and a broken UX.
+    lang = (user.preferences or {}).get("language", "en")
+    wallet_name = "Carteira" if lang.startswith("pt") else "Wallet"
+    wallet = Account(
+        user_id=user.id,
+        name=wallet_name,
+        type="checking",
+        balance=Decimal("0.00"),
+        currency=user.primary_currency,
+    )
+    session.add(wallet)
+    await session.commit()
+
+    await create_default_categories(session, user.id, lang)
+    await create_default_rules(session, user.id, lang)
 
     return user
 
