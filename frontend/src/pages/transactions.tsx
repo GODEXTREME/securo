@@ -27,6 +27,7 @@ import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, Check, Copy, Downloa
 import type { Transaction } from '@/types'
 import { PageHeader } from '@/components/page-header'
 import { CategoryIcon } from '@/components/category-icon'
+import { CategoryGroupedSelect } from '@/components/category-grouped-select'
 import { TransactionDialog, extractApiError, type SaveAction } from '@/components/transaction-dialog'
 import { TransactionsColumnPicker } from '@/components/transactions-column-picker'
 import { type ColumnDef, type ColumnId, useTransactionsGridState } from '@/components/transactions-grid-columns'
@@ -1140,7 +1141,7 @@ export default function TransactionsPage() {
             <div className="w-px bg-border/60 self-stretch" />
 
             {/* Categorize — fires on selection, no separate Apply button */}
-            <select
+            <CategoryGroupedSelect
               className="rounded-lg px-3 py-2 text-sm bg-transparent text-foreground hover:bg-muted/60 focus:outline-none focus-visible:bg-muted/60 cursor-pointer w-44 md:w-56"
               value={bulkCategory}
               onChange={(e) => {
@@ -1151,12 +1152,10 @@ export default function TransactionsPage() {
                 }
               }}
               disabled={bulkCategorizeMutation.isPending}
-            >
-              <option value="">{t('transactions.selectCategory')}</option>
-              {categoriesList?.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
+              categories={categoriesList ?? []}
+              categoryGroups={categoryGroupsList}
+              placeholder={t('transactions.selectCategory')}
+            />
 
             <div className="w-px bg-border/60 self-stretch" />
 
