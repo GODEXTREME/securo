@@ -1254,14 +1254,10 @@ export default function TransactionsPage() {
                   bulkCategorizeMutation.mutate({ ids: Array.from(selectedIds), categoryId: next })
                 }
               }}
-              categories={categoriesList ?? []}
-              groups={categoryGroupsList ?? []}
-              placeholder={t('transactions.selectCategory')}
               disabled={bulkCategorizeMutation.isPending}
               categories={categoriesList ?? []}
               categoryGroups={categoryGroupsList}
               placeholder={t('transactions.selectCategory')}
->>>>>>> origin/main
             />
 
             <div className="w-px bg-border/60 self-stretch" />
