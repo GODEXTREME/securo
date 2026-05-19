@@ -1248,7 +1248,8 @@ export default function TransactionsPage() {
             <CategoryGroupedSelect
               className="rounded-lg px-3 py-2 text-sm bg-transparent text-foreground hover:bg-muted/60 focus:outline-none focus-visible:bg-muted/60 cursor-pointer w-44 md:w-56"
               value={bulkCategory}
-              onChange={(next) => {
+              onChange={(e) => {
+                const next = e.target.value
                 setBulkCategory(next)
                 if (next) {
                   bulkCategorizeMutation.mutate({ ids: Array.from(selectedIds), categoryId: next })
