@@ -28,20 +28,26 @@ export const CategoryGroupedSelect = forwardRef<
     categoryGroups?.flatMap((g) => g.categories?.map((c) => c.id) ?? []) ?? []
   )
 
-  const ungroupedCategories = categories.filter(
-    (c) => !c.group_id && !groupedCategoryIds.has(c.id)
-  )
+  const ungroupedCategories = categories
+    .filter((c) => !c.group_id && !groupedCategoryIds.has(c.id))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   const hasUngrouped = ungroupedCategories.length > 0
+
+  // Sort categories within each group
+  const sortedGroups = categoryGroups?.map((group) => ({
+    ...group,
+    categories: group.categories?.sort((a, b) => a.name.localeCompare(b.name)) ?? [],
+  })) ?? []
 
   return (
     <select ref={ref} {...props}>
       {placeholder && <option value="">{placeholder}</option>}
 
       {/* Render category groups */}
-      {categoryGroups?.map((group) => (
+      {sortedGroups.map((group) => (
         <optgroup key={group.id} label={group.name}>
-          {group.categories?.map((cat) => (
+          {group.categories.map((cat) => (
             <option key={cat.id} value={cat.id}>
               {cat.name}
             </option>
