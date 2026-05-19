@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { goals as goalsApi, accounts as accountsApi, assets as assetsApi, currencies as currenciesApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -112,6 +113,7 @@ export default function GoalsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('active')
   const [selectedIcon, setSelectedIcon] = useState('target')
   const [selectedColor, setSelectedColor] = useState('#3B82F6')
+  const [targetDate, setTargetDate] = useState('')
 
   const { data: goalsList } = useQuery({
     queryKey: ['goals', statusFilter],
@@ -176,6 +178,7 @@ export default function GoalsPage() {
     setTrackingType('manual')
     setSelectedIcon('target')
     setSelectedColor('#3B82F6')
+    setTargetDate('')
     setDialogOpen(true)
   }
 
@@ -184,6 +187,7 @@ export default function GoalsPage() {
     setTrackingType(goal.tracking_type)
     setSelectedIcon(goal.icon ?? 'target')
     setSelectedColor(goal.color ?? '#3B82F6')
+    setTargetDate(goal.target_date ?? '')
     setDialogOpen(true)
   }
 
@@ -374,7 +378,7 @@ export default function GoalsPage() {
                 target_amount: parseFloat(formData.get('target_amount') as string),
                 currency: (formData.get('currency') as string) || userCurrency,
                 tracking_type: formData.get('tracking_type') as string,
-                target_date: (formData.get('target_date') as string) || null,
+                target_date: targetDate || null,
                 icon: selectedIcon || null,
                 color: selectedColor || null,
               }
@@ -432,10 +436,10 @@ export default function GoalsPage() {
 
             <div className="space-y-2">
               <Label>{t('goals.targetDate')}</Label>
-              <Input
-                name="target_date"
-                type="date"
-                defaultValue={editing?.target_date ?? ''}
+              <DatePickerInput
+                value={targetDate}
+                onChange={setTargetDate}
+                className="w-full justify-start"
               />
             </div>
 

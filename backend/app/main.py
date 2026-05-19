@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -15,6 +16,7 @@ from app.api.custom_auth import router as custom_auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.import_logs import router as import_logs_router
 from app.api.import_transactions import router as import_router
+from app.api.info import router as info_router
 from app.api.recurring_transactions import router as recurring_router
 from app.api.rules import router as rules_router
 from app.api.assets import router as assets_router
@@ -132,6 +134,33 @@ app.include_router(attachments_router)
 app.include_router(payees_router)
 app.include_router(settings_router)
 app.include_router(admin_router)
+app.include_router(info_router)
+
+
+# Optional agents/MCP/LLM module — fully gated by AGENTS_ENABLED so users
+# who don't want this feature pay zero cost (no imports, no routes, no
+# background tasks). The module itself is self-contained in app/agents/.
+if os.getenv("AGENTS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on"):
+    try:
+        from app.agents.api.info import router as agents_info_router
+        from app.agents.api.agents import router as agents_router
+        from app.agents.api.connections import router as agents_connections_router
+        from app.agents.api.conversations import router as agents_conversations_router
+        from app.agents.api.chat import router as agents_chat_router
+        from app.agents.api.knowledge import router as agents_knowledge_router
+
+        # Mount literal-prefix routers (conversations, connections) BEFORE
+        # the generic agents router so paths like /api/agents/connections
+        # don't get captured by /api/agents/{agent_id}.
+        app.include_router(agents_info_router)
+        app.include_router(agents_connections_router)
+        app.include_router(agents_conversations_router)
+        app.include_router(agents_router)
+        app.include_router(agents_chat_router)
+        app.include_router(agents_knowledge_router)
+        logger.info("Agents feature enabled — mounted /api/agents routes")
+    except Exception:
+        logger.exception("Agents feature flag is on but import failed; routes not mounted")
 
 
 @app.get("/api/health")

@@ -249,22 +249,24 @@ export function TransactionSplitsSection({
                               : null
                         return (
                           <div key={m.id} className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={row.selected}
-                              onChange={(e) =>
-                                updateRow(m.id, { selected: e.target.checked })
-                              }
-                              className="h-4 w-4 rounded border-border accent-primary"
-                            />
-                            <span className="text-sm flex-1 min-w-0 truncate">
-                              {m.name}
-                              {m.is_self && (
-                                <span className="ml-1.5 text-xs text-primary">
-                                  ({t('splitGroups.you')})
-                                </span>
-                              )}
-                            </span>
+                            <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={row.selected}
+                                onChange={(e) =>
+                                  updateRow(m.id, { selected: e.target.checked })
+                                }
+                                className="h-4 w-4 rounded border-border accent-primary"
+                              />
+                              <span className="text-sm flex-1 min-w-0 truncate">
+                                {m.name}
+                                {m.is_self && (
+                                  <span className="ml-1.5 text-xs text-primary">
+                                    ({t('splitGroups.you')})
+                                  </span>
+                                )}
+                              </span>
+                            </label>
                             {computed !== null && (
                               <span className="text-xs text-muted-foreground tabular-nums">
                                 {formatCurrency(computed, currency)}

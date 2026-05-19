@@ -53,6 +53,7 @@ Open [http://localhost:3000](http://localhost:3000) and create an account. That'
 - Multi-user support with admin panel and registration controls
 - Two-factor authentication (TOTP) with brute-force protection
 - Dark/light theme, multi-language support, privacy mode
+- AI Agents (optional): self-hosted LLM chat with tool-use over your data, plus a per-agent RAG knowledge base
 
 ## Bank Sync (Optional)
 
@@ -74,6 +75,19 @@ OPENEXCHANGERATES_APP_ID=your-app-id
 ```
 
 Rates are fetched on-demand when foreign-currency transactions are created. Without a key, cross-currency amounts default to a 1:1 fallback rate with a visual warning.
+
+## AI Agents (Optional)
+
+Self-hosted AI assistants over your Securo data — multi-provider (OpenAI, Anthropic, Ollama, OpenAI-compatible), tool-use via MCP, per-agent RAG knowledge base, ⌘J global chat panel.
+
+Add to `.env`:
+
+```
+AGENTS_ENABLED=true
+COMPOSE_PROFILES=agents
+```
+
+Then `docker compose up -d`. Settings → AI Agents to add a provider connection. Off by default; zero cost when off.
 
 ## Tech Stack
 

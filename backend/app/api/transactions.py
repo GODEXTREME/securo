@@ -26,11 +26,23 @@ def _tag_fx_fallback(tx: TransactionRead, primary_currency: str) -> TransactionR
     return tx
 
 
+class TransactionsSummary(BaseModel):
+    """Income / expense / net totals across all rows matching the active
+    filters (issue #185). Amounts are in the user's primary currency.
+    Floats (not Decimal) so the JSON payload matches `amount_primary`
+    and the frontend gets plain numbers."""
+    income: float
+    expense: float
+    net: float
+    currency: str
+
+
 class PaginatedTransactions(BaseModel):
     items: list[TransactionRead]
     total: int
     page: int
     limit: int
+    summary: Optional[TransactionsSummary] = None
 
 
 def _merge_id_filters(
@@ -71,7 +83,7 @@ async def list_transactions(
     user: User = Depends(current_active_user),
 ):
     accounting_mode = await get_credit_card_accounting_mode(session)
-    transactions, total = await transaction_service.get_transactions(
+    transactions, total, summary = await transaction_service.get_transactions(
         session, user.id,
         account_ids=_merge_id_filters(account_id, account_ids),
         category_ids=_merge_id_filters(category_id, category_ids),
@@ -85,10 +97,16 @@ async def list_transactions(
         unbilled_only=unbilled_only,
         sort_by=sort_by,
         sort_dir=sort_dir,
+        include_summary=True,
     )
     primary_currency = user.primary_currency
     items = [_tag_fx_fallback(TransactionRead.model_validate(tx, from_attributes=True), primary_currency) for tx in transactions]
-    return PaginatedTransactions(items=items, total=total, page=page, limit=limit)
+    summary_out = (
+        TransactionsSummary(**summary, currency=primary_currency)
+        if summary is not None
+        else None
+    )
+    return PaginatedTransactions(items=items, total=total, page=page, limit=limit, summary=summary_out)
 
 
 @router.get("/export")
@@ -112,14 +130,14 @@ async def export_transactions(
     if transaction_ids:
         # Selection-only export: bypass user-facing filters but keep the
         # service-level user/visibility scoping intact.
-        transactions, _ = await transaction_service.get_transactions(
+        transactions, _, _ = await transaction_service.get_transactions(
             session, user.id,
             skip_pagination=True,
             accounting_mode=accounting_mode,
             transaction_ids=transaction_ids,
         )
     else:
-        transactions, _ = await transaction_service.get_transactions(
+        transactions, _, _ = await transaction_service.get_transactions(
             session, user.id,
             account_ids=_merge_id_filters(account_id, account_ids),
             category_ids=_merge_id_filters(category_id, category_ids),

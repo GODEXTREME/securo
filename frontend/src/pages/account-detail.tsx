@@ -1451,7 +1451,7 @@ export default function AccountDetailPage() {
         onClose={() => { setDialogOpen(false); setEditingTx(null) }}
         transaction={editingTx}
         categories={categoriesList ?? []}
-        categoryGroups={categoryGroupsList}
+        categoryGroups={categoryGroupsList ?? []}
         accounts={accountsList ?? []}
         onSave={(data) => {
           if (editingTx) {

@@ -9,3 +9,8 @@ docker-compose.override.yml
 
 # Ignore local configuration files
 .vscode/
+
+# Runtime artifacts written by the agents feature (uploaded KB files,
+# downloaded ONNX embedding models, transaction attachments). User data
+# — never commit.
+backend/data/

@@ -23,11 +23,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { CategorySelect } from '@/components/category-select'
 import { TransactionAttachments } from '@/components/transaction-attachments'
 import type { AttachmentPreview } from '@/components/transaction-attachments'
 import { TransactionSplitsSection } from '@/components/transaction-splits-section'
 import { CategoryGroupedSelect } from '@/components/category-grouped-select'
-import type { Transaction, RecurringTransaction, TransactionSplitsInput } from '@/types'
+import type { Transaction, RecurringTransaction, TransactionSplitsInput, CategoryGroup, Category } from '@/types'
 import { toast } from 'sonner'
 
 export type SaveAction = 'save' | 'saveAndNew' | 'saveAndDuplicate'
@@ -80,8 +81,8 @@ export function TransactionDialog({
   open: boolean
   onClose: () => void
   transaction: Transaction | null
-  categories: { id: string; name: string; icon: string }[]
-  categoryGroups?: { id: string; name: string; categories?: { id: string; name: string; group_id?: string | null }[] }[]
+  categories: Category[]
+  categoryGroups: CategoryGroup[]
   accounts: { id: string; name: string; type?: string }[]
   recurringMatch?: RecurringTransaction
   onSave: (data: Partial<Transaction>, recurringData?: { frequency: string; end_date?: string }, pendingFiles?: File[], action?: SaveAction) => void
@@ -283,8 +284,8 @@ function TransactionForm({
 }: {
   transaction: Transaction | null
   duplicateDraft: Partial<Transaction> | null
-  categories: { id: string; name: string; icon: string }[]
-  categoryGroups?: { id: string; name: string; categories?: { id: string; name: string; group_id?: string | null }[] }[]
+  categories: Category[]
+  categoryGroups: CategoryGroup[]
   accounts: { id: string; name: string; type?: string }[]
   recurringMatch?: RecurringTransaction
   onSave: (data: Partial<Transaction>, recurringData?: { frequency: string; end_date?: string }, pendingFiles?: File[], action?: SaveAction) => void

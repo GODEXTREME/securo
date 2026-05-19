@@ -142,11 +142,22 @@ class TransferRead(BaseModel):
 class TransactionImport(TransactionBase):
     """TransactionBase extended with import-only fields not exposed in read responses."""
     category_name: Optional[str] = None
+    suggested_category_id: Optional[uuid.UUID] = None
+    suggested_category_name: Optional[str] = None
+    excluded: bool = False
+    category_id: Optional[uuid.UUID] = None
+    force_uncategorized: bool = False
 
 
 class TransactionImportPreview(BaseModel):
     transactions: list[TransactionImport]
     detected_format: str
+    # CSV header column names, exposed so the UI can offer column-mapping
+    # dropdowns. Empty for non-CSV formats.
+    csv_columns: list[str] = []
+    # Set when a CSV's columns could not be auto-detected. The preview still
+    # succeeds (with no transactions) so the UI can show the mapping dropdowns.
+    parse_error: Optional[str] = None
 
 
 class TransactionImportRequest(BaseModel):

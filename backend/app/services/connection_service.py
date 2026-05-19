@@ -439,6 +439,28 @@ async def handle_oauth_callback(
             connection_data.credentials, acc_data.external_id, None
         )
         for txn_data in transactions_data:
+            # Pending↔posted twin (and the credit-card installment variant).
+            # When the same logical operation comes back under a new external
+            # id with a different status, fingerprint match prevents the
+            # second copy from landing.
+            synced_dup = await _find_synced_duplicate(session, account.id, txn_data)
+            if synced_dup:
+                if synced_dup.status == "pending" and txn_data.status == "posted":
+                    synced_dup.status = "posted"
+                    synced_dup.external_id = txn_data.external_id
+                    synced_dup.raw_data = txn_data.raw_data
+                    if (
+                        txn_data.bill_external_id
+                        and synced_dup.effective_bill_date is None
+                    ):
+                        bill = bills_by_external_id.get(txn_data.bill_external_id)
+                        if bill is not None and synced_dup.bill_id != bill.id:
+                            synced_dup.bill_id = bill.id
+                            apply_effective_date(
+                                synced_dup, account, bill_due_date=bill.due_date
+                            )
+                continue
+
             category_id = await _match_pluggy_category(
                 session, user_id, txn_data.pluggy_category, enabled=use_provider_cats
             )
@@ -562,6 +584,81 @@ async def _fuzzy_match_manual(
 
     if best_match and best_score >= 0.6:
         return best_match
+    return None
+
+
+async def _find_synced_duplicate(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    txn_data,
+) -> Optional[Transaction]:
+    """Find an existing synced row that the incoming `txn_data` is a twin of.
+
+    The `(account_id, external_id)` lookup only catches the case where a
+    provider keeps the same id while a row's `status` flips pending→posted.
+    It misses two patterns where the same logical operation comes back with
+    two different external ids:
+
+    1. The provider re-emits the operation with a new id when its state
+       changes — e.g. a scheduled/pending row replaced by a posted row.
+       Same account/date/amount/type with statuses differing.
+    2. A credit-card installment that lands on the current bill but is also
+       still scheduled against the next bill. Two different external ids
+       and two different bills, but the same installment fingerprint
+       `(purchase_date, number, total, amount, type)`.
+
+    Returns the existing Transaction the caller should reuse; the caller
+    decides whether to upgrade its status (pending→posted + swap external_id)
+    or skip the incoming insert. Synthetic bill-charge rows
+    (`bill_charge:*`) are excluded — they have their own idempotency keys.
+    """
+    # Path 1: installment fingerprint. Highly specific, so we don't require a
+    # description match on top.
+    if (
+        txn_data.installment_purchase_date is not None
+        and txn_data.installment_number is not None
+        and txn_data.total_installments is not None
+    ):
+        result = await session.execute(
+            select(Transaction).where(
+                Transaction.account_id == account_id,
+                Transaction.source == "sync",
+                Transaction.installment_purchase_date == txn_data.installment_purchase_date,
+                Transaction.installment_number == txn_data.installment_number,
+                Transaction.total_installments == txn_data.total_installments,
+                Transaction.amount == txn_data.amount,
+                Transaction.type == txn_data.type,
+                Transaction.external_id != txn_data.external_id,
+            )
+        )
+        for candidate in result.scalars():
+            if candidate.external_id and candidate.external_id.startswith("bill_charge:"):
+                continue
+            return candidate
+
+    # Path 2: pending↔posted twin on the same account/date/amount/type. The
+    # status differential is the load-bearing signal — without it we'd risk
+    # collapsing two genuinely separate transactions that happen to share a
+    # day and amount. A light description-similarity check guards against
+    # the residual false positive of two different merchants charging the
+    # same amount the same day where one is pending and one is posted.
+    result = await session.execute(
+        select(Transaction).where(
+            Transaction.account_id == account_id,
+            Transaction.source == "sync",
+            Transaction.date == txn_data.date,
+            Transaction.amount == txn_data.amount,
+            Transaction.type == txn_data.type,
+            Transaction.status != txn_data.status,
+            Transaction.external_id != txn_data.external_id,
+        )
+    )
+    for candidate in result.scalars():
+        if candidate.external_id and candidate.external_id.startswith("bill_charge:"):
+            continue
+        if _description_similarity(candidate.description, txn_data.description) >= 0.7:
+            return candidate
+
     return None
 
 
@@ -1006,6 +1103,33 @@ async def sync_connection(
                     if not fuzzy_match.payee and txn_data.payee:
                         fuzzy_match.payee = txn_data.payee
                     merged_count += 1
+                    continue
+
+                # Pass 3: pending↔posted twin (and the credit-card
+                # installment variant). When the same logical operation
+                # comes back under a new external id with a different
+                # status, fingerprint match collapses it instead of letting
+                # both rows land.
+                synced_dup = await _find_synced_duplicate(
+                    session, account.id, txn_data
+                )
+                if synced_dup:
+                    if synced_dup.status == "pending" and txn_data.status == "posted":
+                        # Posted truth wins: swap in the new id so subsequent
+                        # syncs match by external_id and update raw_data.
+                        synced_dup.status = "posted"
+                        synced_dup.external_id = txn_data.external_id
+                        synced_dup.raw_data = txn_data.raw_data
+                        if (
+                            txn_data.bill_external_id
+                            and synced_dup.effective_bill_date is None
+                        ):
+                            bill = bills_by_external_id.get(txn_data.bill_external_id)
+                            if bill is not None and synced_dup.bill_id != bill.id:
+                                synced_dup.bill_id = bill.id
+                                apply_effective_date(
+                                    synced_dup, account, bill_due_date=bill.due_date
+                                )
                     continue
 
                 category_id = await _match_pluggy_category(

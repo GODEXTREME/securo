@@ -736,7 +736,7 @@ class TestEffectiveBillDateFiltersList:
         await session.commit()
 
         # March window: should include the override'd tx.
-        march_txs, _ = await get_transactions(
+        march_txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 2, 16), to_date=date(2026, 3, 15),
             accounting_mode="cash",
@@ -744,7 +744,7 @@ class TestEffectiveBillDateFiltersList:
         assert any(t.id == tx.id for t in march_txs)
 
         # May window: should NOT include it anymore.
-        may_txs, _ = await get_transactions(
+        may_txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 4, 16), to_date=date(2026, 5, 15),
             accounting_mode="cash",
@@ -767,7 +767,7 @@ class TestEffectiveBillDateFiltersList:
         tx.effective_bill_date = date(2026, 3, 1)
         await session.commit()
 
-        march_txs, _ = await get_transactions(
+        march_txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 2, 16), to_date=date(2026, 3, 15),
             accounting_mode="accrual",
@@ -815,7 +815,7 @@ class TestEffectiveBillDateFiltersList:
         await session.commit()
 
         # Cycle window for this bill = [Mar 17, Apr 16]
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=bill.id,
             from_date=date(2026, 3, 17), to_date=date(2026, 4, 16),
@@ -861,7 +861,7 @@ class TestEffectiveBillDateFiltersList:
         pending.status = "pending"
         await session.commit()
 
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=may_bill.id,
             from_date=date(2026, 4, 11), to_date=date(2026, 5, 10),
@@ -893,7 +893,7 @@ class TestEffectiveBillDateFiltersList:
 
         # In-progress June cycle (cycle-math fallback, no bill_id passed)
         # range = [April 30, May 29] — the start INCLUDES the prev close day.
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 4, 30), to_date=date(2026, 5, 29),
             accounting_mode="cash",
@@ -935,7 +935,7 @@ class TestEffectiveBillDateFiltersList:
         # In-progress cycle window happens to include May 5. With the
         # `unbilled_only` flag set (which account-detail uses for the
         # in-progress cycle), the prior-bill tx must NOT appear.
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 4, 30), to_date=date(2026, 5, 29),
             accounting_mode="cash",
@@ -945,7 +945,7 @@ class TestEffectiveBillDateFiltersList:
 
         # Without unbilled_only (e.g., the global /transactions list page),
         # the same tx IS visible — the flag is opt-in.
-        txs_unfiltered, _ = await get_transactions(
+        txs_unfiltered, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 4, 30), to_date=date(2026, 5, 29),
             accounting_mode="cash",
@@ -977,7 +977,7 @@ class TestEffectiveBillDateFiltersList:
         await session.commit()
 
         for mode in ("cash", "accrual"):
-            txs, _ = await get_transactions(
+            txs, _, _ = await get_transactions(
                 session, test_user.id, account_id=cc_account.id,
                 from_date=date(2026, 4, 30), to_date=date(2026, 5, 29),
                 accounting_mode=mode,
@@ -1008,7 +1008,7 @@ class TestEffectiveBillDateFiltersList:
         await session.commit()
 
         # Cash mode: filtered by purchase date → in April window
-        txs_cash_apr, _ = await get_transactions(
+        txs_cash_apr, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 4, 1), to_date=date(2026, 4, 30),
             accounting_mode="cash",
@@ -1018,14 +1018,14 @@ class TestEffectiveBillDateFiltersList:
         # Accrual mode: filtered by effective_date → NOT in April window,
         # but IS in June window. This is the existing mode-aware semantic
         # callers outside the bill view rely on.
-        txs_accrual_apr, _ = await get_transactions(
+        txs_accrual_apr, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 4, 1), to_date=date(2026, 4, 30),
             accounting_mode="accrual",
         )
         assert tx.id not in {t.id for t in txs_accrual_apr}
 
-        txs_accrual_jun, _ = await get_transactions(
+        txs_accrual_jun, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 6, 1), to_date=date(2026, 6, 30),
             accounting_mode="accrual",
@@ -1064,7 +1064,7 @@ class TestEffectiveBillDateFiltersList:
         await session.commit()
 
         # Viewing April bill — must NOT include this pending tx
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=april_bill.id,
             from_date=date(2026, 3, 11), to_date=date(2026, 4, 10),
@@ -1125,7 +1125,7 @@ class TestEffectiveBillDateFiltersList:
         )
         await session.commit()
 
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=april.id,
             from_date=date(2026, 3, 17), to_date=date(2026, 4, 16),
@@ -1167,7 +1167,7 @@ class TestEffectiveBillDateFiltersList:
         )
         await session.commit()
 
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=bill.id,
             from_date=date(2026, 3, 17), to_date=date(2026, 4, 16),
@@ -1208,7 +1208,7 @@ class TestEffectiveBillDateFiltersList:
         tx.status = "pending"
         await session.commit()
 
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=bill.id,
             from_date=date(2026, 3, 17), to_date=date(2026, 4, 16),
@@ -1248,7 +1248,7 @@ class TestEffectiveBillDateFiltersList:
         # bill_id stays None
         await session.commit()
 
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=bill.id,
             from_date=date(2026, 3, 17), to_date=date(2026, 4, 16),
@@ -1285,7 +1285,7 @@ class TestEffectiveBillDateFiltersList:
         )
         await session.commit()
 
-        txs, _ = await get_transactions(
+        txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=bill.id,
             from_date=date(2026, 3, 17), to_date=date(2026, 4, 16),
@@ -1476,7 +1476,7 @@ class TestEffectiveBillDateFiltersList:
         await session.commit()
 
         # December window: tx must NOT appear (override moved it to Jan)
-        dec_txs, _ = await get_transactions(
+        dec_txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2025, 12, 1), to_date=date(2025, 12, 31),
             accounting_mode="cash",
@@ -1484,7 +1484,7 @@ class TestEffectiveBillDateFiltersList:
         assert tx.id not in {t.id for t in dec_txs}
 
         # January window: tx must appear
-        jan_txs, _ = await get_transactions(
+        jan_txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 1, 1), to_date=date(2026, 1, 31),
             accounting_mode="cash",
@@ -1555,7 +1555,7 @@ class TestEffectiveBillDateFiltersList:
         await session.commit()
 
         # April window: cash mode uses date (Apr 18), should include
-        apr_txs, _ = await get_transactions(
+        apr_txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 4, 1), to_date=date(2026, 4, 30),
             accounting_mode="cash",
@@ -1600,7 +1600,7 @@ class TestEffectiveBillDateFiltersList:
         tx.effective_bill_date = date(2026, 5, 10)
         await session.commit()
 
-        may_txs, _ = await get_transactions(
+        may_txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             bill_id=may.id,
             from_date=date(2026, 4, 17), to_date=date(2026, 5, 16),
@@ -1677,7 +1677,7 @@ class TestEffectiveBillDateFiltersList:
 
         # In-progress cycle window for close=11/due=16 around early May:
         # cycle = [Apr 12, May 11]. Override 6/11 lies past 5/11.
-        in_prog_txs, _ = await get_transactions(
+        in_prog_txs, _, _ = await get_transactions(
             session, test_user.id, account_id=cc_account.id,
             from_date=date(2026, 4, 12), to_date=date(2026, 5, 11),
             unbilled_only=True,

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { getAccountName } from '@/lib/account-utils'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -29,7 +29,6 @@ import { ShellLogo } from '@/components/shell-logo'
 import { UpdateAvailableBanner } from '@/components/update-available-banner'
 import { UpdateAvailableDialog } from '@/components/update-available-dialog'
 import {
-  LayoutDashboard,
   ArrowLeftRight,
   Building2,
   SlidersHorizontal,
@@ -62,21 +61,21 @@ import { ChangePasswordDialog } from '@/components/change-password-dialog'
 import { TwoFactorSetup } from '@/components/two-factor-setup'
 import { CommandPalette } from '@/components/command-palette'
 import { useCommandPaletteHotkey } from '@/hooks/use-command-palette-hotkey'
-import { Search } from 'lucide-react'
+import { GlobalChatPanel } from '@/components/global-chat-panel'
+import { useFeatureFlags } from '@/hooks/use-feature-flags'
+import { Bot, Search, Sparkles } from 'lucide-react'
 
 type NavItem =
   | { type: 'link'; key: string; path: string; icon: React.ElementType }
   | { type: 'separator'; labelKey: string }
 
 const navItems: NavItem[] = [
-  { type: 'link', key: 'dashboard', path: '/', icon: LayoutDashboard },
-  {
-    type: 'link',
-    key: 'transactions',
-    path: '/transactions',
-    icon: ArrowLeftRight,
-  },
+  // The dashboard ("Painel") is now reachable by clicking the Securo
+  // logo + name in the sidebar header — no dedicated menu item to keep
+  // the sidebar focused on the main destinations. Transactions sits
+  // inside the ACCOUNTS section since it's account-scoped data.
   { type: 'separator', labelKey: 'nav.groupAccounts' },
+  { type: 'link', key: 'transactions', path: '/transactions', icon: ArrowLeftRight },
   { type: 'link', key: 'accounts', path: '/accounts', icon: Building2 },
   { type: 'link', key: 'import', path: '/import', icon: Upload },
   { type: 'separator', labelKey: 'nav.groupAnalysis' },
@@ -114,8 +113,31 @@ export function AppLayout() {
   const [twoFactorOpen, setTwoFactorOpen] = useState(false)
   const [backingUp, setBackingUp] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   useCommandPaletteHotkey(setPaletteOpen)
+  const { agentsEnabled } = useFeatureFlags()
+  // ⌘J / Ctrl+J toggles the global slide-over chat from anywhere.
+  // Distinct from ⌘K (command palette) so users can have both open.
+  // Gated on agentsEnabled so the hotkey is a no-op when the feature is
+  // off — keeps ⌘J free for browsers/other tools.
+  useEffect(() => {
+    if (!agentsEnabled) return
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey
+      if (isMod && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault()
+        setChatOpen((prev) => !prev)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [agentsEnabled])
+  // The "Agents" management page used to live in the sidebar, but it's
+  // a configuration surface (KB upload, providers, default selection),
+  // not a daily destination. Moved to the user menu (Change password,
+  // 2FA, Backups, AI agents).
+  const finalNavItems: NavItem[] = navItems
   const isMac =
     typeof navigator !== 'undefined' &&
     /Mac|iPhone|iPad|iPod/.test(navigator.platform)
@@ -170,12 +192,17 @@ export function AppLayout() {
         >
           <Menu size={20} />
         </button>
-        <div className="flex items-center gap-2">
+        <Link
+          to="/"
+          className="flex items-center gap-2 -mx-1 px-1 py-1 rounded-md hover:bg-sidebar-accent transition-colors"
+          aria-label={t('app.name')}
+          title={t('nav.dashboard')}
+        >
           <ShellLogo size={22} className="text-primary shrink-0" />
           <span className="font-bold text-sidebar-foreground">
             {t('app.name')}
           </span>
-        </div>
+        </Link>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => setPaletteOpen(true)}
@@ -202,11 +229,25 @@ export function AppLayout() {
           >
             {isDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+          {/* AI chat — opens the global slide-over (also reachable via
+              ⌘J). Sits next to the theme toggle so the icon is always
+              within thumb reach on mobile too. */}
+          {agentsEnabled && (
+            <button
+              onClick={() => setChatOpen(true)}
+              className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1"
+              title={`${t('agents.globalChat.title', 'Chat')} (${isMac ? '⌘J' : 'Ctrl+J'})`}
+              aria-label={t('agents.globalChat.openHint', 'Open chat (⌘J)')}
+            >
+              <Bot size={18} />
+            </button>
+          )}
           <UserMenu
             userInitial={userInitial}
             logout={logout}
             onChangePassword={() => setChangePasswordOpen(true)}
             onTwoFactor={() => setTwoFactorOpen(true)}
+            agentsEnabled={agentsEnabled}
             backingUp={backingUp}
             onBackup={async () => {
               setBackingUp(true)
@@ -241,14 +282,22 @@ export function AppLayout() {
             sidebarOpen ? 'translate-x-0' : '-translate-x-full',
           )}
         >
-          {/* Logo */}
+          {/* Logo — clickable link to the dashboard. Replaces the
+              dedicated 'Painel' nav item so the sidebar stays focused
+              on the main destinations. */}
           <div className="flex h-16 min-h-16 items-center justify-between px-5 border-b border-sidebar-border shrink-0">
-            <div className="flex items-center gap-2.5">
+            <Link
+              to="/"
+              className="flex items-center gap-2.5 -mx-1 px-1 py-1 rounded-md hover:bg-sidebar-accent transition-colors"
+              onClick={() => setSidebarOpen(false)}
+              aria-label={t('app.name')}
+              title={t('nav.dashboard')}
+            >
               <ShellLogo size={24} className="text-primary shrink-0" />
               <span className="font-bold text-lg text-sidebar-foreground tracking-tight">
                 {t('app.name')}
               </span>
-            </div>
+            </Link>
             <div className="flex items-center gap-0.5">
               <button
                 onClick={togglePrivacyMode}
@@ -258,6 +307,19 @@ export function AppLayout() {
               >
                 {privacyMode ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
+              {/* AI chat — same trigger as the mobile bar, ⌘J also
+                  works. Lives in the sidebar header so the entry point
+                  is visible even on first load (no floating button). */}
+              {agentsEnabled && (
+                <button
+                  onClick={() => setChatOpen(true)}
+                  className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent"
+                  title={`${t('agents.globalChat.title', 'Chat')} (${isMac ? '⌘J' : 'Ctrl+J'})`}
+                  aria-label={t('agents.globalChat.openHint', 'Open chat (⌘J)')}
+                >
+                  <Bot size={16} />
+                </button>
+              )}
               <button
                 onClick={toggleTheme}
                 className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent"
@@ -295,11 +357,16 @@ export function AppLayout() {
 
           <div className="flex-1 min-h-0 overflow-y-auto">
           {/* Nav */}
-          <nav className="flex flex-col gap-0.5 p-3" data-tour="sidebar">
-            {navItems.map((item, idx) => {
+          <nav className="flex flex-col gap-0.5 px-3 pt-1 pb-3" data-tour="sidebar">
+            {finalNavItems.map((item, idx) => {
               if (item.type === 'separator') {
+                // The first separator sits right below the search bar
+                // — without trimming the top padding it leaves a wide
+                // gap that makes the section header feel disconnected
+                // from the search trigger.
+                const isFirstSep = idx === 0
                 return (
-                  <div key={`sep-${idx}`} className="pt-3 pb-1 px-3">
+                  <div key={`sep-${idx}`} className={cn(isFirstSep ? 'pt-1 pb-1 px-3' : 'pt-3 pb-1 px-3')}>
                     <span className="text-[10px] uppercase tracking-[0.12em] font-semibold text-sidebar-muted/50">
                       {t(item.labelKey)}
                     </span>
@@ -480,6 +547,15 @@ export function AppLayout() {
                   <HardDriveDownload size={14} />
                   {backingUp ? t('backup.downloading') : t('backup.button')}
                 </DropdownMenuItem>
+                {agentsEnabled && (
+                  <DropdownMenuItem
+                    onClick={() => navigate('/agents')}
+                    className="flex items-center gap-2"
+                  >
+                    <Sparkles size={14} />
+                    {t('nav.aiAgents')}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onClick={() => setUpdateDialogOpen(true)}
                   className="flex items-center gap-2"
@@ -564,6 +640,10 @@ export function AppLayout() {
         onClose={() => setTwoFactorOpen(false)}
       />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      {/* Slide-over global chat — opened from the sidebar pill or via
+          ⌘J. The previous floating bottom-right button was removed
+          since the entry point now lives in the sidebar next to ⌘K. */}
+      {agentsEnabled && <GlobalChatPanel open={chatOpen} onOpenChange={setChatOpen} />}
       <UpdateAvailableDialog
         open={updateDialogOpen}
         onClose={() => setUpdateDialogOpen(false)}
@@ -581,6 +661,7 @@ function UserMenu({
   backingUp,
   dark,
   isAdmin,
+  agentsEnabled,
 }: {
   userInitial: string
   logout: () => void
@@ -590,6 +671,7 @@ function UserMenu({
   backingUp: boolean
   dark?: boolean
   isAdmin?: boolean
+  agentsEnabled?: boolean
 }) {
   const { t, i18n } = useTranslation()
   const nav = useNavigate()
@@ -646,6 +728,15 @@ function UserMenu({
           <HardDriveDownload size={14} />
           {backingUp ? t('backup.downloading') : t('backup.button')}
         </DropdownMenuItem>
+        {agentsEnabled && (
+          <DropdownMenuItem
+            onClick={() => nav('/agents')}
+            className="flex items-center gap-2"
+          >
+            <Sparkles size={14} />
+            {t('nav.aiAgents')}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="flex items-center gap-2">
             <Languages size={14} />

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useRegisterPageChatContext } from '@/lib/page-chat-context'
 import { assets, assetGroups, currencies as currenciesApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -232,6 +233,36 @@ export default function AssetsPage() {
     queryKey: ['portfolio-trend'],
     queryFn: () => assets.portfolioTrend(),
   })
+
+  // Publish a snapshot of what's on the Assets page so the global chat
+  // (⌘J) can answer "what does this chart mean / what are these
+  // wallets?" without needing the user to spell it out.
+  const totalValue = (assetsList ?? []).reduce(
+    (acc: number, a: { current_value?: number | null }) => acc + Number(a.current_value || 0),
+    0,
+  )
+  const byType: Record<string, number> = {}
+  for (const a of (assetsList ?? []) as Array<{ type?: string; current_value?: number | null }>) {
+    if (!a.type) continue
+    byType[a.type] = (byType[a.type] || 0) + Number(a.current_value || 0)
+  }
+  const portfolioTotal = (portfolioData as { total?: number } | undefined)?.total
+  const assetsCtxKey = `${assetsList?.length ?? 0}:${totalValue.toFixed(2)}:${portfolioTotal ?? ''}`
+  useRegisterPageChatContext(
+    {
+      path: '/assets',
+      label: 'Assets',
+      summary:
+        `Portfolio overview page. ${assetsList?.length ?? 0} assets totaling ` +
+        `~${totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ` +
+        `(by current_value). The portfolio chart shows value over time grouped by wallet or asset.`,
+      totals_by_type: byType,
+      asset_count: assetsList?.length ?? 0,
+      total_value: Number(totalValue.toFixed(2)),
+      hint: 'For exact per-asset numbers, use the get_net_worth or list_assets tools.',
+    },
+    assetsCtxKey,
+  )
 
   // `refetchQueries` (vs. `invalidateQueries`) forces an immediate refetch
   // regardless of stale-state heuristics. Our global staleTime of 5 min

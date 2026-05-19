@@ -1,33 +1,77 @@
 import asyncio
+import os
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
-import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+# --- Agents test setup (must run BEFORE app.main is imported) ---------------
+# Force the optional agents feature on for the test process so the routes
+# are mounted and the agent models are reachable. Provide deterministic
+# JWT/MCP secrets so test fixtures can mint tokens.
+os.environ.setdefault("AGENTS_ENABLED", "true")
+os.environ.setdefault("AGENTS_MCP_JWT_SECRET", "test-secret-not-for-production")
+os.environ.setdefault("AGENTS_BUILTIN_MCP_URL", "http://test-mcp:8765/mcp")
 
-from app.core.database import Base, get_async_session
-from app.main import app
-from app.models.user import User
-from app.models.category import Category
-from app.models.bank_connection import BankConnection
-from app.models.account import Account
-from app.models.transaction import Transaction
-from app.models.rule import Rule
-from app.models.asset import Asset  # noqa: F401
-from app.models.asset_value import AssetValue  # noqa: F401
-from app.models.transaction_attachment import TransactionAttachment  # noqa: F401
-from app.models.payee import Payee, PayeeMapping  # noqa: F401
-from app.models.app_settings import AppSetting  # noqa: F401
-from app.models.goal import Goal  # noqa: F401
-from app.models.credit_card_bill import CreditCardBill  # noqa: F401
-from app.models.group import Group, GroupMember  # noqa: F401
-from app.models.transaction_split import TransactionSplit  # noqa: F401
-from app.models.group_settlement import GroupSettlement  # noqa: F401
+# pgvector's Vector type only compiles on PostgreSQL. Tests use SQLite, so
+# we shim it with JSON before any model module imports it. Production runs
+# pgvector unchanged.
+import sqlalchemy.types  # noqa: E402
+import pgvector.sqlalchemy as _pgv  # noqa: E402
+
+
+class _VectorJSON(sqlalchemy.types.JSON):
+    """JSON-backed stand-in for pgvector's Vector type, for SQLite tests."""
+
+    cache_ok = True
+
+    def __init__(self, dim=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def cosine_distance(self, other):  # type: ignore[override]
+        # Tests for similarity_search are exercised against the real Postgres;
+        # the SQLite path just needs a valid SQL fragment.
+        from sqlalchemy import literal
+        return literal(0.5)
+
+
+_pgv.Vector = _VectorJSON  # type: ignore[attr-defined]
+# ---------------------------------------------------------------------------
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker  # noqa: E402
+
+from app.core.database import Base, get_async_session  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.models.category import Category  # noqa: E402
+from app.models.bank_connection import BankConnection  # noqa: E402
+from app.models.account import Account  # noqa: E402
+from app.models.transaction import Transaction  # noqa: E402
+from app.models.rule import Rule  # noqa: E402
+from app.models.asset import Asset  # noqa: E402,F401
+from app.models.asset_value import AssetValue  # noqa: E402,F401
+from app.models.transaction_attachment import TransactionAttachment  # noqa: E402,F401
+from app.models.payee import Payee, PayeeMapping  # noqa: E402,F401
+from app.models.app_settings import AppSetting  # noqa: E402,F401
+from app.models.goal import Goal  # noqa: E402,F401
+from app.models.credit_card_bill import CreditCardBill  # noqa: E402,F401
+from app.models.group import Group, GroupMember  # noqa: E402,F401
+from app.models.transaction_split import TransactionSplit  # noqa: E402,F401
+from app.models.group_settlement import GroupSettlement  # noqa: E402,F401
+# Agent models — gated by AGENTS_ENABLED above so tests always cover them.
+from app.agents.models import (  # noqa: E402,F401
+    Agent,
+    AgentTool,
+    Conversation,
+    Message,
+    KnowledgeDoc,
+    KnowledgeChunk,
+    LlmUsage,
+)
 
 # Use SQLite for tests — fast, no external dependency
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
@@ -332,6 +376,39 @@ async def test_rules(
     for rule in rules:
         await session.refresh(rule)
     return rules
+
+
+@pytest_asyncio.fixture
+async def test_agent(session: AsyncSession, test_user: User) -> Agent:
+    """A baseline agent for tests."""
+    agent = Agent(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        name="Test Agent",
+        description="A test agent",
+        system_prompt="You are a helpful assistant.",
+        provider="openai",
+        model="gpt-4o-mini",
+        temperature=0.4,
+    )
+    session.add(agent)
+    await session.commit()
+    await session.refresh(agent)
+    return agent
+
+
+@pytest_asyncio.fixture
+async def test_conversation(session: AsyncSession, test_user: User, test_agent: Agent) -> Conversation:
+    conv = Conversation(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        agent_id=test_agent.id,
+        channel="web",
+    )
+    session.add(conv)
+    await session.commit()
+    await session.refresh(conv)
+    return conv
 
 
 @pytest_asyncio.fixture

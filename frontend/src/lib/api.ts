@@ -20,6 +20,7 @@ import type {
   BudgetVsActual,
   Rule,
   ImportLog,
+  ImportPreviewTransaction,
   Asset,
   AssetGroup,
   AssetValue,
@@ -32,7 +33,7 @@ import type {
   SpendingByCategory,
   MonthlyTrend,
   BalanceHistory,
-  PaginatedResponse,
+  PaginatedTransactions,
   ReportResponse,
   Group,
   GroupKind,
@@ -274,7 +275,7 @@ export const transactions = {
     tags?: string[]
     sort_by?: string
     sort_dir?: 'asc' | 'desc'
-  }): Promise<PaginatedResponse<Transaction>> => {
+  }): Promise<PaginatedTransactions> => {
     const { data } = await api.get('/transactions', {
       params,
       paramsSerializer: { indexes: null },
@@ -366,26 +367,30 @@ export const transactions = {
     flip_amount?: boolean
     inflow_column?: string
     outflow_column?: string
-  }): Promise<{ transactions: Transaction[]; detected_format: string }> => {
+    column_mapping?: Record<string, string>
+  }): Promise<{ transactions: ImportPreviewTransaction[]; detected_format: string; csv_columns?: string[]; parse_error?: string | null }> => {
     const formData = new FormData()
     formData.append('file', file)
     if (options?.date_format) formData.append('date_format', options.date_format)
     if (options?.flip_amount) formData.append('flip_amount', 'true')
     if (options?.inflow_column) formData.append('inflow_column', options.inflow_column)
     if (options?.outflow_column) formData.append('outflow_column', options.outflow_column)
+    if (options?.column_mapping && Object.keys(options.column_mapping).length > 0) {
+      formData.append('column_mapping', JSON.stringify(options.column_mapping))
+    }
     const { data } = await api.post('/transactions/import/preview', formData)
     return data
   },
   import: async (
     account_id: string,
-    transactions: Transaction[],
+    transactions: ImportPreviewTransaction[],
     filename: string,
     detected_format: string,
     options?: { detect_duplicates?: boolean },
-  ): Promise<{ imported: number; skipped: number; import_log_id: string }> => {
+  ): Promise<{ imported: number; skipped: number; excluded: number; import_log_id: string }> => {
     const payload: {
       account_id: string
-      transactions: Transaction[]
+      transactions: ImportPreviewTransaction[]
       filename: string
       detected_format: string
       detect_duplicates?: boolean
@@ -958,6 +963,245 @@ export const search = {
     if (!q.trim()) return []
     const { data } = await api.get('/search', { params: { q, limit } })
     return data.results as SearchHit[]
+  },
+}
+
+// App-level feature flags (whether optional modules like agents are mounted)
+export interface AppInfo {
+  features: { agents: boolean }
+}
+
+export const info = {
+  get: async (): Promise<AppInfo> => {
+    const { data } = await api.get('/info')
+    return data
+  },
+}
+
+// Agents / MCP / RAG -- only meaningful when info.features.agents === true.
+export interface Agent {
+  id: string
+  name: string
+  description: string | null
+  system_prompt: string
+  icon: string
+  color: string
+  connection_id: string | null
+  provider: string | null
+  model: string | null
+  temperature: number
+  max_history_messages: number
+  top_n: number
+  similarity_threshold: number
+  extra: Record<string, unknown>
+  auto_context: boolean
+  is_archived: boolean
+  is_default: boolean
+  // Populated by GET /agents (list endpoint) for the agents page.
+  // Single-agent endpoints leave them at 0 since the row-level page
+  // already shows tabs for both lists.
+  conversation_count: number
+  knowledge_count: number
+  created_at: string
+  updated_at: string
+}
+
+export type LlmConnectionKind = 'ollama' | 'openai' | 'anthropic' | 'openai_compatible'
+
+export interface LlmConnection {
+  id: string
+  name: string
+  kind: LlmConnectionKind
+  base_url: string | null
+  default_model: string | null
+  extra: Record<string, unknown>
+  is_default: boolean
+  has_api_key: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface LlmConnectionPayload {
+  name: string
+  kind: LlmConnectionKind
+  base_url?: string | null
+  api_key?: string | null
+  default_model?: string | null
+  extra?: Record<string, unknown>
+  is_default?: boolean
+}
+
+export interface LlmConnectionTestResult {
+  ok: boolean
+  detail: string
+  models?: string[]
+}
+
+export interface AgentConversation {
+  id: string
+  agent_id: string
+  channel: string
+  title: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentMessage {
+  id: string
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  ordinal: number
+  content: string | null
+  tool_calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> | null
+  tool_result: { tool_call_id?: string; name?: string; data?: unknown; ok?: boolean } | null
+  citations: unknown[] | null
+  input_tokens: number | null
+  output_tokens: number | null
+  created_at: string
+}
+
+export interface AgentToolHandle {
+  server: string
+  name: string
+  description: string
+  is_proposal: boolean
+  enabled: boolean
+}
+
+export interface KnowledgeDoc {
+  id: string
+  agent_id: string
+  title: string
+  source: string | null
+  mime: string
+  size_bytes: number
+  status: 'pending' | 'processing' | 'ready' | 'failed'
+  error: string | null
+  chunk_count: number
+  pinned: boolean
+  created_at: string
+  updated_at: string
+}
+
+export const agents = {
+  info: async () => {
+    const { data } = await api.get('/agents/info')
+    return data as {
+      enabled: boolean
+      providers: string[]
+      embedding_dim: number
+      default_top_n: number
+      default_similarity_threshold: number
+      extra_mcp_servers_configured: boolean
+    }
+  },
+  list: async (includeArchived = false): Promise<Agent[]> => {
+    const { data } = await api.get('/agents', { params: { include_archived: includeArchived } })
+    return data
+  },
+  // Default agent for the global slide-over chat panel. Returns the
+  // user-flagged default; falls back to the most recent agent.
+  // Throws 404 if the user has no agents at all.
+  getDefault: async (): Promise<Agent> => {
+    const { data } = await api.get('/agents/default')
+    return data
+  },
+  get: async (id: string): Promise<Agent> => {
+    const { data } = await api.get(`/agents/${id}`)
+    return data
+  },
+  create: async (payload: Partial<Agent> & { name: string }): Promise<Agent> => {
+    const { data } = await api.post('/agents', payload)
+    return data
+  },
+  update: async (id: string, payload: Partial<Agent>): Promise<Agent> => {
+    const { data } = await api.patch(`/agents/${id}`, payload)
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/agents/${id}`)
+  },
+  tools: async (id: string): Promise<{ servers: { name: string }[]; tools: AgentToolHandle[] }> => {
+    const { data } = await api.get(`/agents/${id}/tools`)
+    return data
+  },
+  setTools: async (id: string, items: { server: string; tool_name: string; enabled: boolean }[]): Promise<void> => {
+    await api.put(`/agents/${id}/tools`, items)
+  },
+  knowledge: {
+    list: async (id: string): Promise<{ items: KnowledgeDoc[]; total: number }> => {
+      const { data } = await api.get(`/agents/${id}/knowledge`)
+      return data
+    },
+    upload: async (id: string, file: File, pinned = false): Promise<KnowledgeDoc> => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('pinned', String(pinned))
+      const { data } = await api.post(`/agents/${id}/knowledge`, fd)
+      return data
+    },
+    pin: async (agentId: string, docId: string, pinned: boolean): Promise<KnowledgeDoc> => {
+      const { data } = await api.patch(`/agents/${agentId}/knowledge/${docId}/pin`, null, {
+        params: { pinned },
+      })
+      return data
+    },
+    remove: async (agentId: string, docId: string): Promise<void> => {
+      await api.delete(`/agents/${agentId}/knowledge/${docId}`)
+    },
+  },
+  conversations: {
+    list: async (agentId?: string, limit = 50): Promise<AgentConversation[]> => {
+      const { data } = await api.get('/agents/conversations', { params: { agent_id: agentId, limit } })
+      return data
+    },
+    get: async (id: string): Promise<AgentConversation> => {
+      const { data } = await api.get(`/agents/conversations/${id}`)
+      return data
+    },
+    messages: async (id: string, limit = 200): Promise<AgentMessage[]> => {
+      const { data } = await api.get(`/agents/conversations/${id}/messages`, { params: { limit } })
+      return data
+    },
+    rename: async (id: string, title: string): Promise<AgentConversation> => {
+      const { data } = await api.patch(`/agents/conversations/${id}`, { title })
+      return data
+    },
+    generateTitle: async (id: string): Promise<AgentConversation> => {
+      const { data } = await api.post(`/agents/conversations/${id}/generate-title`)
+      return data
+    },
+    remove: async (id: string): Promise<void> => {
+      await api.delete(`/agents/conversations/${id}`)
+    },
+  },
+  // Streaming chat endpoint — caller handles the SSE response themselves
+  // (see lib/agents-stream.ts). We just expose the URL + body builder.
+  chatUrl: (agentId: string) => `/api/agents/${agentId}/chat`,
+
+  connections: {
+    list: async (): Promise<LlmConnection[]> => {
+      const { data } = await api.get('/agents/connections')
+      return data
+    },
+    get: async (id: string): Promise<LlmConnection> => {
+      const { data } = await api.get(`/agents/connections/${id}`)
+      return data
+    },
+    create: async (payload: LlmConnectionPayload): Promise<LlmConnection> => {
+      const { data } = await api.post('/agents/connections', payload)
+      return data
+    },
+    update: async (id: string, payload: Partial<LlmConnectionPayload>): Promise<LlmConnection> => {
+      const { data } = await api.patch(`/agents/connections/${id}`, payload)
+      return data
+    },
+    remove: async (id: string): Promise<void> => {
+      await api.delete(`/agents/connections/${id}`)
+    },
+    test: async (id: string): Promise<LlmConnectionTestResult> => {
+      const { data } = await api.post(`/agents/connections/${id}/test`)
+      return data
+    },
   },
 }
 

@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { useRegisterPageChatContext } from '@/lib/page-chat-context'
 import { getAccountName } from '@/lib/account-utils'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { transactions, categories as categoriesApi, accounts as accountsApi, recurring, payees as payeesApi, admin, groups as groupsApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
+import { transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi, recurring, payees as payeesApi, admin, groups as groupsApi } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, Check, Copy, Downloa
 import type { Transaction } from '@/types'
 import { PageHeader } from '@/components/page-header'
 import { CategoryIcon } from '@/components/category-icon'
+import { CategorySelect } from '@/components/category-select'
 import { TransactionDialog, extractApiError, type SaveAction } from '@/components/transaction-dialog'
 import { TransactionsColumnPicker } from '@/components/transactions-column-picker'
 import { type ColumnDef, type ColumnId, useTransactionsGridState } from '@/components/transactions-grid-columns'
@@ -205,6 +207,11 @@ export default function TransactionsPage() {
     setBulkCategory('')
   }, [page, filterAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterType, filterFrom, filterTo, searchQuery])
 
+  // Reset bulk category when selection changes so the same category can be re-applied
+  useEffect(() => {
+    setBulkCategory('')
+  }, [selectedIds])
+
   // Scroll to and flash a highlighted row after navigation (e.g. opened via
   // the command palette). Re-runs whenever highlightId or the current data
   // set changes so that when results finish loading we animate the row.
@@ -245,6 +252,38 @@ export default function TransactionsPage() {
         ...grid.apiSort,
       }),
   })
+
+  // Publish the active filters + result count to the global chat panel.
+  // The agent uses this so "what about THIS list?" / "soma essas" /
+  // "categorize these" resolve against the filtered view, not the user's
+  // entire history. Free-form blob — backend turns it into a primer.
+  const ctxFilters = {
+    search: searchQuery || undefined,
+    account_ids: filterAccountIds.length ? filterAccountIds : undefined,
+    category_ids: filterCategoryIds.length ? filterCategoryIds : undefined,
+    payee_id: filterPayee || undefined,
+    group_id: filterGroupId || undefined,
+    type: filterType || undefined,
+    uncategorized: filterUncategorized || undefined,
+    from: filterFrom || undefined,
+    to: filterTo || undefined,
+    tags: tagFilters.length ? tagFilters : undefined,
+    sort_by: grid.sortBy,
+    sort_dir: grid.sortDir,
+    page,
+  }
+  const ctxKey = JSON.stringify(ctxFilters) + ':' + (data?.total ?? '')
+  useRegisterPageChatContext(
+    {
+      path: '/transactions',
+      label: 'Transactions',
+      summary: data?.total != null
+        ? `${data.total} transaction(s) match the active filters (showing page ${page}, 20 per page).`
+        : 'Transactions list with active filters.',
+      filters: ctxFilters,
+    },
+    ctxKey,
+  )
 
   const { data: categoriesList } = useQuery({
     queryKey: ['categories'],
@@ -472,6 +511,20 @@ export default function TransactionsPage() {
 
   const allSelected = selectableItems.length > 0 && selectableItems.every(tx => selectedIds.has(tx.id))
   const someSelected = selectableItems.some(tx => selectedIds.has(tx.id)) && !allSelected
+
+  // Net total of the currently-selected rows (issue #185). Selection is
+  // always page-scoped (cleared on page/filter change), so summing the
+  // visible page covers every selected id. Cross-currency rows use their
+  // primary-currency amount; credits add, debits subtract.
+  const selectedNet = useMemo(() => {
+    let net = 0
+    for (const tx of data?.items ?? []) {
+      if (!selectedIds.has(tx.id)) continue
+      const base = Math.abs(Number(tx.amount_primary ?? tx.amount))
+      net += tx.type === 'credit' ? base : -base
+    }
+    return net
+  }, [data?.items, selectedIds])
 
   // Resolve the currently-selected transactions into a valid debit/credit pair
   // for the "Link as transfer" action. Returns null if the pair is invalid
@@ -979,6 +1032,7 @@ export default function TransactionsPage() {
         }}
         accounts={accountsList ?? []}
         categories={categoriesList ?? []}
+        categoryGroups={categoryGroupsList ?? []}
         payees={payeesList ?? []}
         groups={allGroups ?? []}
       />
@@ -1093,6 +1147,37 @@ export default function TransactionsPage() {
           </Table>
           </div>
         )}
+        {/* Filtered summary (issue #185): income / expenses / net across
+            ALL rows matching the active filters — not just this page. */}
+        {!isLoading && data?.summary && filteredItems.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border bg-muted/30 px-4 py-2.5">
+            <span className="mr-auto text-xs text-muted-foreground">
+              {t('transactions.summaryCount', { count: data.total })}
+            </span>
+            <span className="flex items-baseline gap-1.5 text-xs">
+              <span className="text-muted-foreground">{t('transactions.summaryIncome')}</span>
+              <span className="text-sm font-semibold tabular-nums text-emerald-600">
+                {mask(formatCurrency(data.summary.income, data.summary.currency, locale))}
+              </span>
+            </span>
+            <span className="flex items-baseline gap-1.5 text-xs">
+              <span className="text-muted-foreground">{t('transactions.summaryExpenses')}</span>
+              <span className="text-sm font-semibold tabular-nums text-rose-500">
+                {mask(formatCurrency(data.summary.expense, data.summary.currency, locale))}
+              </span>
+            </span>
+            <span className="flex items-baseline gap-1.5 text-xs">
+              <span className="text-muted-foreground">{t('transactions.summaryNet')}</span>
+              <span
+                className={`text-sm font-bold tabular-nums ${
+                  data.summary.net >= 0 ? 'text-emerald-600' : 'text-rose-500'
+                }`}
+              >
+                {mask(formatCurrency(data.summary.net, data.summary.currency, locale))}
+              </span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
@@ -1129,34 +1214,53 @@ export default function TransactionsPage() {
       >
         <div className="mx-auto max-w-7xl px-3 md:px-6 pb-4 md:pb-6">
           <div className="flex items-stretch gap-1.5 bg-card border border-border shadow-xl rounded-2xl p-2">
-            {/* Selection count */}
-            <div className="flex items-center gap-2 pl-3 pr-4 text-sm font-medium text-foreground whitespace-nowrap">
-              <span className="inline-flex items-center justify-center size-6 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+            {/* Selection count + net total — stacked vertically so the
+                sum (issue #185) adds no horizontal width to an already
+                crowded bar. The sum is hidden below sm where only the
+                count pill shows. */}
+            <div className="flex items-center gap-2.5 pl-3 pr-4 whitespace-nowrap">
+              <span className="inline-flex items-center justify-center size-6 rounded-full bg-primary/10 text-primary text-xs font-semibold shrink-0">
                 {selectedIds.size}
               </span>
-              <span className="hidden sm:inline">{t('transactions.selected')}</span>
+              <div className="hidden sm:flex flex-col leading-tight">
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {t('transactions.selected')}
+                </span>
+                <span
+                  className={`text-sm font-bold tabular-nums ${
+                    selectedNet >= 0 ? 'text-emerald-600' : 'text-rose-500'
+                  }`}
+                >
+                  {mask(
+                    `${selectedNet >= 0 ? '+' : '−'}${formatCurrency(
+                      Math.abs(selectedNet),
+                      userCurrency,
+                      locale,
+                    )}`,
+                  )}
+                </span>
+              </div>
             </div>
 
             <div className="w-px bg-border/60 self-stretch" />
 
             {/* Categorize — fires on selection, no separate Apply button */}
-            <select
-              className="rounded-lg px-3 py-2 text-sm bg-transparent text-foreground hover:bg-muted/60 focus:outline-none focus-visible:bg-muted/60 cursor-pointer w-44 md:w-56"
+            <CategorySelect
+              key={bulkCategory}
               value={bulkCategory}
-              onChange={(e) => {
-                const next = e.target.value
+              onChange={(next) => {
                 setBulkCategory(next)
                 if (next) {
                   bulkCategorizeMutation.mutate({ ids: Array.from(selectedIds), categoryId: next })
                 }
               }}
+              categories={categoriesList ?? []}
+              groups={categoryGroupsList ?? []}
+              placeholder={t('transactions.selectCategory')}
               disabled={bulkCategorizeMutation.isPending}
-            >
-              <option value="">{t('transactions.selectCategory')}</option>
-              {categoriesList?.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
+              className="w-44 md:w-56 h-auto py-2 border-transparent bg-transparent hover:bg-muted/60 focus:bg-muted/60 focus-visible:ring-0"
+              contentProps={{ side: 'top', sideOffset: 8 }}
+            />
 
             <div className="w-px bg-border/60 self-stretch" />
 
@@ -1288,7 +1392,7 @@ export default function TransactionsPage() {
         duplicateDraft={duplicateDraft}
         formResetKey={formResetKey}
         categories={categoriesList ?? []}
-        categoryGroups={categoryGroupsList}
+        categoryGroups={categoryGroupsList ?? []}
         accounts={accountsList ?? []}
         recurringMatch={editingTx ? recurringList?.find(r => r.description === editingTx.description && r.type === editingTx.type) : undefined}
         onSave={handleTransactionSave}

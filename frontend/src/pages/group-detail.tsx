@@ -43,6 +43,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { CategoryIcon } from '@/components/category-icon'
+import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { PageHeader } from '@/components/page-header'
 import type { GroupMember, GroupSettlement } from '@/types'
 
@@ -1099,10 +1100,10 @@ export default function GroupDetailPage() {
             </div>
             <div className="space-y-2">
               <Label>{t('splitGroups.date')}</Label>
-              <Input
-                type="date"
+              <DatePickerInput
                 value={settleDate}
-                onChange={(e) => setSettleDate(e.target.value)}
+                onChange={setSettleDate}
+                className="w-full justify-start"
               />
             </div>
             <div className="space-y-2">

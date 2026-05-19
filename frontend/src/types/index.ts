@@ -305,6 +305,29 @@ export interface ImportLog {
   created_at: string
 }
 
+export interface ImportPreviewTransaction {
+  description: string
+  amount: number
+  date: string
+  type: 'debit' | 'credit'
+  external_id?: string | null
+  currency?: string | null
+  fx_rate?: number | null
+  payee_raw?: string | null
+  category_name?: string | null
+  suggested_category_id?: string | null
+  suggested_category_name?: string | null
+  excluded?: boolean
+  category_id?: string | null
+  force_uncategorized?: boolean
+}
+
+export interface ImportReviewTransaction extends ImportPreviewTransaction {
+  _id: string
+  excluded: boolean
+  selected_category_id?: string | null
+}
+
 export interface RecurringTransaction {
   id: string
   user_id: string
@@ -527,6 +550,19 @@ export interface PaginatedResponse<T> {
   total: number
   page: number
   limit: number
+}
+
+// Income / expense / net totals for all transactions matching the active
+// filters (issue #185) — accompanies the paginated /transactions response.
+export interface TransactionsSummary {
+  income: number
+  expense: number
+  net: number
+  currency: string
+}
+
+export interface PaginatedTransactions extends PaginatedResponse<Transaction> {
+  summary?: TransactionsSummary
 }
 
 // Reports (universal schema for all report types)

@@ -11,12 +11,16 @@ from ofxparse import OfxParser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from types import SimpleNamespace
+
 from app.core.config import get_settings
 from app.models.account import Account
 from app.models.category import Category
+from app.models.rule import Rule
 from app.models.transaction import Transaction
-from app.schemas.transaction import TransactionBase, TransactionImport
+from app.schemas.transaction import TransactionImport
 from app.services.credit_card_service import apply_effective_date
+from app.services.rule_engine import apply_rule_actions, evaluate_conditions
 from app.services.rule_service import apply_rules_to_transaction
 from app.services.fx_rate_service import stamp_primary_amount
 from app.services.payee_service import get_or_create_payee
@@ -262,6 +266,33 @@ DATE_FORMAT_MAP = {
     'YYYY-MM-DD': '%Y-%m-%d',
 }
 
+# Securo fields a CSV column can be mapped to. Used to validate the
+# user-supplied column_mapping and to drive the import-UI dropdowns.
+CSV_MAPPABLE_FIELDS = (
+    'date', 'description', 'amount', 'type',
+    'category', 'currency', 'fx_rate', 'inflow', 'outflow',
+)
+
+
+def _sniff_csv_dialect(text: str):
+    """Detect the CSV dialect (delimiter/quoting), falling back to comma."""
+    try:
+        return csv.Sniffer().sniff(text[:4096], delimiters=',;\t|')
+    except csv.Error:
+        return csv.excel
+
+
+def detect_csv_columns(content: bytes) -> list[str]:
+    """Return the CSV header column names exactly as they appear in the file.
+
+    Used by the import preview so the UI can offer accurate column-mapping
+    dropdowns instead of guessing headers client-side.
+    """
+    text = content.decode('utf-8-sig')  # Handle BOM
+    dialect = _sniff_csv_dialect(text)
+    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+    return [f.strip() for f in (reader.fieldnames or []) if f and f.strip()]
+
 
 def parse_csv(
     content: bytes,
@@ -269,6 +300,7 @@ def parse_csv(
     flip_amount: bool = False,
     inflow_column: str | None = None,
     outflow_column: str | None = None,
+    column_mapping: dict[str, str] | None = None,
 ) -> list[TransactionImport]:
     """Parse CSV file content and return transactions.
 
@@ -280,13 +312,11 @@ def parse_csv(
     - date_format: explicit date format (DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD)
     - flip_amount: negate all parsed amounts
     - inflow_column/outflow_column: use split columns instead of single amount
+    - column_mapping: explicit Securo-field -> CSV-header map. Any field
+      present here overrides auto-detection; unmapped fields still auto-detect.
     """
     text = content.decode('utf-8-sig')  # Handle BOM
-    sample = text[:4096]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=',;\t|')
-    except csv.Error:
-        dialect = csv.excel  # fallback to comma
+    dialect = _sniff_csv_dialect(text)
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
 
     # Normalize field names
@@ -301,31 +331,55 @@ def parse_csv(
     currency_cols = ['currency', 'moeda', 'currency_code']
     fx_rate_cols = ['fx_rate', 'fx_rate_used', 'taxa_cambio', 'exchange_rate', 'taxa']
 
+    # Normalize the user-supplied column mapping (Securo field -> CSV header).
+    mapping = {
+        field: value.lower().strip()
+        for field, value in (column_mapping or {}).items()
+        if field in CSV_MAPPABLE_FIELDS and value and value.strip()
+    }
+
     def find_col(candidates):
         for c in candidates:
             if c in fieldnames:
                 return c
         return None
 
-    date_col = find_col(date_cols)
-    desc_col = find_col(desc_cols)
+    def resolve_col(field, candidates):
+        """Resolve a CSV column for a Securo field.
 
-    # In split mode, we don't require a single amount column
-    use_split = inflow_column and outflow_column
-    inflow_col = inflow_column.lower().strip() if inflow_column else None
-    outflow_col = outflow_column.lower().strip() if outflow_column else None
+        An explicit user mapping always wins; otherwise fall back to
+        auto-detection against the known column-name candidates.
+        """
+        mapped = mapping.get(field)
+        if mapped:
+            if mapped not in fieldnames:
+                raise ValueError(
+                    f"Mapped column '{mapped}' for field '{field}' not found in CSV. "
+                    f"Available columns: {', '.join(fieldnames)}"
+                )
+            return mapped
+        return find_col(candidates)
+
+    date_col = resolve_col('date', date_cols)
+    desc_col = resolve_col('description', desc_cols)
+
+    # In split mode, we don't require a single amount column. The inflow/outflow
+    # columns may come from the explicit args or from the column mapping.
+    inflow_col = (inflow_column or mapping.get('inflow') or '').lower().strip() or None
+    outflow_col = (outflow_column or mapping.get('outflow') or '').lower().strip() or None
+    use_split = bool(inflow_col and outflow_col)
 
     if use_split:
         if inflow_col not in fieldnames or outflow_col not in fieldnames:
             raise ValueError(f"Inflow/outflow columns not found in CSV. Available columns: {', '.join(fieldnames)}")
         amount_col = None
     else:
-        amount_col = find_col(amount_cols)
+        amount_col = resolve_col('amount', amount_cols)
 
-    type_col = find_col(type_cols)
-    category_col = find_col(category_cols)
-    currency_col = find_col(currency_cols)
-    fx_rate_col = find_col(fx_rate_cols)
+    type_col = resolve_col('type', type_cols)
+    category_col = resolve_col('category', category_cols)
+    currency_col = resolve_col('currency', currency_cols)
+    fx_rate_col = resolve_col('fx_rate', fx_rate_cols)
 
     if not date_col or not desc_col:
         raise ValueError(
@@ -428,22 +482,69 @@ def parse_csv(
     return transactions
 
 
+async def enrich_with_category_suggestions(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    transactions: list[TransactionImport],
+) -> list[TransactionImport]:
+    result = await session.execute(
+        select(Rule)
+        .where(Rule.user_id == user_id, Rule.is_active == True)
+        .order_by(Rule.priority, Rule.id)
+    )
+    rules = result.scalars().all()
+
+    category_result = await session.execute(
+        select(Category).where(Category.user_id == user_id)
+    )
+    category_name_map = {str(c.id): c.name for c in category_result.scalars()}
+
+    if not rules:
+        return transactions
+
+    for txn in transactions:
+        proxy = SimpleNamespace(
+            description=txn.description,
+            amount=txn.amount,
+            date=txn.date,
+            type=txn.type,
+            account_id=None,
+            payee_id=None,
+            notes=None,
+            category_id=None,
+        )
+        category_set = False
+        for rule in rules:
+            conditions = rule.conditions or []
+            actions = rule.actions or []
+            if evaluate_conditions(rule.conditions_op, conditions, proxy):
+                category_set = apply_rule_actions(actions, proxy, category_set)
+        if proxy.category_id:
+            txn.suggested_category_id = proxy.category_id
+            txn.suggested_category_name = category_name_map.get(str(proxy.category_id))
+
+    return transactions
+
+
 async def import_transactions(
     session: AsyncSession,
     user_id: uuid.UUID,
     account_id: uuid.UUID,
-    transactions: list[TransactionBase],
+    transactions: list[TransactionImport],
     source: str,
     filename: str = "",
     detected_format: str = "",
     detect_duplicates: bool = True,
-) -> tuple[int, int, uuid.UUID]:
-    """Import transactions into an account. Returns (imported, skipped, import_log_id)."""
+) -> tuple[int, int, int, uuid.UUID]:
+    """Import transactions into an account. Returns (imported, skipped, excluded, import_log_id)."""
     from app.models.import_log import ImportLog
 
-    # Calculate summaries
-    total_credit = sum(t.amount for t in transactions if t.type == "credit")
-    total_debit = sum(t.amount for t in transactions if t.type == "debit")
+    included = [t for t in transactions if not t.excluded]
+    excluded_count = len(transactions) - len(included)
+
+    # Calculate summaries from included transactions only
+    total_credit = sum(t.amount for t in included if t.type == "credit")
+    total_debit = sum(t.amount for t in included if t.type == "debit")
 
     # Create import log first to get its ID
     import_log = ImportLog(
@@ -451,7 +552,7 @@ async def import_transactions(
         account_id=account_id,
         filename=filename,
         format=detected_format,
-        transaction_count=len(transactions),
+        transaction_count=len(included),
         total_credit=total_credit,
         total_debit=total_debit,
     )
@@ -476,7 +577,7 @@ async def import_transactions(
     effective_format = (detected_format or source or "").lower()
     should_detect_duplicates = detect_duplicates if effective_format == "csv" else True
 
-    for txn_data in transactions:
+    for txn_data in included:
         # Resolve currency: CSV value > account currency
         txn_currency = txn_data.currency or account_currency
 
@@ -516,7 +617,13 @@ async def import_transactions(
             import_payee_entity = await get_or_create_payee(session, user_id, import_payee_raw)
             import_payee_id = import_payee_entity.id
 
-        category_id = category_map.get(getattr(txn_data, "category_name", None)) if getattr(txn_data, "category_name", None) else None
+        user_category_id = txn_data.category_id
+        suggested_cat_id = txn_data.suggested_category_id
+        csv_category_id = category_map.get(txn_data.category_name) if txn_data.category_name else None
+        if txn_data.force_uncategorized:
+            category_id = None
+        else:
+            category_id = user_category_id or suggested_cat_id or csv_category_id
 
         transaction = Transaction(
             user_id=user_id,
@@ -535,14 +642,14 @@ async def import_transactions(
         )
         apply_effective_date(transaction, account)
 
-        # If CSV provided an fx_rate, use it directly
         if txn_data.fx_rate:
             transaction.fx_rate_used = txn_data.fx_rate
             transaction.amount_primary = txn_data.amount * txn_data.fx_rate
 
         session.add(transaction)
         await session.flush()
-        await apply_rules_to_transaction(session, user_id, transaction)
+
+        await apply_rules_to_transaction(session, user_id, transaction, skip_category_rules=txn_data.force_uncategorized)
 
         # Only auto-convert if no fx_rate was provided by the CSV
         if not txn_data.fx_rate:
@@ -554,7 +661,7 @@ async def import_transactions(
     import_log.transaction_count = imported
 
     await session.commit()
-    return imported, skipped, import_log.id
+    return imported, skipped, excluded_count, import_log.id
 
 def normalize_amount(amount_str: str) -> str:
     """

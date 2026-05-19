@@ -631,3 +631,52 @@ async def test_create_transfer_invalid_account(client: AsyncClient, auth_headers
         headers=auth_headers,
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_summary(
+    client: AsyncClient, auth_headers, test_transactions: list[Transaction]
+):
+    """The list response carries an income/expense/net summary across all
+    matching rows (issue #185). Fixture: credits 8000 + 150, debits
+    25.50 + 45.00 + 39.90."""
+    response = await client.get("/api/transactions", headers=auth_headers)
+    assert response.status_code == 200
+    summary = response.json()["summary"]
+    assert summary is not None
+    assert summary["income"] == pytest.approx(8150.0)
+    assert summary["expense"] == pytest.approx(110.4)
+    assert summary["net"] == pytest.approx(8039.6)
+    assert summary["currency"]
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_summary_spans_all_pages(
+    client: AsyncClient, auth_headers, test_transactions: list[Transaction]
+):
+    """The summary covers every matching row, not just the current page —
+    so a paginated request still totals the full result set."""
+    response = await client.get(
+        "/api/transactions?page=1&limit=2", headers=auth_headers
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) == 2  # page is capped
+    assert data["summary"]["net"] == pytest.approx(8039.6)  # total is not
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_summary_respects_filters(
+    client: AsyncClient, auth_headers, test_transactions: list[Transaction],
+    test_categories: list[Category],
+):
+    """Filtering narrows the summary the same way it narrows the rows."""
+    cat_id = test_categories[1].id  # Transporte → UBER TRIP, 25.50 debit
+    response = await client.get(
+        f"/api/transactions?category_id={cat_id}", headers=auth_headers
+    )
+    assert response.status_code == 200
+    summary = response.json()["summary"]
+    assert summary["income"] == pytest.approx(0.0)
+    assert summary["expense"] == pytest.approx(25.5)
+    assert summary["net"] == pytest.approx(-25.5)

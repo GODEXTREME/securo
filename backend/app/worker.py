@@ -54,4 +54,7 @@ celery_app.conf.include = [
     "app.tasks.recurring_tasks",
     "app.tasks.asset_tasks",
     "app.tasks.fx_rate_tasks",
+    # Optional agents module — registering the import is harmless when
+    # AGENTS_ENABLED=false (the task just won't be dispatched).
+    "app.agents.tasks.ingest",
 ]

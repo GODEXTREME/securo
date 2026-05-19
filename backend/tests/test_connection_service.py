@@ -1521,3 +1521,399 @@ async def test_sync_updates_existing_bill_idempotently(
     assert len(rows) == 1, "second sync must not duplicate the row"
     assert rows[0].due_date == date(2026, 4, 16)
     assert rows[0].total_amount == Decimal("125.50")
+
+
+# ---------------------------------------------------------------------------
+# Synced-transaction duplicate prevention
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sync_dedupes_pending_posted_twin_in_same_fetch(
+    session: AsyncSession, test_user,
+):
+    """A provider emits the same operation twice in a single fetch — once
+    pending (the scheduled row) and once posted (the executed row) — under
+    two different external_ids. Only the posted row must land."""
+    conn = await _make_connection(session, test_user.id, "Twin Bank")
+    mock_provider = AsyncMock()
+    mock_provider.refresh_credentials = AsyncMock(return_value={"token": "t"})
+    mock_provider.get_accounts = AsyncMock(return_value=[
+        AccountData(
+            external_id="twin-acc-1", name="Conta Corrente",
+            type="checking", balance=Decimal("1000"), currency="BRL",
+        ),
+    ])
+    mock_provider.get_transactions = AsyncMock(return_value=[
+        TransactionData(
+            external_id="provider-id-pending",
+            description="INVESTIMENTO/OPERACAOB3* - DOCTO: 8162",
+            amount=Decimal("943.23"), date=date(2026, 4, 20),
+            type="debit", currency="BRL", status="pending",
+        ),
+        TransactionData(
+            external_id="provider-id-posted",
+            description="INVESTIMENTO/OPERACAOB3* - DOCTO: 1270397",
+            amount=Decimal("943.23"), date=date(2026, 4, 20),
+            type="debit", currency="BRL", status="posted",
+        ),
+    ])
+
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         patch("app.services.connection_service.detect_transfer_pairs", new_callable=AsyncMock), \
+         patch("app.services.connection_service.stamp_primary_amount", new_callable=AsyncMock), \
+         patch("app.services.connection_service.apply_rules_to_transaction", new_callable=AsyncMock):
+        await sync_connection(session, conn.id, test_user.id)
+
+    rows = (await session.execute(
+        select(Transaction).where(
+            Transaction.user_id == test_user.id,
+            Transaction.source == "sync",
+        )
+    )).scalars().all()
+    assert len(rows) == 1, "pending+posted twin must collapse to a single row"
+    assert rows[0].status == "posted"
+    assert rows[0].external_id == "provider-id-posted"
+
+
+@pytest.mark.asyncio
+async def test_sync_dedupes_pending_posted_twin_with_identical_descriptions(
+    session: AsyncSession, test_user,
+):
+    """Same case as above but the descriptions are byte-identical — the
+    status differential alone is enough to collapse them."""
+    conn = await _make_connection(session, test_user.id, "Identical Desc Bank")
+    mock_provider = AsyncMock()
+    mock_provider.refresh_credentials = AsyncMock(return_value={"token": "t"})
+    mock_provider.get_accounts = AsyncMock(return_value=[
+        AccountData(
+            external_id="id-acc-1", name="Conta",
+            type="checking", balance=Decimal("0"), currency="BRL",
+        ),
+    ])
+    mock_provider.get_transactions = AsyncMock(return_value=[
+        TransactionData(
+            external_id="provider-pending",
+            description="PIX AGENDADO BENEFICIARIO XYZ",
+            amount=Decimal("250.00"), date=date(2026, 4, 22),
+            type="debit", currency="BRL", status="pending",
+        ),
+        TransactionData(
+            external_id="provider-posted",
+            description="PIX AGENDADO BENEFICIARIO XYZ",
+            amount=Decimal("250.00"), date=date(2026, 4, 22),
+            type="debit", currency="BRL", status="posted",
+        ),
+    ])
+
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         patch("app.services.connection_service.detect_transfer_pairs", new_callable=AsyncMock), \
+         patch("app.services.connection_service.stamp_primary_amount", new_callable=AsyncMock), \
+         patch("app.services.connection_service.apply_rules_to_transaction", new_callable=AsyncMock):
+        await sync_connection(session, conn.id, test_user.id)
+
+    rows = (await session.execute(
+        select(Transaction).where(
+            Transaction.user_id == test_user.id,
+            Transaction.source == "sync",
+        )
+    )).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "posted"
+
+
+@pytest.mark.asyncio
+async def test_sync_keeps_unrelated_pending_and_posted_with_different_descriptions(
+    session: AsyncSession, test_user,
+):
+    """Two unrelated transactions that happen to share a date and amount —
+    one pending, one posted, completely different merchants — must NOT be
+    collapsed. The description-similarity guard protects against this
+    false positive."""
+    conn = await _make_connection(session, test_user.id, "Unrelated Bank")
+    mock_provider = AsyncMock()
+    mock_provider.refresh_credentials = AsyncMock(return_value={"token": "t"})
+    mock_provider.get_accounts = AsyncMock(return_value=[
+        AccountData(
+            external_id="unr-acc-1", name="Conta",
+            type="checking", balance=Decimal("0"), currency="BRL",
+        ),
+    ])
+    mock_provider.get_transactions = AsyncMock(return_value=[
+        TransactionData(
+            external_id="unrelated-pending",
+            description="STARBUCKS COFFEE",
+            amount=Decimal("25.00"), date=date(2026, 4, 22),
+            type="debit", currency="BRL", status="pending",
+        ),
+        TransactionData(
+            external_id="unrelated-posted",
+            description="UBER TRIP",
+            amount=Decimal("25.00"), date=date(2026, 4, 22),
+            type="debit", currency="BRL", status="posted",
+        ),
+    ])
+
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         patch("app.services.connection_service.detect_transfer_pairs", new_callable=AsyncMock), \
+         patch("app.services.connection_service.stamp_primary_amount", new_callable=AsyncMock), \
+         patch("app.services.connection_service.apply_rules_to_transaction", new_callable=AsyncMock):
+        await sync_connection(session, conn.id, test_user.id)
+
+    rows = (await session.execute(
+        select(Transaction).where(
+            Transaction.user_id == test_user.id,
+            Transaction.source == "sync",
+        )
+    )).scalars().all()
+    assert len(rows) == 2, "unrelated transactions must not be collapsed"
+
+
+@pytest.mark.asyncio
+async def test_sync_upgrades_pending_to_posted_when_twin_arrives(
+    session: AsyncSession, test_user,
+):
+    """When the pending row was synced first and the posted twin arrives on
+    the next sync with a different external_id, the existing row must be
+    upgraded in place — not duplicated."""
+    conn = await _make_connection(session, test_user.id, "Twin Upgrade Bank")
+    mock_provider = AsyncMock()
+    mock_provider.refresh_credentials = AsyncMock(return_value={"token": "t"})
+    mock_provider.get_accounts = AsyncMock(return_value=[
+        AccountData(
+            external_id="up-acc-1", name="Conta",
+            type="checking", balance=Decimal("0"), currency="BRL",
+        ),
+    ])
+    pending = TransactionData(
+        external_id="provider-pending",
+        description="PIX AGENDADO - DOCTO: 11111",
+        amount=Decimal("100.00"), date=date(2026, 4, 20),
+        type="debit", currency="BRL", status="pending",
+    )
+    mock_provider.get_transactions = AsyncMock(return_value=[pending])
+
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         patch("app.services.connection_service.detect_transfer_pairs", new_callable=AsyncMock), \
+         patch("app.services.connection_service.stamp_primary_amount", new_callable=AsyncMock), \
+         patch("app.services.connection_service.apply_rules_to_transaction", new_callable=AsyncMock):
+        await sync_connection(session, conn.id, test_user.id)
+
+    # Second sync: posted twin arrives with a new id and identifier; the
+    # pending row is also still in the feed (providers don't always drop the
+    # scheduled row immediately).
+    posted = TransactionData(
+        external_id="provider-posted",
+        description="PIX AGENDADO - DOCTO: 22222",
+        amount=Decimal("100.00"), date=date(2026, 4, 20),
+        type="debit", currency="BRL", status="posted",
+    )
+    mock_provider.get_transactions = AsyncMock(return_value=[pending, posted])
+
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         patch("app.services.connection_service.detect_transfer_pairs", new_callable=AsyncMock), \
+         patch("app.services.connection_service.stamp_primary_amount", new_callable=AsyncMock), \
+         patch("app.services.connection_service.apply_rules_to_transaction", new_callable=AsyncMock):
+        await sync_connection(session, conn.id, test_user.id)
+
+    rows = (await session.execute(
+        select(Transaction).where(
+            Transaction.user_id == test_user.id,
+            Transaction.source == "sync",
+        )
+    )).scalars().all()
+    assert len(rows) == 1, "pending+posted twins must collapse to one row"
+    # Posted truth wins: status flipped and external_id swapped to the new one
+    # so subsequent syncs match by id.
+    assert rows[0].status == "posted"
+    assert rows[0].external_id == "provider-posted"
+
+
+@pytest.mark.asyncio
+async def test_sync_dedupes_advanced_installment_payment(
+    session: AsyncSession, test_user,
+):
+    """A credit-card installment paid in advance shows up as posted on the
+    current bill *and* pending on the next bill. Two different external
+    ids, two different bill ids, but same installment fingerprint
+    (purchase_date / number / total). Only the posted row must land,
+    linked to the current bill."""
+    from app.models.credit_card_bill import CreditCardBill
+
+    conn = await _make_connection(session, test_user.id, "Inst Bank")
+
+    bill_current = BillData(
+        external_id="bill-current",
+        due_date=date(2026, 5, 10),
+        total_amount=Decimal("241.50"),
+        currency="BRL",
+    )
+    bill_next = BillData(
+        external_id="bill-next",
+        due_date=date(2026, 6, 10),
+        total_amount=Decimal("241.50"),
+        currency="BRL",
+    )
+
+    posted_current = TransactionData(
+        external_id="provider-inst-posted",
+        description="HTM*INAA CONSULTOR 06/12",
+        amount=Decimal("241.50"), date=date(2026, 4, 28),
+        type="debit", currency="BRL", status="posted",
+        installment_number=6, total_installments=12,
+        installment_total_amount=Decimal("2898.00"),
+        installment_purchase_date=date(2025, 11, 28),
+        bill_external_id="bill-current",
+    )
+    pending_next = TransactionData(
+        external_id="provider-inst-pending",
+        description="HTM*INAA CONSULTOR 06/12",
+        amount=Decimal("241.50"), date=date(2026, 5, 9),
+        type="debit", currency="BRL", status="pending",
+        installment_number=6, total_installments=12,
+        installment_total_amount=Decimal("2898.00"),
+        installment_purchase_date=date(2025, 11, 28),
+        bill_external_id="bill-next",
+    )
+
+    mock_provider = _cc_provider_mock(
+        bills=[bill_current, bill_next],
+        transactions=[posted_current, pending_next],
+    )
+
+    p1, p2, p3 = _patch_sync_helpers()
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         p1, p2, p3:
+        await sync_connection(session, conn.id, test_user.id)
+
+    rows = (await session.execute(
+        select(Transaction).where(
+            Transaction.user_id == test_user.id,
+            Transaction.source == "sync",
+        )
+    )).scalars().all()
+    assert len(rows) == 1, (
+        "advanced installment must not double-count: POSTED on current bill "
+        "and PENDING on next bill are the same logical charge"
+    )
+    survivor = rows[0]
+    assert survivor.status == "posted"
+    assert survivor.installment_number == 6
+    assert survivor.total_installments == 12
+
+    bill_current_row = (await session.execute(
+        select(CreditCardBill).where(CreditCardBill.external_id == "bill-current")
+    )).scalar_one()
+    assert survivor.bill_id == bill_current_row.id, (
+        "survivor must stay linked to the bill that actually paid the installment"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_dedupes_advanced_installment_when_pending_lands_first(
+    session: AsyncSession, test_user,
+):
+    """Same as the previous test but the pending next-bill row arrives
+    before the posted current-bill row in the fetch list. Order must not
+    matter — posted still wins."""
+    conn = await _make_connection(session, test_user.id, "Inst Order Bank")
+
+    bill_current = BillData(
+        external_id="bill-current-2",
+        due_date=date(2026, 5, 10),
+        total_amount=Decimal("100"), currency="BRL",
+    )
+    bill_next = BillData(
+        external_id="bill-next-2",
+        due_date=date(2026, 6, 10),
+        total_amount=Decimal("100"), currency="BRL",
+    )
+
+    pending = TransactionData(
+        external_id="provider-pend-first",
+        description="LIVRARIA SARAIVA 03/06",
+        amount=Decimal("50.00"), date=date(2026, 5, 5),
+        type="debit", currency="BRL", status="pending",
+        installment_number=3, total_installments=6,
+        installment_total_amount=Decimal("300.00"),
+        installment_purchase_date=date(2026, 3, 5),
+        bill_external_id="bill-next-2",
+    )
+    posted = TransactionData(
+        external_id="provider-post-second",
+        description="LIVRARIA SARAIVA 03/06",
+        amount=Decimal("50.00"), date=date(2026, 4, 28),
+        type="debit", currency="BRL", status="posted",
+        installment_number=3, total_installments=6,
+        installment_total_amount=Decimal("300.00"),
+        installment_purchase_date=date(2026, 3, 5),
+        bill_external_id="bill-current-2",
+    )
+
+    mock_provider = _cc_provider_mock(
+        bills=[bill_current, bill_next],
+        transactions=[pending, posted],  # pending first
+    )
+
+    p1, p2, p3 = _patch_sync_helpers()
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         p1, p2, p3:
+        await sync_connection(session, conn.id, test_user.id)
+
+    rows = (await session.execute(
+        select(Transaction).where(
+            Transaction.user_id == test_user.id,
+            Transaction.source == "sync",
+        )
+    )).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "posted"
+    assert rows[0].external_id == "provider-post-second"
+
+
+@pytest.mark.asyncio
+async def test_sync_keeps_genuine_same_day_repeats(
+    session: AsyncSession, test_user,
+):
+    """Two genuine same-day same-amount transactions with byte-identical
+    descriptions and identical statuses must NOT be collapsed — those are
+    real repeats (e.g. two identical fares charged on the same day), not
+    provider-side duplicates. Guards against false positives in the new
+    dedup."""
+    conn = await _make_connection(session, test_user.id, "Repeat Bank")
+    mock_provider = AsyncMock()
+    mock_provider.refresh_credentials = AsyncMock(return_value={"token": "t"})
+    mock_provider.get_accounts = AsyncMock(return_value=[
+        AccountData(
+            external_id="rep-acc-1", name="Conta",
+            type="checking", balance=Decimal("0"), currency="BRL",
+        ),
+    ])
+    mock_provider.get_transactions = AsyncMock(return_value=[
+        TransactionData(
+            external_id="uber-1",
+            description="UBER TRIP",
+            amount=Decimal("25.00"), date=date(2026, 4, 20),
+            type="debit", currency="BRL", status="posted",
+        ),
+        TransactionData(
+            external_id="uber-2",
+            description="UBER TRIP",
+            amount=Decimal("25.00"), date=date(2026, 4, 20),
+            type="debit", currency="BRL", status="posted",
+        ),
+    ])
+
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         patch("app.services.connection_service.detect_transfer_pairs", new_callable=AsyncMock), \
+         patch("app.services.connection_service.stamp_primary_amount", new_callable=AsyncMock), \
+         patch("app.services.connection_service.apply_rules_to_transaction", new_callable=AsyncMock):
+        await sync_connection(session, conn.id, test_user.id)
+
+    rows = (await session.execute(
+        select(Transaction).where(
+            Transaction.user_id == test_user.id,
+            Transaction.source == "sync",
+        )
+    )).scalars().all()
+    assert len(rows) == 2, "identical-description same-day repeats must be kept"
