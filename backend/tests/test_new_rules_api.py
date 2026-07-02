@@ -6,8 +6,9 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
+from app.schemas.rule import RuleAction, RuleCondition, RuleCreate
 from app.services.category_service import create_default_categories
-from app.services.rule_service import create_default_rules
+from app.services.rule_service import create_default_rules, create_rule
 
 
 
@@ -54,6 +55,79 @@ async def test_create_rule(client: AsyncClient, auth_headers, test_categories):
     data = response.json()
     assert data["name"] == "Test Rule"
     assert data["conditions"][0]["value"] == "IFOOD"
+    assert "applied_count" in data
+
+
+@pytest.mark.asyncio
+async def test_create_rule_applies_to_existing_transactions(
+    client: AsyncClient, auth_headers, test_transactions, test_categories,
+):
+    """Creating a rule immediately applies it to existing transactions and
+    reports how many were affected, without needing apply-all.
+
+    NETFLIX starts uncategorised in the fixture, so the new rule categorises it.
+    """
+    cat_food = str(test_categories[0].id)
+    payload = {
+        "name": "Netflix",
+        "conditions_op": "and",
+        "conditions": [{"field": "description", "op": "contains", "value": "NETFLIX"}],
+        "actions": [{"op": "set_category", "value": cat_food}],
+        "priority": 5,
+        "is_active": True,
+    }
+    response = await client.post("/api/rules", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["applied_count"] >= 1
+
+    # The matching transaction is categorised without an explicit apply-all call.
+    items = (await client.get("/api/transactions", headers=auth_headers)).json()["items"]
+    netflix = {t["description"]: t for t in items}.get("NETFLIX")
+    assert netflix is not None
+    assert netflix["category_id"] == cat_food
+
+
+@pytest.mark.asyncio
+async def test_create_rule_does_not_overwrite_existing_category(
+    client: AsyncClient, auth_headers, test_transactions, test_categories,
+):
+    """Auto-apply on create is non-destructive: an already-categorised
+    transaction keeps its category instead of being clobbered."""
+    original = str(test_categories[0].id)  # IFOOD RESTAURANTE is pre-set to this
+    other = str(test_categories[1].id)
+    payload = {
+        "name": "iFood recat",
+        "conditions_op": "and",
+        "conditions": [{"field": "description", "op": "contains", "value": "IFOOD"}],
+        "actions": [{"op": "set_category", "value": other}],
+        "priority": 5,
+        "is_active": True,
+    }
+    response = await client.post("/api/rules", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["applied_count"] == 0
+
+    items = (await client.get("/api/transactions", headers=auth_headers)).json()["items"]
+    ifood = {t["description"]: t for t in items}.get("IFOOD RESTAURANTE")
+    assert ifood["category_id"] == original
+
+
+@pytest.mark.asyncio
+async def test_create_rule_no_match_reports_zero(
+    client: AsyncClient, auth_headers, test_transactions, test_categories,
+):
+    """A rule that matches nothing reports applied_count == 0."""
+    payload = {
+        "name": "No match",
+        "conditions_op": "and",
+        "conditions": [{"field": "description", "op": "contains", "value": "ZZZ_NOMATCH"}],
+        "actions": [{"op": "set_category", "value": str(test_categories[0].id)}],
+        "priority": 5,
+        "is_active": True,
+    }
+    response = await client.post("/api/rules", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["applied_count"] == 0
 
 
 @pytest.mark.asyncio
@@ -65,7 +139,85 @@ async def test_update_rule(client: AsyncClient, auth_headers, test_rules):
         headers=auth_headers,
     )
     assert response.status_code == 200
-    assert response.json()["name"] == "Updated Name"
+    data = response.json()
+    assert data["name"] == "Updated Name"
+    assert "applied_count" in data
+
+
+@pytest.mark.asyncio
+async def test_update_rule_name_does_not_apply_to_existing_transactions(
+    client: AsyncClient,
+    auth_headers,
+    session: AsyncSession,
+    test_user: User,
+    test_workspace,
+    test_transactions,
+    test_categories,
+):
+    cat_food = str(test_categories[0].id)
+    rule = await create_rule(
+        session,
+        test_workspace.id,
+        test_user.id,
+        RuleCreate(
+            name="Netflix direct",
+            conditions_op="and",
+            conditions=[RuleCondition(field="description", op="contains", value="NETFLIX")],
+            actions=[RuleAction(op="set_category", value=cat_food)],
+            priority=5,
+            is_active=True,
+        ),
+    )
+
+    response = await client.patch(
+        f"/api/rules/{rule.id}",
+        json={"name": "Netflix renamed"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["applied_count"] == 0
+
+    items = (await client.get("/api/transactions", headers=auth_headers)).json()["items"]
+    netflix = {t["description"]: t for t in items}.get("NETFLIX")
+    assert netflix is not None
+    assert netflix["category_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_rule_applies_to_existing_transactions(
+    client: AsyncClient, auth_headers, test_transactions, test_categories,
+):
+    """Updating a rule immediately applies the new definition to history.
+
+    This covers adding a new merchant/pattern to an existing rule from a
+    transaction detail modal without requiring an explicit apply-all call.
+    """
+    cat_food = str(test_categories[0].id)
+    create_payload = {
+        "name": "Streaming",
+        "conditions_op": "and",
+        "conditions": [{"field": "description", "op": "contains", "value": "ZZZ_NOMATCH"}],
+        "actions": [{"op": "set_category", "value": cat_food}],
+        "priority": 5,
+        "is_active": True,
+    }
+    create_response = await client.post("/api/rules", json=create_payload, headers=auth_headers)
+    assert create_response.status_code == 201
+    assert create_response.json()["applied_count"] == 0
+
+    rule_id = create_response.json()["id"]
+    update_response = await client.patch(
+        f"/api/rules/{rule_id}",
+        json={"conditions": [{"field": "description", "op": "contains", "value": "NETFLIX"}]},
+        headers=auth_headers,
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["applied_count"] >= 1
+
+    items = (await client.get("/api/transactions", headers=auth_headers)).json()["items"]
+    netflix = {t["description"]: t for t in items}.get("NETFLIX")
+    assert netflix is not None
+    assert netflix["category_id"] == cat_food
 
 
 @pytest.mark.asyncio
@@ -285,6 +437,7 @@ async def test_rule_user_isolation(
 ):
     """One user's rules don't affect another user's transactions."""
     import bcrypt as _bcrypt
+    from app.services.workspace_service import create_personal_workspace_for_user
 
     # Create second user
     hashed = _bcrypt.hashpw(b"otherpass123", _bcrypt.gensalt()).decode()
@@ -299,6 +452,8 @@ async def test_rule_user_isolation(
                       "timezone": "America/Sao_Paulo", "currency_display": "BRL"},
     )
     session.add(user2)
+    await session.flush()
+    await create_personal_workspace_for_user(session, user2)
     await session.commit()
 
     # Login as user2
@@ -320,3 +475,121 @@ async def test_rule_user_isolation(
     items = response.json()["items"]
     # Verify user1 still has transactions
     assert len(items) >= 5
+
+
+@pytest.mark.asyncio
+async def test_export_rules_serializes_category_actions_by_name(client: AsyncClient, auth_headers, test_rules, test_categories):
+    response = await client.get("/api/rules/export", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["content-disposition"].startswith("attachment;")
+    payload = response.json()
+    assert payload["format"] == "securo-categorization-rules"
+    assert payload["version"] == 1
+    exported = {rule["name"]: rule for rule in payload["rules"]}
+    assert set(exported) == {"UBER rule", "IFOOD rule", "SALARIO rule"}
+    uber_action = exported["UBER rule"]["actions"][0]
+    assert uber_action == {"op": "set_category", "value": "Transporte"}
+    assert "id" not in exported["UBER rule"]
+    assert "user_id" not in exported["UBER rule"]
+
+
+@pytest.mark.asyncio
+async def test_import_rules_requires_overwrite_confirmation_when_rules_exist(
+    client: AsyncClient, auth_headers, test_rules, test_categories
+):
+    payload = {
+        "format": "securo-categorization-rules",
+        "version": 1,
+        "rules": [
+            {
+                "name": "Imported Netflix",
+                "conditions_op": "and",
+                "conditions": [{"field": "description", "op": "contains", "value": "NETFLIX"}],
+                "actions": [{"op": "set_category", "value": "Alimentação"}],
+                "priority": 7,
+                "is_active": True,
+            }
+        ],
+    }
+
+    response = await client.post("/api/rules/import", json={"payload": payload}, headers=auth_headers)
+
+    assert response.status_code == 409
+    assert "overwrite" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_import_rules_overwrites_existing_rules_and_maps_categories_by_name(
+    client: AsyncClient, auth_headers, test_rules, test_categories
+):
+    payload = {
+        "format": "securo-categorization-rules",
+        "version": 1,
+        "rules": [
+            {
+                "name": "Imported Netflix",
+                "conditions_op": "and",
+                "conditions": [{"field": "description", "op": "contains", "value": "NETFLIX"}],
+                "actions": [{"op": "set_category", "value": "Alimentação"}],
+                "priority": 7,
+                "is_active": True,
+            },
+            {
+                "name": "Missing category rule",
+                "conditions_op": "and",
+                "conditions": [{"field": "description", "op": "contains", "value": "UNKNOWN"}],
+                "actions": [{"op": "set_category", "value": "Does Not Exist"}],
+                "priority": 8,
+                "is_active": True,
+            },
+        ],
+    }
+
+    response = await client.post(
+        "/api/rules/import",
+        json={"payload": payload, "overwrite": True},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"imported": 1, "skipped": 1, "overwritten": 3}
+    rules_response = await client.get("/api/rules", headers=auth_headers)
+    rules = rules_response.json()
+    assert [r["name"] for r in rules] == ["Imported Netflix"]
+    assert rules[0]["actions"] == [{"op": "set_category", "value": str(test_categories[0].id)}]
+
+
+@pytest.mark.asyncio
+async def test_import_rules_with_overwrite_preserves_existing_when_every_rule_is_skipped(
+    client: AsyncClient, auth_headers, test_rules
+):
+    payload = {
+        "format": "securo-categorization-rules",
+        "version": 1,
+        "rules": [
+            {
+                "name": "External groceries rule",
+                "conditions_op": "and",
+                "conditions": [{"field": "description", "op": "contains", "value": "MARKET"}],
+                "actions": [{"op": "set_category", "value": "Groceries"}],
+                "priority": 7,
+                "is_active": True,
+            }
+        ],
+    }
+
+    before_response = await client.get("/api/rules", headers=auth_headers)
+    before_names = [rule["name"] for rule in before_response.json()]
+
+    response = await client.post(
+        "/api/rules/import",
+        json={"payload": payload, "overwrite": True},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"imported": 0, "skipped": 1, "overwritten": 0}
+    after_response = await client.get("/api/rules", headers=auth_headers)
+    assert [rule["name"] for rule in after_response.json()] == before_names

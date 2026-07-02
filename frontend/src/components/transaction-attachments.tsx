@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { transactions as transactionsApi, settings as settingsApi } from '@/lib/api'
 import { toast } from 'sonner'
@@ -57,7 +58,7 @@ export function TransactionAttachments({
   onPreviewChange?: (preview: AttachmentPreview | null) => void
   activePreviewId?: string | null
 }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const lastClickedRef = useRef<string | null>(null)
@@ -69,8 +70,7 @@ export function TransactionAttachments({
   const renameInputRef = useRef<HTMLInputElement>(null)
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const [optimisticFiles, setOptimisticFiles] = useState<OptimisticAttachment[]>([])
-
-  const locale = i18n.language === 'en' ? 'en-US' : i18n.language
+  const dateLocale = useDateLocale()
   const queryKey = ['attachments', transactionId]
 
   const { data: attachmentSettings } = useQuery({
@@ -528,7 +528,7 @@ export function TransactionAttachments({
                   <p className="text-[10px] text-muted-foreground mt-1 leading-tight">
                     {isUploading
                       ? t('transactions.attachmentsUploading')
-                      : `${formatFileSize(att.size)} · ${new Date((att as Attachment).created_at).toLocaleDateString(locale, { month: 'short', day: 'numeric' })}`
+                      : `${formatFileSize(att.size)} · ${new Date((att as Attachment).created_at).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })}`
                     }
                   </p>
                 </div>

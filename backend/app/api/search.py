@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
-from app.models.user import User
+from app.core.workspace_context import WorkspaceContext, current_workspace
 from app.services import search_service
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -13,8 +12,8 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 async def global_search(
     q: str = Query("", min_length=0, max_length=100),
     limit: int = Query(5, ge=1, le=20),
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     """Global search across transactions, accounts, payees, categories, goals and assets.
 
@@ -23,7 +22,8 @@ async def global_search(
     """
     hits = await search_service.search_all(
         session=session,
-        user_id=user.id,
+        workspace_id=ctx.workspace.id,
+        user_id=ctx.user_id,
         query=q,
         per_type_limit=limit,
     )

@@ -3,19 +3,25 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
-from app.models.user import User
+from app.core.workspace_context import (
+    WorkspaceContext,
+    current_workspace,
+    current_writable_workspace,
+)
 from app.providers import all_known_providers
+from app.providers.base import ProviderUserActionRequired, SessionExpiredError
 from app.schemas.bank_connection import (
     BankConnectionRead,
-    OAuthUrlRequest,
-    OAuthUrlResponse,
-    OAuthCallbackRequest,
+    ConnectionSettingsUpdate,
     ConnectTokenRequest,
     ConnectTokenResponse,
+    InstitutionListResponse,
+    OAuthCallbackRequest,
+    OAuthUrlRequest,
+    OAuthUrlResponse,
+    ReauthUrlResponse,
     ReconnectTokenResponse,
-    ConnectionSettingsUpdate,
 )
 from app.services import connection_service
 from app.services.transfer_detection_service import detect_transfer_pairs, unlink_transfer_pair
@@ -32,11 +38,11 @@ async def get_available_providers():
 @router.post("/connect-token", response_model=ConnectTokenResponse)
 async def create_connect_token(
     data: ConnectTokenRequest,
-    user: User = Depends(current_active_user),
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
 ):
     """Create a connect token for widget-based bank connection flows."""
     try:
-        token_data = await connection_service.create_connect_token(data.provider, user.id)
+        token_data = await connection_service.create_connect_token(data.provider, ctx.user_id)
         return ConnectTokenResponse(**token_data)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -49,35 +55,74 @@ async def create_connect_token(
 
 @router.get("", response_model=list[BankConnectionRead])
 async def list_connections(
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    return await connection_service.get_connections(session, user.id)
+    return await connection_service.get_connections(session, ctx.workspace.id)
 
 
 @router.post("/oauth/url", response_model=OAuthUrlResponse)
 async def get_oauth_url(
     data: OAuthUrlRequest,
-    user: User = Depends(current_active_user),
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
 ):
     try:
-        url = connection_service.get_oauth_url(data.provider, user.id)
+        url = await connection_service.get_oauth_url(
+            data.provider, ctx.user_id, ctx.workspace.id, flow_params=data.flow_params
+        )
         return OAuthUrlResponse(url=url)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+@router.get("/{provider}/institutions", response_model=InstitutionListResponse)
+async def list_provider_institutions(
+    provider: str,
+    country: str | None = None,
+    ctx: WorkspaceContext = Depends(current_workspace),
+):
+    try:
+        return await connection_service.list_provider_institutions(provider, country)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to load institutions: {str(e)}",
+        )
+
+
 @router.post("/oauth/callback", response_model=BankConnectionRead)
 async def oauth_callback(
     data: OAuthCallbackRequest,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
         connection = await connection_service.handle_oauth_callback(
-            session, user.id, data.code, data.provider
+            session,
+            ctx.workspace.id,
+            ctx.user_id,
+            data.code,
+            provider_name=data.provider,
+            state=data.state,
         )
         return connection
+    except ProviderUserActionRequired as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": str(e),
+                "code": e.code,
+                "help_url": e.help_url,
+            },
+        )
+    except SessionExpiredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE, detail=str(e)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -85,14 +130,47 @@ async def oauth_callback(
         )
 
 
+@router.post(
+    "/{connection_id}/oauth/reauth-url", response_model=ReauthUrlResponse
+)
+async def get_reauth_url(
+    connection_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        url = await connection_service.get_reauth_url(
+            session, connection_id, ctx.workspace.id, ctx.user_id
+        )
+        return ReauthUrlResponse(url=url)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to build reauth URL: {str(e)}",
+        )
+
+
 @router.post("/{connection_id}/sync")
 async def sync_connection(
     connection_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
-        connection, merged_count = await connection_service.sync_connection(session, connection_id, user.id)
+        # Manual sync is user-initiated, so ask the provider to pull fresh
+        # data from the bank before we read. Scheduled syncs (Celery) keep
+        # the default behaviour: read whatever the provider already has.
+        connection, merged_count = await connection_service.sync_connection(
+            session,
+            connection_id,
+            ctx.workspace.id,
+            ctx.user_id,
+            trigger_provider_refresh=True,
+        )
         result = BankConnectionRead.model_validate(connection)
         return {**result.model_dump(mode="json"), "merged_count": merged_count}
     except ValueError as e:
@@ -107,11 +185,11 @@ async def sync_connection(
 @router.post("/{connection_id}/reconnect-token", response_model=ReconnectTokenResponse)
 async def get_reconnect_token(
     connection_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     """Get a connect token for reconnecting an errored/expired connection."""
-    connection = await connection_service.get_connection(session, connection_id, user.id)
+    connection = await connection_service.get_connection(session, connection_id, ctx.workspace.id)
     if not connection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
 
@@ -124,7 +202,7 @@ async def get_reconnect_token(
 
     try:
         token_data = await connection_service.create_connect_token(
-            connection.provider, user.id, item_id=item_id
+            connection.provider, ctx.user_id, item_id=item_id
         )
         return ReconnectTokenResponse(**token_data)
     except Exception as e:
@@ -138,11 +216,11 @@ async def get_reconnect_token(
 async def update_settings(
     connection_id: uuid.UUID,
     data: ConnectionSettingsUpdate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     connection = await connection_service.update_connection_settings(
-        session, connection_id, user.id, data.model_dump(exclude_unset=True)
+        session, connection_id, ctx.workspace.id, data.model_dump(exclude_unset=True)
     )
     if not connection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
@@ -152,21 +230,21 @@ async def update_settings(
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_connection(
     connection_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    deleted = await connection_service.delete_connection(session, connection_id, user.id)
+    deleted = await connection_service.delete_connection(session, connection_id, ctx.workspace.id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
 
 
 @router.post("/transfers/detect")
 async def detect_transfers(
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    """One-time backfill scan: detect transfer pairs across all existing transactions."""
-    pairs_created = await detect_transfer_pairs(session, user.id)
+    """One-time backfill scan: detect transfer pairs across all existing transactions in this workspace."""
+    pairs_created = await detect_transfer_pairs(session, ctx.workspace.id)
     await session.commit()
     return {"pairs_created": pairs_created}
 
@@ -174,11 +252,11 @@ async def detect_transfers(
 @router.delete("/transfers/{pair_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_transfer(
     pair_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     """Manual unlink: remove a transfer pair link so both transactions are treated normally."""
-    unlinked = await unlink_transfer_pair(session, user.id, pair_id)
+    unlinked = await unlink_transfer_pair(session, ctx.workspace.id, pair_id)
     if not unlinked:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transfer pair not found")
     await session.commit()

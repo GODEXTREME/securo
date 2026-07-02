@@ -11,13 +11,21 @@ from app.models.asset_value import AssetValue
 from app.models.bank_connection import BankConnection
 from app.models.transaction import Transaction
 from app.models.user import User
-from app.schemas.report import CategoryTrendItem, ReportDataPoint, ReportResponse
+from app.schemas.report import (
+    CategoryTrendItem,
+    ReportDataPoint,
+    ReportMeta,
+    ReportResponse,
+    ReportSummary,
+)
+from app.services import report_service
 from app.services.report_service import (
     _add_months,
     _asset_value_at,
     _date_points,
     _format_date_label,
     _net_worth_at,
+    _report_start_date,
     get_cash_flow_report,
     get_net_worth_report,
 )
@@ -78,9 +86,46 @@ def test_date_points_monthly():
     start = date(2025, 1, 1)
     end = date(2025, 6, 15)
     points = _date_points(start, end, "monthly")
-    assert points[0] == start
-    # Last point should be end (June 15), not June 1
-    assert points[-1] == end
+    assert points[0] == date(2025, 1, 31)  # end of first month
+    assert points[-1] == end               # last point capped at end
+    assert len(points) == 6
+
+
+def test_date_points_monthly_end_of_month_snapshots():
+    """Monthly points: one EOM snapshot per month, last one capped at end."""
+    start = date(2025, 1, 1)
+    end = date(2025, 4, 15)
+    points = _date_points(start, end, "monthly")
+    assert points == [
+        date(2025, 1, 31),  # end of Jan
+        date(2025, 2, 28),  # end of Feb
+        date(2025, 3, 31),  # end of Mar
+        date(2025, 4, 15),  # capped at end (Apr 30 → Apr 15)
+    ]
+
+
+def test_date_points_monthly_december_start():
+    """December start must not crash with month rollover."""
+    start = date(2024, 12, 1)
+    end = date(2025, 2, 15)
+    points = _date_points(start, end, "monthly")
+    assert points == [
+        date(2024, 12, 31),
+        date(2025, 1, 31),
+        date(2025, 2, 15),
+    ]
+
+
+def test_date_points_monthly_feb_leap_year():
+    """End-of-month for February respects leap years."""
+    start = date(2024, 1, 1)
+    end = date(2024, 3, 1)
+    points = _date_points(start, end, "monthly")
+    assert points == [
+        date(2024, 1, 31),
+        date(2024, 2, 29),
+        date(2024, 3, 1),
+    ]
 
 
 def test_date_points_yearly():
@@ -108,15 +153,30 @@ def test_date_points_unknown_interval_defaults_to_monthly():
 
 
 def test_date_points_last_point_replaces_same_period():
-    """When end falls in the same period as the last generated point, replace it."""
+    """End date mid-month caps the last snapshot; no duplicate month labels."""
     start = date(2025, 1, 1)
     end = date(2025, 3, 15)
     points = _date_points(start, end, "monthly")
-    # March 1 and March 15 share "2025-03" label, so March 15 replaces March 1
-    assert points[-1] == end
+    assert points == [
+        date(2025, 1, 31),
+        date(2025, 2, 28),
+        date(2025, 3, 15),  # Mar 31 capped at end
+    ]
     labels = [_format_date_label(p, "monthly") for p in points]
-    # No duplicates
     assert len(labels) == len(set(labels))
+
+
+# ---------------------------------------------------------------------------
+# Pure-function tests: _report_start_date
+# ---------------------------------------------------------------------------
+
+
+def test_report_start_date_month_range_aligns_to_month_start():
+    assert _report_start_date(date(2025, 6, 15), 6) == date(2024, 12, 1)
+
+
+def test_report_start_date_ytd_uses_current_year_start():
+    assert _report_start_date(date(2025, 6, 15), 24, period="ytd") == date(2025, 1, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -172,14 +232,14 @@ async def _create_transaction(
 
 
 @pytest.mark.asyncio
-async def test_net_worth_report_structure(session: AsyncSession, test_user):
+async def test_net_worth_report_structure(session: AsyncSession, test_user, test_workspace):
     """Net worth report returns correct ReportResponse structure."""
     account = await _create_manual_account(session, test_user.id, "NW Test")
     await _create_transaction(
         session, test_user.id, account.id, 5000, "credit", date.today(), source="opening_balance"
     )
 
-    report = await get_net_worth_report(session, test_user.id, months=6, interval="monthly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=6, interval="monthly")
 
     assert report.meta.type == "net_worth"
     assert report.meta.series_keys == ["accounts", "assets", "liabilities"]
@@ -197,7 +257,7 @@ async def test_net_worth_report_structure(session: AsyncSession, test_user):
 
 
 @pytest.mark.asyncio
-async def test_net_worth_report_reflects_balance(session: AsyncSession, test_user):
+async def test_net_worth_report_reflects_balance(session: AsyncSession, test_user, test_workspace):
     """Net worth report reflects actual account balance."""
     account = await _create_manual_account(session, test_user.id, "NW Balance Test")
     await _create_transaction(
@@ -207,7 +267,7 @@ async def test_net_worth_report_reflects_balance(session: AsyncSession, test_use
         session, test_user.id, account.id, 3000, "debit", date.today()
     )
 
-    report = await get_net_worth_report(session, test_user.id, months=1, interval="monthly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1, interval="monthly")
 
     # Current net worth should be 10000 - 3000 = 7000
     assert report.summary.primary_value == 7000.0
@@ -216,7 +276,7 @@ async def test_net_worth_report_reflects_balance(session: AsyncSession, test_use
 
 
 @pytest.mark.asyncio
-async def test_net_worth_report_change_amount(session: AsyncSession, test_user):
+async def test_net_worth_report_change_amount(session: AsyncSession, test_user, test_workspace):
     """Net worth report computes change between first and last trend points."""
     account = await _create_manual_account(session, test_user.id, "NW Change Test")
 
@@ -230,14 +290,14 @@ async def test_net_worth_report_change_amount(session: AsyncSession, test_user):
         session, test_user.id, account.id, 2000, "credit", date.today()
     )
 
-    report = await get_net_worth_report(session, test_user.id, months=6, interval="monthly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=6, interval="monthly")
 
     # change_amount = last.value - first.value; should be positive
     assert report.summary.change_amount >= 0
 
 
 @pytest.mark.asyncio
-async def test_net_worth_report_excludes_closed_accounts(session: AsyncSession, test_user):
+async def test_net_worth_report_excludes_closed_accounts(session: AsyncSession, test_user, test_workspace):
     """Closed accounts are excluded from net worth."""
     # Open account with 5000
     open_acct = await _create_manual_account(session, test_user.id, "NW Open")
@@ -261,14 +321,14 @@ async def test_net_worth_report_excludes_closed_accounts(session: AsyncSession, 
         session, test_user.id, closed_acct.id, 3000, "credit", date.today(), source="opening_balance"
     )
 
-    report = await get_net_worth_report(session, test_user.id, months=1, interval="monthly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1, interval="monthly")
 
     # Should only include the open account
     assert report.summary.primary_value == 5000.0
 
 
 @pytest.mark.asyncio
-async def test_net_worth_report_intervals(session: AsyncSession, test_user):
+async def test_net_worth_report_intervals(session: AsyncSession, test_user, test_workspace):
     """Net worth report works with different interval options."""
     account = await _create_manual_account(session, test_user.id, "NW Interval Test")
     await _create_transaction(
@@ -276,9 +336,22 @@ async def test_net_worth_report_intervals(session: AsyncSession, test_user):
     )
 
     for interval in ["daily", "weekly", "monthly", "yearly"]:
-        report = await get_net_worth_report(session, test_user.id, months=6, interval=interval)
+        report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=6, interval=interval)
         assert report.meta.interval == interval
         assert len(report.trend) > 0
+
+
+@pytest.mark.asyncio
+async def test_net_worth_report_ytd_starts_at_current_year(
+    session: AsyncSession, test_user, test_workspace
+):
+    """YTD report window starts at Jan 1 while preserving granularity."""
+    report = await get_net_worth_report(
+        session, test_workspace.id, test_user.id, months=24, interval="monthly", period="ytd"
+    )
+
+    assert report.trend[0].date == f"{date.today().year}-01"
+    assert all(point.date.startswith(str(date.today().year)) for point in report.trend)
 
 
 # ---------------------------------------------------------------------------
@@ -305,12 +378,34 @@ async def test_net_worth_api_endpoint(client, auth_headers, test_transactions):
 
 
 @pytest.mark.asyncio
+async def test_net_worth_api_accepts_ytd_period(client, auth_headers):
+    """GET /reports/net-worth accepts period=ytd."""
+    response = await client.get(
+        "/api/reports/net-worth",
+        params={"period": "ytd", "interval": "monthly"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["trend"][0]["date"] == f"{date.today().year}-01"
+
+
+@pytest.mark.asyncio
 async def test_net_worth_api_validation(client, auth_headers):
     """GET /reports/net-worth validates query params."""
     # Invalid interval
     resp = await client.get(
         "/api/reports/net-worth",
         params={"interval": "invalid"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+    # Invalid period
+    resp = await client.get(
+        "/api/reports/net-worth",
+        params={"period": "rolling"},
         headers=auth_headers,
     )
     assert resp.status_code == 422
@@ -427,6 +522,49 @@ async def test_income_expenses_api_validation(client, auth_headers):
     )
     assert resp.status_code == 422
 
+    resp = await client.get(
+        "/api/reports/income-expenses",
+        params={"period": "rolling"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_income_expenses_api_accepts_ytd_period(client, auth_headers, monkeypatch):
+    """GET /reports/income-expenses passes period=ytd to service."""
+
+    async def fake_report(session, workspace_id, user_id, months, interval, currency, account_ids=None, period=None):
+        assert months == 12
+        assert interval == "monthly"
+        assert period == "ytd"
+        return ReportResponse(
+            summary=ReportSummary(
+                primary_value=0,
+                change_amount=0,
+                change_percent=None,
+                breakdowns=[],
+            ),
+            trend=[],
+            meta=ReportMeta(
+                type="income_expenses",
+                series_keys=["income", "expenses"],
+                currency=currency,
+                interval=interval,
+            ),
+            composition=[],
+            category_trend=[],
+        )
+
+    monkeypatch.setattr(report_service, "get_income_expenses_report", fake_report)
+
+    resp = await client.get(
+        "/api/reports/income-expenses",
+        params={"period": "ytd", "interval": "monthly"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
 
 @pytest.mark.asyncio
 async def test_income_expenses_api_requires_auth(client):
@@ -498,14 +636,14 @@ def test_report_response_includes_category_trend():
 
 
 @pytest.mark.asyncio
-async def test_net_worth_report_has_empty_category_trend(session: AsyncSession, test_user):
+async def test_net_worth_report_has_empty_category_trend(session: AsyncSession, test_user, test_workspace):
     """Net worth report returns empty category_trend (only used by income_expenses)."""
     account = await _create_manual_account(session, test_user.id, "NW CatTrend Test")
     await _create_transaction(
         session, test_user.id, account.id, 1000, "credit", date.today(), source="opening_balance"
     )
 
-    report = await get_net_worth_report(session, test_user.id, months=3, interval="monthly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=3, interval="monthly")
     assert report.category_trend == []
 
 
@@ -573,7 +711,7 @@ async def _add_txn(session, user_id, account_id, amount, txn_type, txn_date, sou
 
 
 @pytest.mark.asyncio
-async def test_asset_value_at_with_entries(session: AsyncSession, test_user: User):
+async def test_asset_value_at_with_entries(session: AsyncSession, test_user, test_workspace: User):
     asset = Asset(
         id=uuid.uuid4(), user_id=test_user.id, name="House",
         type="real_estate", currency="BRL",
@@ -592,12 +730,12 @@ async def test_asset_value_at_with_entries(session: AsyncSession, test_user: Use
     session.add_all([v1, v2])
     await session.commit()
 
-    total = await _asset_value_at(session, test_user.id, date.today(), "BRL")
+    total = await _asset_value_at(session, test_workspace.id, date.today(), "BRL")
     assert total == 110000.0
 
 
 @pytest.mark.asyncio
-async def test_asset_value_at_fallback_purchase_price(session: AsyncSession, test_user: User):
+async def test_asset_value_at_fallback_purchase_price(session: AsyncSession, test_user, test_workspace: User):
     asset = Asset(
         id=uuid.uuid4(), user_id=test_user.id, name="Car",
         type="vehicle", currency="BRL",
@@ -607,12 +745,12 @@ async def test_asset_value_at_fallback_purchase_price(session: AsyncSession, tes
     session.add(asset)
     await session.commit()
 
-    total = await _asset_value_at(session, test_user.id, date.today(), "BRL")
+    total = await _asset_value_at(session, test_workspace.id, date.today(), "BRL")
     assert total == 50000.0
 
 
 @pytest.mark.asyncio
-async def test_asset_value_at_excludes_archived(session: AsyncSession, test_user: User):
+async def test_asset_value_at_excludes_archived(session: AsyncSession, test_user, test_workspace: User):
     asset = Asset(
         id=uuid.uuid4(), user_id=test_user.id, name="Sold Car",
         type="vehicle", currency="BRL",
@@ -621,12 +759,12 @@ async def test_asset_value_at_excludes_archived(session: AsyncSession, test_user
     session.add(asset)
     await session.commit()
 
-    total = await _asset_value_at(session, test_user.id, date.today(), "BRL")
+    total = await _asset_value_at(session, test_workspace.id, date.today(), "BRL")
     assert total == 0.0
 
 
 @pytest.mark.asyncio
-async def test_asset_value_at_excludes_sold(session: AsyncSession, test_user: User):
+async def test_asset_value_at_excludes_sold(session: AsyncSession, test_user, test_workspace: User):
     asset = Asset(
         id=uuid.uuid4(), user_id=test_user.id, name="Sold Asset",
         type="vehicle", currency="BRL",
@@ -636,12 +774,12 @@ async def test_asset_value_at_excludes_sold(session: AsyncSession, test_user: Us
     session.add(asset)
     await session.commit()
 
-    total = await _asset_value_at(session, test_user.id, date.today(), "BRL")
+    total = await _asset_value_at(session, test_workspace.id, date.today(), "BRL")
     assert total == 0.0
 
 
 @pytest.mark.asyncio
-async def test_asset_value_at_purchase_date_after_cutoff(session: AsyncSession, test_user: User):
+async def test_asset_value_at_purchase_date_after_cutoff(session: AsyncSession, test_user, test_workspace: User):
     asset = Asset(
         id=uuid.uuid4(), user_id=test_user.id, name="Future Asset",
         type="other", currency="BRL",
@@ -651,7 +789,7 @@ async def test_asset_value_at_purchase_date_after_cutoff(session: AsyncSession, 
     session.add(asset)
     await session.commit()
 
-    total = await _asset_value_at(session, test_user.id, date.today(), "BRL")
+    total = await _asset_value_at(session, test_workspace.id, date.today(), "BRL")
     assert total == 0.0
 
 
@@ -661,7 +799,7 @@ async def test_asset_value_at_purchase_date_after_cutoff(session: AsyncSession, 
 
 
 @pytest.mark.asyncio
-async def test_net_worth_with_credit_card(session: AsyncSession, test_user: User):
+async def test_net_worth_with_credit_card(session: AsyncSession, test_user, test_workspace: User):
     checking = await _make_manual_account(session, test_user.id, "NW Check")
     await _add_txn(session, test_user.id, checking.id, 5000, "credit", date.today())
 
@@ -681,14 +819,14 @@ async def test_net_worth_with_credit_card(session: AsyncSession, test_user: User
     session.add(cc)
     await session.commit()
 
-    dp = await _net_worth_at(session, test_user.id, date.today(), "BRL")
+    dp = await _net_worth_at(session, test_workspace.id, date.today(), "BRL")
     assert dp.breakdowns["accounts"] == 5000.0
     assert dp.breakdowns["liabilities"] == 1000.0
     assert dp.value == 4000.0
 
 
 @pytest.mark.asyncio
-async def test_net_worth_with_assets(session: AsyncSession, test_user: User):
+async def test_net_worth_with_assets(session: AsyncSession, test_user, test_workspace: User):
     checking = await _make_manual_account(session, test_user.id, "NW Assets Check")
     await _add_txn(session, test_user.id, checking.id, 3000, "credit", date.today())
 
@@ -701,19 +839,32 @@ async def test_net_worth_with_assets(session: AsyncSession, test_user: User):
     session.add(asset)
     await session.commit()
 
-    dp = await _net_worth_at(session, test_user.id, date.today(), "BRL")
+    dp = await _net_worth_at(session, test_workspace.id, date.today(), "BRL")
     assert dp.breakdowns["accounts"] == 3000.0
     assert dp.breakdowns["assets"] == 200000.0
     assert dp.value == 203000.0
 
 
 @pytest.mark.asyncio
-async def test_net_worth_negative_manual_balance(session: AsyncSession, test_user: User):
+async def test_net_worth_negative_manual_balance(session: AsyncSession, test_user, test_workspace: User):
     acct = await _make_manual_account(session, test_user.id, "NW Negative")
     await _add_txn(session, test_user.id, acct.id, 1000, "debit", date.today())
 
-    dp = await _net_worth_at(session, test_user.id, date.today(), "BRL")
-    assert dp.breakdowns["accounts"] == -1000.0
+    dp = await _net_worth_at(session, test_workspace.id, date.today(), "BRL")
+    assert dp.breakdowns["accounts"] == 0.0
+    assert dp.breakdowns["liabilities"] == 1000.0
+    assert dp.value == -1000.0
+
+
+@pytest.mark.asyncio
+async def test_net_worth_negative_account_in_composition(session: AsyncSession, test_user, test_workspace: User):
+    acct = await _make_manual_account(session, test_user.id, "Overdrawn Acct")
+    await _add_txn(session, test_user.id, acct.id, 500, "debit", date.today())
+
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1, interval="monthly")
+    liability_items = [c for c in report.composition if c.group == "liabilities"]
+    labels = [c.label for c in liability_items]
+    assert "Overdrawn Acct" in labels
 
 
 # ---------------------------------------------------------------------------
@@ -722,17 +873,17 @@ async def test_net_worth_negative_manual_balance(session: AsyncSession, test_use
 
 
 @pytest.mark.asyncio
-async def test_net_worth_composition_includes_accounts(session: AsyncSession, test_user: User):
+async def test_net_worth_composition_includes_accounts(session: AsyncSession, test_user, test_workspace: User):
     acct = await _make_manual_account(session, test_user.id, "Comp Acct")
     await _add_txn(session, test_user.id, acct.id, 10000, "credit", date.today())
 
-    report = await get_net_worth_report(session, test_user.id, months=1, interval="monthly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1, interval="monthly")
     comp_labels = [c.label for c in report.composition]
     assert "Comp Acct" in comp_labels
 
 
 @pytest.mark.asyncio
-async def test_net_worth_composition_includes_assets(session: AsyncSession, test_user: User):
+async def test_net_worth_composition_includes_assets(session: AsyncSession, test_user, test_workspace: User):
     asset = Asset(
         id=uuid.uuid4(), user_id=test_user.id, name="Comp Asset",
         type="investment", currency="BRL",
@@ -742,50 +893,128 @@ async def test_net_worth_composition_includes_assets(session: AsyncSession, test
     session.add(asset)
     await session.commit()
 
-    report = await get_net_worth_report(session, test_user.id, months=1, interval="monthly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1, interval="monthly")
     comp_labels = [c.label for c in report.composition]
     assert "Comp Asset" in comp_labels
 
 
 @pytest.mark.asyncio
-async def test_net_worth_composition_uses_display_name(session: AsyncSession, test_user: User):
+async def test_net_worth_composition_uses_display_name(session: AsyncSession, test_user, test_workspace: User):
     """Composition labels must use display_name when set, falling back to name."""
     acct = await _make_manual_account(session, test_user.id, "Provider Name")
     acct.display_name = "My Nickname"
     await session.commit()
     await _add_txn(session, test_user.id, acct.id, 10000, "credit", date.today())
 
-    report = await get_net_worth_report(session, test_user.id, months=1, interval="monthly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1, interval="monthly")
     comp_labels = [c.label for c in report.composition]
     assert "My Nickname" in comp_labels
     assert "Provider Name" not in comp_labels
 
 
 @pytest.mark.asyncio
-async def test_net_worth_weekly_interval(session: AsyncSession, test_user: User):
+async def test_net_worth_intermediate_trend_points_have_composition(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """Non-last trend points carry per-item composition, not just the current snapshot."""
+    acct = await _make_manual_account(session, test_user.id, "History Acct")
+    # 135 days back lands before the first monthly cutoff (end of month-4),
+    # so the first trend point carries this account in composition.
+    await _add_txn(session, test_user.id, acct.id, 8000, "credit", date.today() - timedelta(days=135))
+
+    report = await get_net_worth_report(
+        session, test_workspace.id, test_user.id, months=4, interval="monthly"
+    )
+    assert len(report.trend) >= 2
+    # The first trend point predates today and must still have composition populated
+    first = report.trend[0]
+    assert len(first.composition) > 0
+    assert any(c.label == "History Acct" for c in first.composition)
+
+
+@pytest.mark.asyncio
+async def test_net_worth_weekly_interval(session: AsyncSession, test_user, test_workspace: User):
     acct = await _make_manual_account(session, test_user.id, "Weekly Test")
     await _add_txn(session, test_user.id, acct.id, 1000, "credit", date.today())
 
-    report = await get_net_worth_report(session, test_user.id, months=2, interval="weekly")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=2, interval="weekly")
     assert report.meta.interval == "weekly"
     assert len(report.trend) > 1
 
 
 @pytest.mark.asyncio
-async def test_net_worth_daily_interval(session: AsyncSession, test_user: User):
+async def test_net_worth_daily_interval(session: AsyncSession, test_user, test_workspace: User):
     acct = await _make_manual_account(session, test_user.id, "Daily Test")
     await _add_txn(session, test_user.id, acct.id, 500, "credit", date.today())
 
-    report = await get_net_worth_report(session, test_user.id, months=1, interval="daily")
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1, interval="daily")
     assert report.meta.interval == "daily"
     assert len(report.trend) > 10
 
 
 @pytest.mark.asyncio
-async def test_net_worth_change_percent_zero_previous(session: AsyncSession, test_user: User):
-    report = await get_net_worth_report(session, test_user.id, months=1, interval="monthly")
+async def test_net_worth_change_percent_zero_previous(session: AsyncSession, test_user, test_workspace: User):
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1, interval="monthly")
     if report.summary.primary_value == 0:
         assert report.summary.change_percent is None
+
+
+# ---------------------------------------------------------------------------
+# Trend data point change field
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_trend_change_calculation(session: AsyncSession, test_user, test_workspace: User):
+    """change is None on the first point and equals round(value - prev.value, 2) on all others.
+    Uses activity spread over time so the trend contains positive, negative, and flat changes."""
+    acct = await _make_manual_account(session, test_user.id, "Change Calc")
+    today = date.today()
+    await _add_txn(session, test_user.id, acct.id, 5000, "credit", today - timedelta(days=150))  # opening
+    await _add_txn(session, test_user.id, acct.id, 1200, "credit", today - timedelta(days=90))   # income
+    await _add_txn(session, test_user.id, acct.id, 300,  "debit",  today - timedelta(days=60))   # expense
+    await _add_txn(session, test_user.id, acct.id, 800,  "credit", today - timedelta(days=30))   # income
+    await _add_txn(session, test_user.id, acct.id, 450,  "debit",  today)                        # recent expense
+
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=6, interval="monthly")
+
+    assert len(report.trend) > 1
+    assert report.trend[0].change is None
+    for prev, curr in zip(report.trend, report.trend[1:]):
+        assert curr.change == round(curr.value - prev.value, 2)
+
+
+@pytest.mark.asyncio
+async def test_trend_change_zero_when_net_worth_unchanged(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """When no activity occurs inside the report window, every non-first point has change == 0."""
+    acct = await _make_manual_account(session, test_user.id, "Change Zero")
+    two_years_ago = date.today() - timedelta(days=730)
+    await _add_txn(session, test_user.id, acct.id, 4000, "credit", two_years_ago)
+
+    report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=3, interval="monthly")
+
+    for dp in report.trend[1:]:
+        assert dp.change == 0.0
+
+
+@pytest.mark.asyncio
+async def test_net_worth_api_trend_points_include_change(client, auth_headers, test_transactions):
+    """GET /reports/net-worth: change is None on the first point and present on all others."""
+    response = await client.get(
+        "/api/reports/net-worth",
+        params={"months": 6, "interval": "monthly"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    trend = data["trend"]
+    assert len(trend) > 1
+    assert trend[0]["change"] is None
+    for point in trend[1:]:
+        assert point["change"] is not None
 
 
 # ---------------------------------------------------------------------------
@@ -863,7 +1092,7 @@ async def _make_recurring(
 
 
 @pytest.mark.asyncio
-async def test_cash_flow_report_structure(session: AsyncSession, test_user: User):
+async def test_cash_flow_report_structure(session: AsyncSession, test_user, test_workspace: User):
     """Cash flow report returns a well-formed ReportResponse."""
     account = await _make_manual_account(session, test_user.id, "CF Structure")
     await _add_txn(
@@ -871,7 +1100,7 @@ async def test_cash_flow_report_structure(session: AsyncSession, test_user: User
         date.today(), source="opening_balance",
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=6, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=6, interval="daily")
 
     assert report.meta.type == "cash_flow"
     assert report.meta.series_keys == ["balance"]
@@ -885,7 +1114,7 @@ async def test_cash_flow_report_structure(session: AsyncSession, test_user: User
 
 @pytest.mark.asyncio
 async def test_cash_flow_starting_balance_matches_today(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """startingBalance breakdown == sum of account balances at today."""
     account = await _make_manual_account(session, test_user.id, "CF Start")
@@ -894,17 +1123,17 @@ async def test_cash_flow_starting_balance_matches_today(
         date.today(), source="opening_balance",
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
     starting = next(b for b in report.summary.breakdowns if b.key == "startingBalance")
     assert starting.value == 1234.56
 
 
 @pytest.mark.asyncio
 async def test_cash_flow_no_data_is_flat_at_zero(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """User with no accounts → flat line at 0."""
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
     assert report.summary.primary_value == 0.0
     assert report.summary.change_amount == 0.0
     assert report.summary.change_percent is None  # zero starting → percent undefined
@@ -915,7 +1144,7 @@ async def test_cash_flow_no_data_is_flat_at_zero(
 
 @pytest.mark.asyncio
 async def test_cash_flow_no_data_with_balance_is_flat(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Account with balance but no recurring → flat line at starting balance."""
     account = await _make_manual_account(session, test_user.id, "CF Flat")
@@ -924,7 +1153,7 @@ async def test_cash_flow_no_data_with_balance_is_flat(
         date.today(), source="opening_balance",
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
 
     assert report.summary.primary_value == 2500.0
     assert report.summary.change_amount == 0.0
@@ -934,7 +1163,7 @@ async def test_cash_flow_no_data_with_balance_is_flat(
 
 @pytest.mark.asyncio
 async def test_cash_flow_recurring_credit_increases_balance(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Monthly salary credit should drive ending balance above starting."""
     account = await _make_manual_account(session, test_user.id, "CF Salary")
@@ -951,7 +1180,7 @@ async def test_cash_flow_recurring_credit_increases_balance(
         day_of_month=today.day, next_occurrence=salary_day,
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
 
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
@@ -966,7 +1195,7 @@ async def test_cash_flow_recurring_credit_increases_balance(
 
 @pytest.mark.asyncio
 async def test_cash_flow_recurring_debit_decreases_balance(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Monthly rent debit should drive ending balance below starting."""
     account = await _make_manual_account(session, test_user.id, "CF Rent")
@@ -983,7 +1212,7 @@ async def test_cash_flow_recurring_debit_decreases_balance(
         day_of_month=nxt.day, next_occurrence=nxt,
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
 
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
     ending = next(b for b in report.summary.breakdowns if b.key == "endingBalance")
@@ -995,7 +1224,7 @@ async def test_cash_flow_recurring_debit_decreases_balance(
 
 @pytest.mark.asyncio
 async def test_cash_flow_inactive_recurring_excluded(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """is_active=False recurring should not contribute to projection."""
     account = await _make_manual_account(session, test_user.id, "CF Inactive")
@@ -1011,14 +1240,14 @@ async def test_cash_flow_inactive_recurring_excluded(
         next_occurrence=today + timedelta(days=2), is_active=False,
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
     assert proj_exp.value == 0.0
 
 
 @pytest.mark.asyncio
 async def test_cash_flow_recurring_end_date_stops_contribution(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Recurring with end_date in window should stop contributing past that date."""
     account = await _make_manual_account(session, test_user.id, "CF EndDate")
@@ -1037,8 +1266,8 @@ async def test_cash_flow_recurring_end_date_stops_contribution(
         day_of_month=nxt.day, next_occurrence=nxt, end_date=end,
     )
 
-    short_report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
-    long_report = await get_cash_flow_report(session, test_user.id, months=6, interval="daily")
+    short_report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
+    long_report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=6, interval="daily")
 
     short_inc = next(b for b in short_report.summary.breakdowns if b.key == "projectedIncome")
     long_inc = next(b for b in long_report.summary.breakdowns if b.key == "projectedIncome")
@@ -1048,7 +1277,7 @@ async def test_cash_flow_recurring_end_date_stops_contribution(
 
 @pytest.mark.asyncio
 async def test_cash_flow_future_dated_booked_transaction_included(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """A Transaction with date > today is folded into the projection."""
     account = await _make_manual_account(session, test_user.id, "CF Future Tx")
@@ -1062,7 +1291,7 @@ async def test_cash_flow_future_dated_booked_transaction_included(
         date.today() + timedelta(days=10),
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     ending = next(b for b in report.summary.breakdowns if b.key == "endingBalance")
 
@@ -1072,7 +1301,7 @@ async def test_cash_flow_future_dated_booked_transaction_included(
 
 @pytest.mark.asyncio
 async def test_cash_flow_opening_balance_excluded_from_inflow(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """opening_balance txns sit in starting balance and never count as inflow."""
     account = await _make_manual_account(session, test_user.id, "CF OB")
@@ -1082,14 +1311,14 @@ async def test_cash_flow_opening_balance_excluded_from_inflow(
         date.today() + timedelta(days=5), source="opening_balance",
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     assert proj_income.value == 0.0
 
 
 @pytest.mark.asyncio
 async def test_cash_flow_closed_account_excluded(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Future-dated transactions on closed accounts are excluded."""
     open_acct = await _make_manual_account(session, test_user.id, "CF Open")
@@ -1110,13 +1339,13 @@ async def test_cash_flow_closed_account_excluded(
         date.today() + timedelta(days=3),
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     assert proj_income.value == 0.0
 
 
 @pytest.mark.asyncio
-async def test_cash_flow_intervals(session: AsyncSession, test_user: User):
+async def test_cash_flow_intervals(session: AsyncSession, test_user, test_workspace: User):
     """All supported intervals produce valid trends."""
     account = await _make_manual_account(session, test_user.id, "CF Intervals")
     await _add_txn(
@@ -1132,7 +1361,7 @@ async def test_cash_flow_intervals(session: AsyncSession, test_user: User):
 
     intervals_seen = {}
     for interval in ["daily", "weekly", "monthly"]:
-        rep = await get_cash_flow_report(session, test_user.id, months=2, interval=interval)
+        rep = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval=interval)
         assert rep.meta.interval == interval
         assert len(rep.trend) > 0
         intervals_seen[interval] = rep.summary.breakdowns
@@ -1147,7 +1376,7 @@ async def test_cash_flow_intervals(session: AsyncSession, test_user: User):
 
 
 @pytest.mark.asyncio
-async def test_cash_flow_months_range(session: AsyncSession, test_user: User):
+async def test_cash_flow_months_range(session: AsyncSession, test_user, test_workspace: User):
     """Different `months` values produce trends ending at different dates."""
     account = await _make_manual_account(session, test_user.id, "CF Months")
     await _add_txn(
@@ -1155,9 +1384,9 @@ async def test_cash_flow_months_range(session: AsyncSession, test_user: User):
         date.today(), source="opening_balance",
     )
 
-    rep_1 = await get_cash_flow_report(session, test_user.id, months=1, interval="daily")
-    rep_6 = await get_cash_flow_report(session, test_user.id, months=6, interval="daily")
-    rep_12 = await get_cash_flow_report(session, test_user.id, months=12, interval="daily")
+    rep_1 = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=1, interval="daily")
+    rep_6 = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=6, interval="daily")
+    rep_12 = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=12, interval="daily")
 
     # Daily intervals → 1mo ≈ 30 points, 6mo ≈ 184, 12mo ≈ 366
     assert len(rep_1.trend) < len(rep_6.trend) < len(rep_12.trend)
@@ -1165,7 +1394,7 @@ async def test_cash_flow_months_range(session: AsyncSession, test_user: User):
 
 @pytest.mark.asyncio
 async def test_cash_flow_balance_is_running_cumulative(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Each subsequent trend point's value reflects accumulated flows."""
     account = await _make_manual_account(session, test_user.id, "CF Cumul")
@@ -1182,7 +1411,7 @@ async def test_cash_flow_balance_is_running_cumulative(
         next_occurrence=today + timedelta(days=2),
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
     # The trend should be monotonically non-decreasing (no debits, only credits)
     values = [p.value for p in report.trend]
     for prev, curr in zip(values, values[1:]):
@@ -1190,7 +1419,7 @@ async def test_cash_flow_balance_is_running_cumulative(
 
 
 @pytest.mark.asyncio
-async def test_cash_flow_composition_groups(session: AsyncSession, test_user: User):
+async def test_cash_flow_composition_groups(session: AsyncSession, test_user, test_workspace: User):
     """Composition splits recurring projections into income/expenses groups."""
     account = await _make_manual_account(session, test_user.id, "CF Comp")
     await _add_txn(
@@ -1211,7 +1440,7 @@ async def test_cash_flow_composition_groups(session: AsyncSession, test_user: Us
         description="Expense recurring",
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
 
     groups = {c.group for c in report.composition}
     assert "income" in groups
@@ -1223,7 +1452,7 @@ async def test_cash_flow_composition_groups(session: AsyncSession, test_user: Us
 
 @pytest.mark.asyncio
 async def test_cash_flow_change_percent_zero_starting(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """When starting balance is 0, change_percent is None."""
     account = await _make_manual_account(session, test_user.id, "CF Zero")
@@ -1234,12 +1463,12 @@ async def test_cash_flow_change_percent_zero_starting(
         next_occurrence=today + timedelta(days=2),
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
     assert report.summary.change_percent is None
 
 
 @pytest.mark.asyncio
-async def test_cash_flow_weekly_recurring(session: AsyncSession, test_user: User):
+async def test_cash_flow_weekly_recurring(session: AsyncSession, test_user, test_workspace: User):
     """Weekly frequency expands into multiple occurrences in window."""
     account = await _make_manual_account(session, test_user.id, "CF Weekly")
     await _add_txn(
@@ -1253,7 +1482,7 @@ async def test_cash_flow_weekly_recurring(session: AsyncSession, test_user: User
         next_occurrence=today + timedelta(days=1),
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=1, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=1, interval="daily")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
     # ~4-5 weekly occurrences in 1 month
     assert 240.0 <= proj_exp.value <= 480.0
@@ -1261,7 +1490,7 @@ async def test_cash_flow_weekly_recurring(session: AsyncSession, test_user: User
 
 @pytest.mark.asyncio
 async def test_cash_flow_only_recurrings_after_today(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Recurring with next_occurrence == today is NOT counted (today is starting)."""
     account = await _make_manual_account(session, test_user.id, "CF Today")
@@ -1278,7 +1507,7 @@ async def test_cash_flow_only_recurrings_after_today(
         next_occurrence=today,
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     # Over 2 months: 3 raw monthly occurrences (today, +1mo, +2mo) but the
     # one ON today is excluded — so we expect exactly 2 × 999 = 1998.
@@ -1362,8 +1591,8 @@ async def test_cash_flow_api_default_params(client, auth_headers, test_transacti
     assert resp.status_code == 200
     data = resp.json()
     assert data["meta"]["interval"] == "daily"
-    # 6 months * ~30 days = ~180 trend points
-    assert 150 <= len(data["trend"]) <= 200
+    # 1 month past + 6 months forward * ~30 days = ~210 trend points
+    assert 180 <= len(data["trend"]) <= 230
 
 
 @pytest.mark.asyncio
@@ -1414,7 +1643,7 @@ async def _set_accounting_mode(session: AsyncSession, mode: str) -> None:
 
 @pytest.mark.asyncio
 async def test_cash_flow_cash_mode_uses_transaction_date(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """In cash mode: a CC purchase made today (effective_date in future) is
     already counted in starting balance via the CC liability — and is NOT
@@ -1440,7 +1669,7 @@ async def test_cash_flow_cash_mode_uses_transaction_date(
     session.add(cc_purchase)
     await session.commit()
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
 
     starting = next(b for b in report.summary.breakdowns if b.key == "startingBalance")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
@@ -1455,7 +1684,7 @@ async def test_cash_flow_cash_mode_uses_transaction_date(
 
 @pytest.mark.asyncio
 async def test_cash_flow_accrual_mode_projects_cc_on_effective_date(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """In accrual mode: a CC purchase with effective_date > today is added
     back to starting balance (so it represents 'cash on hand right now') and
@@ -1479,7 +1708,7 @@ async def test_cash_flow_accrual_mode_projects_cc_on_effective_date(
     session.add(cc_purchase)
     await session.commit()
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
 
     starting = next(b for b in report.summary.breakdowns if b.key == "startingBalance")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
@@ -1505,7 +1734,7 @@ async def test_cash_flow_accrual_mode_projects_cc_on_effective_date(
 
 @pytest.mark.asyncio
 async def test_cash_flow_accrual_mode_no_double_count(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Accrual mode: the same CC purchase must not appear in both starting
     balance AND future flows — sum of (starting + inflow - outflow) over the
@@ -1530,7 +1759,7 @@ async def test_cash_flow_accrual_mode_no_double_count(
         ))
     await session.commit()
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
 
     starting = next(b for b in report.summary.breakdowns if b.key == "startingBalance")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
@@ -1546,7 +1775,7 @@ async def test_cash_flow_accrual_mode_no_double_count(
 
 @pytest.mark.asyncio
 async def test_cash_flow_accrual_mode_cc_purchase_outside_window_ignored(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """A CC purchase whose effective_date falls past the projection window is
     not added back nor projected — its impact remains in starting balance."""
@@ -1569,7 +1798,7 @@ async def test_cash_flow_accrual_mode_cc_purchase_outside_window_ignored(
     ))
     await session.commit()
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
 
     starting = next(b for b in report.summary.breakdowns if b.key == "startingBalance")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
@@ -1607,7 +1836,7 @@ def _next_first_of_month(d: date) -> date:
 
 @pytest.mark.asyncio
 async def test_cash_flow_recurring_in_foreign_currency(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """A recurring in USD with primary BRL is converted via the FX rate."""
     # Primary currency for test_user is BRL. Seed USD->BRL = 5.0.
@@ -1629,14 +1858,14 @@ async def test_cash_flow_recurring_in_foreign_currency(
     )
 
     # 3-month window from today. Window covers exactly 3 "1st of month" anchors.
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     # 3 occurrences × 200 USD × 5.0 = 3000 BRL
     assert proj_income.value == 3000.0
 
 
 @pytest.mark.asyncio
-async def test_cash_flow_mixed_currencies(session: AsyncSession, test_user: User):
+async def test_cash_flow_mixed_currencies(session: AsyncSession, test_user, test_workspace: User):
     """Recurrings in multiple currencies converted correctly using cached rates."""
     # Primary is BRL. Seed cross rates via USD anchor.
     # USD->BRL = 5.0, USD->EUR = 0.5  ⇒  EUR->BRL = 5.0 / 0.5 = 10.0
@@ -1665,7 +1894,7 @@ async def test_cash_flow_mixed_currencies(session: AsyncSession, test_user: User
         description="BRL expense",
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
 
@@ -1678,7 +1907,7 @@ async def test_cash_flow_mixed_currencies(session: AsyncSession, test_user: User
 
 @pytest.mark.asyncio
 async def test_cash_flow_currency_conversion_uses_amount_primary_when_present(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """A future-dated transaction with amount_primary set uses that value,
     skipping FX conversion."""
@@ -1701,7 +1930,7 @@ async def test_cash_flow_currency_conversion_uses_amount_primary_when_present(
     session.add(txn)
     await session.commit()
 
-    report = await get_cash_flow_report(session, test_user.id, months=1, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=1, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     assert proj_income.value == 777.77
 
@@ -1713,7 +1942,7 @@ async def test_cash_flow_currency_conversion_uses_amount_primary_when_present(
 
 @pytest.mark.asyncio
 async def test_cash_flow_end_date_exact_occurrence_count(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """When end_date falls mid-window, exactly the expected number of
     occurrences is projected — not more, not fewer."""
@@ -1735,7 +1964,7 @@ async def test_cash_flow_end_date_exact_occurrence_count(
     )
 
     # Window of 6 months — well past end_date
-    report = await get_cash_flow_report(session, test_user.id, months=6, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=6, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     # Exactly 3 × 50 = 150
     assert proj_income.value == 150.0
@@ -1743,7 +1972,7 @@ async def test_cash_flow_end_date_exact_occurrence_count(
 
 @pytest.mark.asyncio
 async def test_cash_flow_end_date_balance_freezes_after(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """After the recurring's end_date, the running balance stops changing."""
     account = await _make_manual_account(session, test_user.id, "CF EndDateFreeze")
@@ -1761,7 +1990,7 @@ async def test_cash_flow_end_date_balance_freezes_after(
         next_occurrence=nxt, end_date=end_d,
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=4, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=4, interval="daily")
 
     # Balance after end_date should match ending balance — it shouldn't keep
     # growing once the recurring stops contributing.
@@ -1775,7 +2004,7 @@ async def test_cash_flow_end_date_balance_freezes_after(
 
 @pytest.mark.asyncio
 async def test_cash_flow_end_date_at_exact_occurrence(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """end_date == an occurrence date — that occurrence should still count."""
     account = await _make_manual_account(session, test_user.id, "CF EndDateExactDay")
@@ -1792,7 +2021,7 @@ async def test_cash_flow_end_date_at_exact_occurrence(
         end_date=today + timedelta(days=14),
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     # 2 occurrences × $10 = $20
     assert proj_income.value == 20.0
@@ -1800,7 +2029,7 @@ async def test_cash_flow_end_date_at_exact_occurrence(
 
 @pytest.mark.asyncio
 async def test_cash_flow_end_date_in_past_no_contribution(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """If end_date is in the past, no occurrences project."""
     account = await _make_manual_account(session, test_user.id, "CF EndDatePast")
@@ -1816,7 +2045,7 @@ async def test_cash_flow_end_date_in_past_no_contribution(
         end_date=today - timedelta(days=10),
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
     proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
     assert proj_income.value == 0.0
 
@@ -1824,7 +2053,7 @@ async def test_cash_flow_end_date_in_past_no_contribution(
 
 @pytest.mark.asyncio
 async def test_cash_flow_overdraft_crunch_point_goes_negative(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Cash crunch / overdraft: when projected outflows exceed inflows + start,
     the running balance must go negative (not be clamped at 0)."""
@@ -1842,7 +2071,7 @@ async def test_cash_flow_overdraft_crunch_point_goes_negative(
         day_of_month=1, next_occurrence=nxt,
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=3, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=3, interval="daily")
 
     negative_points = [p for p in report.trend if p.value < 0]
     assert len(negative_points) > 0, "Trend never dips below zero — clamped?"
@@ -1853,7 +2082,7 @@ async def test_cash_flow_overdraft_crunch_point_goes_negative(
 
 @pytest.mark.asyncio
 async def test_cash_flow_paycheck_timing_dip(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Classic paycheck-timing dip: rent on day 5, salary on day 15. End of
     month is positive, but mid-month should drop below the starting balance
@@ -1885,7 +2114,7 @@ async def test_cash_flow_paycheck_timing_dip(
         description="Salary",
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
 
     # Fetch balance on rent day (after rent hit) and salary day (after salary hit)
     rent_pt = next(p for p in report.trend if p.date == rent_day.isoformat())
@@ -1902,7 +2131,7 @@ async def test_cash_flow_paycheck_timing_dip(
 
 @pytest.mark.asyncio
 async def test_cash_flow_large_one_off_purchase(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """User wants to plan a single large purchase (e.g., new laptop on day +20).
     The chart must show a single dip on that exact day and recover for the
@@ -1918,7 +2147,7 @@ async def test_cash_flow_large_one_off_purchase(
         session, test_user.id, account.id, 1800, "debit", purchase_day,
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
 
     # Day before purchase: full starting balance
     pre_pt = next(p for p in report.trend if p.date == (purchase_day - timedelta(days=1)).isoformat())
@@ -1934,7 +2163,7 @@ async def test_cash_flow_large_one_off_purchase(
 
 @pytest.mark.asyncio
 async def test_cash_flow_multiple_recurrings_same_day(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Multiple bills that hit the same day must be summed into one outflow
     bucket on that day, not represented as separate days."""
@@ -1954,7 +2183,7 @@ async def test_cash_flow_multiple_recurrings_same_day(
             day_of_month=1, next_occurrence=nxt, description=desc,
         )
 
-    report = await get_cash_flow_report(session, test_user.id, months=1, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=1, interval="daily")
     bill_day = next(p for p in report.trend if p.date == nxt.isoformat())
 
     # All three bills stacked on the same day = 800 + 120 + 60 = 980
@@ -1968,7 +2197,7 @@ async def test_cash_flow_multiple_recurrings_same_day(
 
 
 @pytest.mark.asyncio
-async def test_cash_flow_yearly_recurring(session: AsyncSession, test_user: User):
+async def test_cash_flow_yearly_recurring(session: AsyncSession, test_user, test_workspace: User):
     """Yearly recurring (e.g., annual car insurance): expansion in a 12-month
     window should yield exactly one occurrence."""
     account = await _make_manual_account(session, test_user.id, "CF Yearly")
@@ -1985,19 +2214,19 @@ async def test_cash_flow_yearly_recurring(session: AsyncSession, test_user: User
         day_of_month=nxt.day, next_occurrence=nxt,
     )
 
-    rep_12 = await get_cash_flow_report(session, test_user.id, months=12, interval="daily")
+    rep_12 = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=12, interval="daily")
     proj_exp_12 = next(b for b in rep_12.summary.breakdowns if b.key == "projectedExpenses")
     assert proj_exp_12.value == 1200.0  # exactly one occurrence in 12 months
 
     # In a 1-month window: also 1 (since nxt is +30 days)
-    rep_1 = await get_cash_flow_report(session, test_user.id, months=2, interval="daily")
+    rep_1 = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=2, interval="daily")
     proj_exp_1 = next(b for b in rep_1.summary.breakdowns if b.key == "projectedExpenses")
     assert proj_exp_1.value == 1200.0
 
 
 @pytest.mark.asyncio
 async def test_cash_flow_recurring_starting_in_future(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """A recurring whose start_date is in the future (e.g., a new subscription
     starting next month) must be projected from its start_date forward."""
@@ -2016,7 +2245,7 @@ async def test_cash_flow_recurring_starting_in_future(
         description="Future subscription",
     )
 
-    report = await get_cash_flow_report(session, test_user.id, months=4, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=4, interval="daily")
     proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
 
     # The subscription starts 1-2 months out; at month=4 we expect ~2-3 hits.
@@ -2028,7 +2257,7 @@ async def test_cash_flow_recurring_starting_in_future(
 
 @pytest.mark.asyncio
 async def test_cash_flow_running_balance_arithmetic(
-    session: AsyncSession, test_user: User
+    session: AsyncSession, test_user, test_workspace: User
 ):
     """Strict arithmetic: balance on day N == starting + sum(flows up to day N).
     Anchors the math so refactors can't silently break the cumulative sum."""
@@ -2049,7 +2278,7 @@ async def test_cash_flow_running_balance_arithmetic(
     for d, amt, typ in flows:
         await _add_txn(session, test_user.id, account.id, amt, typ, d)
 
-    report = await get_cash_flow_report(session, test_user.id, months=1, interval="daily")
+    report = await get_cash_flow_report(session, test_workspace.id, test_user.id, months=1, interval="daily")
     by_date = {p.date: p for p in report.trend}
 
     # Reconstruct expected running balance day by day.
@@ -2065,3 +2294,220 @@ async def test_cash_flow_running_balance_arithmetic(
         assert abs(pt.value - expected) < 0.01, (
             f"Day {d}: got {pt.value}, expected {expected}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Baseline mode (historical-mean forecast) — issue #179
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_baseline_off_uses_recurring(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """baseline=False is the legacy behavior: only recurring rules project."""
+    account = await _make_manual_account(session, test_user.id, "CF Baseline Off")
+    await _add_txn(
+        session, test_user.id, account.id, 5000, "credit",
+        date.today(), source="opening_balance",
+    )
+    today = date.today()
+    # 30 days of past actuals that baseline mode would otherwise pick up.
+    for offset in range(1, 31):
+        await _add_txn(
+            session, test_user.id, account.id, 100, "debit",
+            today - timedelta(days=offset),
+        )
+    # One recurring rule.
+    await _make_recurring(
+        session, test_user.id, account.id,
+        amount=1500, txn_type="credit", frequency="monthly",
+        next_occurrence=today + timedelta(days=2),
+    )
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=3, interval="daily", baseline=False,
+    )
+
+    assert report.meta.baseline_active is False
+    assert report.meta.baseline_lookback_days is None
+    proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
+    proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
+    # Recurring credit fires; past debits do NOT project forward.
+    assert proj_income.value >= 1500.0
+    assert proj_exp.value == 0.0
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_baseline_on_replaces_recurring_with_mean(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """baseline=True ignores recurring rules and projects from historical mean.
+
+    Setup: 30 days × R$100 debits in the past (no income, no recurring
+    debits set up). Baseline should pick those up and project them forward.
+    """
+    account = await _make_manual_account(session, test_user.id, "CF Baseline On")
+    await _add_txn(
+        session, test_user.id, account.id, 5000, "credit",
+        date.today(), source="opening_balance",
+    )
+    today = date.today()
+    # Past actuals: 30 daily R$100 debits → total R$3000 over the lookback.
+    for offset in range(1, 31):
+        await _add_txn(
+            session, test_user.id, account.id, 100, "debit",
+            today - timedelta(days=offset),
+        )
+    # A recurring credit rule that baseline mode should IGNORE.
+    await _make_recurring(
+        session, test_user.id, account.id,
+        amount=9999, txn_type="credit", frequency="monthly",
+        next_occurrence=today + timedelta(days=2),
+    )
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=3, interval="daily", baseline=True,
+    )
+
+    assert report.meta.baseline_active is True
+    # Lookback window = 30 days of past data (capped by earliest tx, not by
+    # the 12-month maximum).
+    assert report.meta.baseline_lookback_days == 30
+    proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
+    proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
+    # Recurring R$9999 credit should NOT appear (baseline replaces recurring).
+    assert proj_income.value < 100.0
+    # Outflow should reflect ~R$100/day × 3 months ≈ R$9000.
+    assert proj_exp.value > 8000.0
+    assert proj_exp.value < 10000.0
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_baseline_lookback_caps_at_twelve_months(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """User with >12 months of history sees lookback capped at 365 days."""
+    account = await _make_manual_account(session, test_user.id, "CF Baseline Cap")
+    await _add_txn(
+        session, test_user.id, account.id, 5000, "credit",
+        date.today(), source="opening_balance",
+    )
+    today = date.today()
+    # Single very old transaction (18 months ago) plus one recent one.
+    await _add_txn(
+        session, test_user.id, account.id, 50, "debit",
+        today - timedelta(days=540),
+    )
+    await _add_txn(
+        session, test_user.id, account.id, 50, "debit",
+        today - timedelta(days=10),
+    )
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=3, interval="daily", baseline=True,
+    )
+
+    # Window is bounded by `today - 365 days`, not by the 540-days-ago tx.
+    # Allow ±2-day tolerance for month-arithmetic edge cases.
+    assert report.meta.baseline_lookback_days is not None
+    assert 363 <= report.meta.baseline_lookback_days <= 367
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_baseline_lookback_adapts_to_short_history(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """User with only N days of history sees lookback shrink to N."""
+    account = await _make_manual_account(session, test_user.id, "CF Baseline Short")
+    await _add_txn(
+        session, test_user.id, account.id, 1000, "credit",
+        date.today(), source="opening_balance",
+    )
+    today = date.today()
+    # Just 7 days of activity.
+    for offset in range(1, 8):
+        await _add_txn(
+            session, test_user.id, account.id, 20, "debit",
+            today - timedelta(days=offset),
+        )
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=3, interval="daily", baseline=True,
+    )
+
+    # Earliest tx is 7 days ago, so lookback is 7 days.
+    assert report.meta.baseline_lookback_days == 7
+    proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
+    # 7 days × R$20 = R$140 over 7 days → R$20/day → ~R$1820 over ~91 days.
+    assert proj_exp.value > 1500.0
+    assert proj_exp.value < 2200.0
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_baseline_no_history_returns_empty_projection(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """User with no qualifying transactions → baseline contributes zero.
+
+    Chart should still show starting balance flat across the forecast.
+    """
+    account = await _make_manual_account(session, test_user.id, "CF Baseline Empty")
+    await _add_txn(
+        session, test_user.id, account.id, 2000, "credit",
+        date.today(), source="opening_balance",
+    )
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=3, interval="daily", baseline=True,
+    )
+
+    assert report.meta.baseline_active is True
+    assert report.meta.baseline_lookback_days == 0
+    proj_income = next(b for b in report.summary.breakdowns if b.key == "projectedIncome")
+    proj_exp = next(b for b in report.summary.breakdowns if b.key == "projectedExpenses")
+    assert proj_income.value == 0.0
+    assert proj_exp.value == 0.0
+    # Ending balance equals starting (flat line).
+    assert report.summary.change_amount == 0.0
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_meta_carries_forecast_start_date(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """forecast_start_date in meta lets the UI split solid vs dashed at today."""
+    account = await _make_manual_account(session, test_user.id, "CF Forecast Start")
+    await _add_txn(
+        session, test_user.id, account.id, 100, "credit",
+        date.today(), source="opening_balance",
+    )
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=3, interval="daily",
+    )
+
+    assert report.meta.forecast_start_date == date.today().isoformat()
+
+
+@pytest.mark.asyncio
+async def test_cash_flow_chart_includes_past_history(
+    session: AsyncSession, test_user, test_workspace: User
+):
+    """Trend starts ~1 month before today so the today-marker has context."""
+    account = await _make_manual_account(session, test_user.id, "CF Past")
+    await _add_txn(
+        session, test_user.id, account.id, 500, "credit",
+        date.today(), source="opening_balance",
+    )
+
+    report = await get_cash_flow_report(
+        session, test_workspace.id, test_user.id, months=3, interval="daily",
+    )
+
+    # First trend point should be ~30 days before today.
+    first_date = date.fromisoformat(report.trend[0].date)
+    today = date.today()
+    delta_days = (today - first_date).days
+    # _PAST_HISTORY_MONTHS = 1 (28–31 days depending on month).
+    assert 27 <= delta_days <= 32

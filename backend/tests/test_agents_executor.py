@@ -74,10 +74,10 @@ class _FakeMCP(MCPRegistry):
     def server_names(self):
         return ["securo"]
 
-    async def discover(self, *, user_id, conversation_id=None, agent_id=None):
+    async def discover(self, *, workspace_id=None, user_id, conversation_id=None, agent_id=None):
         return list(self._tools)
 
-    async def call(self, *, wire_name, arguments, user_id, conversation_id=None, agent_id=None):
+    async def call(self, *, wire_name, arguments, workspace_id=None, user_id, conversation_id=None, agent_id=None):
         self.calls.append((wire_name, arguments))
         return self._canned
 

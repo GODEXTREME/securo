@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { agents } from '@/lib/api'
 import type { KnowledgeDoc } from '@/lib/api'
+import { useWorkspace } from '@/contexts/workspace-context'
 
 function StatusBadge({ d }: { d: KnowledgeDoc }) {
   const { t } = useTranslation()
@@ -31,6 +32,7 @@ function StatusBadge({ d }: { d: KnowledgeDoc }) {
 export function KnowledgeSection({ agentId }: { agentId: string }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const { canWrite } = useWorkspace()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading } = useQuery({
@@ -84,10 +86,12 @@ export function KnowledgeSection({ agentId }: { agentId: string }) {
             if (fileRef.current) fileRef.current.value = ''
           }}
         />
-        <Button size="sm" onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
-          <UploadIcon className="h-4 w-4 mr-1.5" />
-          {upload.isPending ? t('agents.knowledge.uploading') : t('agents.knowledge.upload')}
-        </Button>
+        {canWrite && (
+          <Button size="sm" onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
+            <UploadIcon className="h-4 w-4 mr-1.5" />
+            {upload.isPending ? t('agents.knowledge.uploading') : t('agents.knowledge.upload')}
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -108,17 +112,21 @@ export function KnowledgeSection({ agentId }: { agentId: string }) {
                   <span className="text-xs text-muted-foreground">{(d.size_bytes / 1024).toFixed(0)} KB</span>
                 </div>
               </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                title={d.pinned ? t('agents.knowledge.unpinTitle') : t('agents.knowledge.pinTitle')}
-                onClick={() => pin.mutate({ id: d.id, pinned: !d.pinned })}
-              >
-                {d.pinned ? <Pin className="h-4 w-4 text-amber-500" /> : <PinOff className="h-4 w-4" />}
-              </Button>
-              <Button size="icon" variant="ghost" onClick={() => remove.mutate(d.id)}>
-                <Trash2 className="h-4 w-4 text-rose-500" />
-              </Button>
+              {canWrite && (
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={d.pinned ? t('agents.knowledge.unpinTitle') : t('agents.knowledge.pinTitle')}
+                    onClick={() => pin.mutate({ id: d.id, pinned: !d.pinned })}
+                  >
+                    {d.pinned ? <Pin className="h-4 w-4 text-amber-500" /> : <PinOff className="h-4 w-4" />}
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => remove.mutate(d.id)}>
+                    <Trash2 className="h-4 w-4 text-rose-500" />
+                  </Button>
+                </>
+              )}
             </div>
           ))}
         </div>

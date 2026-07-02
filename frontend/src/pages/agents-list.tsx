@@ -9,10 +9,12 @@ import { Switch } from '@/components/ui/switch'
 import { PageHeader } from '@/components/page-header'
 import { agents } from '@/lib/api'
 import { AgentFormDialog } from '@/components/agents/agent-form-dialog'
+import { useWorkspace } from '@/contexts/workspace-context'
 
 export default function AgentsListPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const { canWrite } = useWorkspace()
   const [createOpen, setCreateOpen] = useState(false)
   const { data: info } = useQuery({ queryKey: ['agents-info'], queryFn: () => agents.info() })
   const { data: list, isLoading } = useQuery({ queryKey: ['agents'], queryFn: () => agents.list() })
@@ -39,16 +41,18 @@ export default function AgentsListPage() {
         section={t('agents.title')}
         title={t('agents.title')}
         action={
-          <div className="flex items-center gap-2">
-            <Link to="/agents/connections">
-              <Button variant="outline" size="sm" className="gap-1.5 h-8">
-                <Plug size={13} /> {t('agents.connections.manage')}
+          canWrite ? (
+            <div className="flex items-center gap-2">
+              <Link to="/agents/connections">
+                <Button variant="outline" size="sm" className="gap-1.5 h-8">
+                  <Plug size={13} /> {t('agents.connections.manage')}
+                </Button>
+              </Link>
+              <Button size="sm" className="gap-1.5 h-8" onClick={() => setCreateOpen(true)}>
+                <Plus size={13} /> {t('agents.newAgent')}
               </Button>
-            </Link>
-            <Button size="sm" className="gap-1.5 h-8" onClick={() => setCreateOpen(true)}>
-              <Plus size={13} /> {t('agents.newAgent')}
-            </Button>
-          </div>
+            </div>
+          ) : undefined
         }
       />
 
@@ -65,9 +69,11 @@ export default function AgentsListPage() {
           </div>
           <h2 className="text-base font-semibold">{t('agents.empty.title')}</h2>
           <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">{t('agents.empty.subtitle')}</p>
-          <Button size="sm" className="gap-1.5 h-8 mt-4" onClick={() => setCreateOpen(true)}>
-            <Plus size={13} /> {t('agents.empty.create')}
-          </Button>
+          {canWrite && (
+            <Button size="sm" className="gap-1.5 h-8 mt-4" onClick={() => setCreateOpen(true)}>
+              <Plus size={13} /> {t('agents.empty.create')}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
@@ -135,26 +141,28 @@ export default function AgentsListPage() {
                 </Link>
                 {/* Default toggle — wrapper stops the click bubbling so
                     flipping the switch doesn't navigate into the agent. */}
-                <div
-                  className="flex items-center gap-2 shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                  title={t(
-                    'agents.form.isDefaultHint',
-                    'Used by the global slide-over chat (⌘J). Only one agent can be the default — turning this on clears it on others.',
-                  )}
-                >
-                  <span className="text-xs text-muted-foreground hidden sm:inline">
-                    {t('agents.defaultLabel', 'Default')}
-                  </span>
-                  <Switch
-                    checked={a.is_default}
-                    onCheckedChange={(value) =>
-                      setDefaultMut.mutate({ id: a.id, value: !!value })
-                    }
-                    disabled={setDefaultMut.isPending}
-                    aria-label={t('agents.defaultLabel', 'Default')}
-                  />
-                </div>
+                {canWrite && (
+                  <div
+                    className="flex items-center gap-2 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                    title={t(
+                      'agents.form.isDefaultHint',
+                      'Used by the global slide-over chat (⌘J). Only one agent can be the default — turning this on clears it on others.',
+                    )}
+                  >
+                    <span className="text-xs text-muted-foreground hidden sm:inline">
+                      {t('agents.defaultLabel', 'Default')}
+                    </span>
+                    <Switch
+                      checked={a.is_default}
+                      onCheckedChange={(value) =>
+                        setDefaultMut.mutate({ id: a.id, value: !!value })
+                      }
+                      disabled={setDefaultMut.isPending}
+                      aria-label={t('agents.defaultLabel', 'Default')}
+                    />
+                  </div>
+                )}
                 <Link
                   to={`/agents/${a.id}`}
                   className="shrink-0 text-muted-foreground/60 hover:text-muted-foreground"

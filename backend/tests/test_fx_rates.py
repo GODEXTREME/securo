@@ -416,6 +416,7 @@ class TestDashboardMultiCurrency:
         self,
         session: AsyncSession,
         test_user: User,
+        test_workspace,
         test_account: Account,
         fx_rates,
     ):
@@ -441,7 +442,7 @@ class TestDashboardMultiCurrency:
         session.add(txn)
         await session.commit()
 
-        summary = await get_summary(session, test_user.id)
+        summary = await get_summary(session, test_workspace.id, test_user.id)
 
         assert summary.primary_currency == "BRL"
         # USD balance: 200 * 5.0 = 1000 in BRL
@@ -794,6 +795,7 @@ class TestReportNetWorthMultiCurrency:
         self,
         session: AsyncSession,
         test_user: User,
+        test_workspace,
         test_account: Account,
         fx_rates,
     ):
@@ -817,7 +819,7 @@ class TestReportNetWorthMultiCurrency:
         session.add(txn)
         await session.commit()
 
-        dp = await _net_worth_at(session, test_user.id, date.today(), "BRL")
+        dp = await _net_worth_at(session, test_workspace.id, date.today(), "BRL")
 
         # USD: 300 * 5.0 = 1500 BRL
         # Total should include the USD portion
@@ -829,12 +831,13 @@ class TestReportNetWorthMultiCurrency:
         self,
         session: AsyncSession,
         test_user: User,
+        test_workspace,
         test_account: Account,
     ):
         """get_net_worth_report reads the user's currency preference."""
         from app.services.report_service import get_net_worth_report
 
-        report = await get_net_worth_report(session, test_user.id, months=1)
+        report = await get_net_worth_report(session, test_workspace.id, test_user.id, months=1)
 
         # test_user has currency_display=BRL
         assert report is not None
@@ -854,6 +857,7 @@ class TestRecurringTransactionStamping:
         self,
         session: AsyncSession,
         test_user: User,
+        test_workspace,
         test_account: Account,
         fx_rates,
     ):
@@ -870,7 +874,7 @@ class TestRecurringTransactionStamping:
             account_id=test_account.id,
             currency="USD",
         )
-        rec = await create_recurring_transaction(session, test_user.id, data)
+        rec = await create_recurring_transaction(session, test_workspace.id, test_user.id, data)
 
         assert rec.amount_primary is not None
         # USD→BRL: 10 * 5.0 = 50
@@ -882,6 +886,7 @@ class TestRecurringTransactionStamping:
         self,
         session: AsyncSession,
         test_user: User,
+        test_workspace,
         test_account: Account,
     ):
         """Recurring in BRL (user primary=BRL) → rate = 1."""
@@ -897,7 +902,7 @@ class TestRecurringTransactionStamping:
             account_id=test_account.id,
             currency="BRL",
         )
-        rec = await create_recurring_transaction(session, test_user.id, data)
+        rec = await create_recurring_transaction(session, test_workspace.id, test_user.id, data)
 
         assert rec.amount_primary == Decimal("2000.00")
         assert rec.fx_rate_used == Decimal("1")
@@ -907,6 +912,7 @@ class TestRecurringTransactionStamping:
         self,
         session: AsyncSession,
         test_user: User,
+        test_workspace,
         test_account: Account,
     ):
         """generate_pending creates transactions with amount_primary stamped."""
@@ -928,7 +934,7 @@ class TestRecurringTransactionStamping:
             account_id=test_account.id,
             currency="BRL",
         )
-        await create_recurring_transaction(session, test_user.id, data)
+        await create_recurring_transaction(session, test_workspace.id, test_user.id, data)
 
         count = await generate_pending(session, test_user.id, up_to=date.today())
         assert count >= 1
@@ -1049,6 +1055,7 @@ class TestRecurringFxRestamp:
         self,
         session: AsyncSession,
         test_user: User,
+        test_workspace,
         test_account: Account,
         fx_rates,
     ):
@@ -1066,7 +1073,7 @@ class TestRecurringFxRestamp:
             account_id=test_account.id,
             currency="USD",
         )
-        rec = await create_recurring_transaction(session, test_user.id, data)
+        rec = await create_recurring_transaction(session, test_workspace.id, test_user.id, data)
         assert rec.amount_primary == Decimal("50.00")  # 10 * 5.0
 
         # Simulate rate change: update the USD rate to 5.5
@@ -1091,6 +1098,7 @@ class TestRecurringFxRestamp:
         self,
         session: AsyncSession,
         test_user: User,
+        test_workspace,
         test_account: Account,
     ):
         """BRL recurring transaction is not affected by re-stamp (rate stays 1)."""
@@ -1106,7 +1114,7 @@ class TestRecurringFxRestamp:
             account_id=test_account.id,
             currency="BRL",
         )
-        rec = await create_recurring_transaction(session, test_user.id, data)
+        rec = await create_recurring_transaction(session, test_workspace.id, test_user.id, data)
         assert rec.amount_primary == Decimal("2000.00")
         assert rec.fx_rate_used == Decimal("1")
 
@@ -1247,6 +1255,43 @@ class TestManualFxOverride:
         data = resp2.json()
         assert data["amount_primary"] == 550.0
         assert data["fx_rate_used"] == 5.5
+
+    @pytest.mark.asyncio
+    async def test_update_clear_fx_override_restamps(
+        self,
+        client: AsyncClient,
+        auth_headers,
+        test_user: User,
+        session: AsyncSession,
+        fx_rates,
+    ):
+        usd_account = await _make_account(session, test_user, currency="USD")
+        resp = await client.post(
+            "/api/transactions",
+            headers=auth_headers,
+            json={
+                "account_id": str(usd_account.id),
+                "description": "Clear override",
+                "amount": "100.00",
+                "date": date.today().isoformat(),
+                "type": "debit",
+                "currency": "USD",
+                "amount_primary": "550.00",
+                "fx_rate_used": "5.5",
+            },
+        )
+        assert resp.status_code == 201
+        txn_id = resp.json()["id"]
+
+        resp2 = await client.patch(
+            f"/api/transactions/{txn_id}",
+            headers=auth_headers,
+            json={"amount_primary": None, "fx_rate_used": None},
+        )
+        assert resp2.status_code == 200
+        data = resp2.json()
+        assert data["amount_primary"] == 500.0
+        assert data["fx_rate_used"] == 5.0
 
     @pytest.mark.asyncio
     async def test_update_without_fx_override_auto_stamps(

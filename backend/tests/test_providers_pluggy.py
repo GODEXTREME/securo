@@ -284,3 +284,64 @@ async def test_parser_missing_purchase_date_only():
     assert tx.total_installments == 10
     assert tx.installment_total_amount == Decimal("250")
     assert tx.installment_purchase_date is None
+
+
+# ---------------------------------------------------------------------------
+# v2 cursor pagination (GET /v2/transactions)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "next_value,expected",
+    [
+        (None, None),
+        ("", None),
+        (
+            "https://api.pluggy.ai/v2/transactions?accountId=a&after=CURSOR123",
+            "CURSOR123",
+        ),
+        ("/v2/transactions?after=abc%3D%3D&accountId=a", "abc=="),
+        # No `after` in the URL → stop (don't loop on a malformed value).
+        ("https://api.pluggy.ai/v2/transactions?accountId=a", None),
+    ],
+)
+def test_extract_after(next_value, expected):
+    assert PluggyProvider._extract_after(next_value) == expected
+
+
+def _txn(id_: str) -> dict:
+    return {"id": id_, "description": "x", "amount": -1, "date": "2026-01-01", "type": "DEBIT"}
+
+
+@pytest.mark.asyncio
+async def test_get_transactions_follows_cursor_until_next_is_null():
+    """Pages via the `after` cursor from `next` until it's null, hitting v2
+    and forwarding createdAtFrom."""
+    page1 = MagicMock(raise_for_status=MagicMock())
+    page1.json = MagicMock(return_value={
+        "results": [_txn("t1"), _txn("t2")],
+        "next": "https://api.pluggy.ai/v2/transactions?accountId=a&after=CUR2",
+    })
+    page2 = MagicMock(raise_for_status=MagicMock())
+    page2.json = MagicMock(return_value={"results": [_txn("t3")], "next": None})
+
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=[page1, page2])
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+
+    provider = PluggyProvider()
+    with patch.object(
+        PluggyProvider, "_ensure_api_key", new=AsyncMock(return_value="k")
+    ), patch("app.providers.pluggy.httpx.AsyncClient", return_value=client):
+        txns = await provider.get_transactions(
+            {"item_id": "i"}, "acc", since=date(2026, 1, 1)
+        )
+
+    assert [t.external_id for t in txns] == ["t1", "t2", "t3"]
+    assert client.get.await_count == 2
+    first = client.get.await_args_list[0]
+    assert first.args[0].endswith("/v2/transactions")
+    assert first.kwargs["params"]["createdAtFrom"] == "2026-01-01"
+    assert "after" not in first.kwargs["params"]
+    assert client.get.await_args_list[1].kwargs["params"]["after"] == "CUR2"

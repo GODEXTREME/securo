@@ -21,6 +21,9 @@ class TransactionSplit(Base):
     transaction_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE")
     )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
     # RESTRICT: removing a member with active splits requires reassigning
     # or deleting those splits first. Group-level CASCADE still works
     # when no splits exist.

@@ -2,11 +2,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
-from app.models.bank_connection import BankConnection
 from app.models.group import Group, GroupMember
 from app.models.group_settlement import GroupSettlement
 from app.models.transaction import Transaction
@@ -16,23 +15,17 @@ from app.schemas.group_settlement import (
 )
 
 
-async def _ensure_group_owned(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
-) -> Optional[Group]:
-    """Owner-only access — used when only the owner may proceed."""
-    result = await session.execute(
-        select(Group).where(Group.id == group_id, Group.user_id == user_id)
-    )
-    return result.scalar_one_or_none()
-
-
 async def _ensure_group_visible(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
 ) -> Optional[Group]:
-    """Visible to the owner OR any linked member — for read endpoints."""
+    """Visible when the group lives in the current workspace OR the
+    caller is linked as a cross-workspace member — for read endpoints."""
     from app.services.group_service import get_group_visible
 
-    return await get_group_visible(session, group_id, user_id)
+    return await get_group_visible(session, group_id, workspace_id, user_id)
 
 
 async def _user_member_id(
@@ -69,6 +62,7 @@ async def _can_settle_from(
 async def _create_payment_transaction(
     session: AsyncSession,
     user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     account_id: uuid.UUID,
     amount,
     currency: str,
@@ -76,13 +70,12 @@ async def _create_payment_transaction(
     description: str,
 ) -> Transaction:
     """Create a debit transaction on the user's account representing a
-    settlement payment. Validates account ownership."""
+    settlement payment. Validates that the account belongs to the
+    current workspace."""
     account_result = await session.execute(
-        select(Account)
-        .outerjoin(BankConnection)
-        .where(
+        select(Account).where(
             Account.id == account_id,
-            or_(Account.user_id == user_id, BankConnection.user_id == user_id),
+            Account.workspace_id == workspace_id,
         )
     )
     account = account_result.scalar_one_or_none()
@@ -92,6 +85,7 @@ async def _create_payment_transaction(
     tx = Transaction(
         id=uuid.uuid4(),
         user_id=user_id,
+        workspace_id=workspace_id,
         account_id=account.id,
         description=description,
         amount=amount,
@@ -118,13 +112,21 @@ async def _create_payment_transaction(
 async def _pick_default_account_for_user(
     session: AsyncSession, user_id: uuid.UUID
 ) -> Optional[Account]:
-    """Return the user's first non-archived checking/savings account.
-    Used as the auto-target for receiver-side settlement credits."""
+    """Return the user's first non-archived checking/savings account
+    across any workspace they belong to. Used as the auto-target for
+    receiver-side settlement credits — the receiver may sit in a
+    different workspace than where the settlement was recorded."""
+    from app.models.workspace import WorkspaceMember
+
+    # Resolve the workspaces the user can write to. Pick the first
+    # account that lives in any of them; ties broken by name.
+    user_workspaces_subq = select(WorkspaceMember.workspace_id).where(
+        WorkspaceMember.user_id == user_id
+    )
     result = await session.execute(
         select(Account)
-        .outerjoin(BankConnection)
         .where(
-            or_(Account.user_id == user_id, BankConnection.user_id == user_id),
+            Account.workspace_id.in_(user_workspaces_subq),
             Account.is_closed.is_(False),
             Account.type.in_(("checking", "savings")),
         )
@@ -143,7 +145,8 @@ async def _create_receiver_credit(
 ) -> Optional[Transaction]:
     """Mirror a settlement credit on the receiver's side.
 
-    Picks the receiver's first checking/savings account. Returns None
+    Picks the receiver's first checking/savings account from any
+    workspace they belong to and stamps the credit there. Returns None
     silently when the receiver has no suitable account — they can do
     it manually or the next time they reconcile from their bank sync.
     """
@@ -153,6 +156,7 @@ async def _create_receiver_credit(
     tx = Transaction(
         id=uuid.uuid4(),
         user_id=receiver_user_id,
+        workspace_id=account.workspace_id,
         account_id=account.id,
         description=description,
         amount=amount,
@@ -188,20 +192,14 @@ async def _validate_members_in_group(
 async def _validate_transaction(
     session: AsyncSession,
     transaction_id: Optional[uuid.UUID],
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
 ) -> None:
     if transaction_id is None:
         return
     result = await session.execute(
-        select(Transaction)
-        .outerjoin(Account)
-        .outerjoin(BankConnection)
-        .where(
+        select(Transaction).where(
             Transaction.id == transaction_id,
-            or_(
-                Transaction.user_id == user_id,
-                BankConnection.user_id == user_id,
-            ),
+            Transaction.workspace_id == workspace_id,
         )
     )
     if result.scalar_one_or_none() is None:
@@ -209,9 +207,12 @@ async def _validate_transaction(
 
 
 async def list_settlements(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
 ) -> Optional[list[GroupSettlement]]:
-    if not await _ensure_group_visible(session, group_id, user_id):
+    if not await _ensure_group_visible(session, group_id, workspace_id, user_id):
         return None
     result = await session.execute(
         select(GroupSettlement)
@@ -224,10 +225,11 @@ async def list_settlements(
 async def create_settlement(
     session: AsyncSession,
     group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     data: GroupSettlementCreate,
 ) -> Optional[GroupSettlement]:
-    group = await _ensure_group_visible(session, group_id, user_id)
+    group = await _ensure_group_visible(session, group_id, workspace_id, user_id)
     if not group:
         return None
 
@@ -240,7 +242,7 @@ async def create_settlement(
     await _validate_members_in_group(
         session, group_id, [data.from_member_id, data.to_member_id]
     )
-    await _validate_transaction(session, data.transaction_id, user_id)
+    await _validate_transaction(session, data.transaction_id, workspace_id)
 
     payload = data.model_dump()
     account_id = payload.pop("account_id", None)
@@ -281,6 +283,7 @@ async def create_settlement(
         tx = await _create_payment_transaction(
             session,
             user_id,
+            workspace_id,
             account_id,
             data.amount,
             data.currency,
@@ -307,7 +310,9 @@ async def create_settlement(
             receiver_tx_id = receiver_tx.id
     payload["receiver_transaction_id"] = receiver_tx_id
 
-    settlement = GroupSettlement(group_id=group_id, **payload)
+    settlement = GroupSettlement(
+        group_id=group_id, workspace_id=workspace_id, **payload
+    )
     session.add(settlement)
     await session.commit()
     await session.refresh(settlement)
@@ -318,10 +323,11 @@ async def update_settlement(
     session: AsyncSession,
     group_id: uuid.UUID,
     settlement_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     data: GroupSettlementUpdate,
 ) -> Optional[GroupSettlement]:
-    group = await _ensure_group_visible(session, group_id, user_id)
+    group = await _ensure_group_visible(session, group_id, workspace_id, user_id)
     if not group:
         return None
 
@@ -356,7 +362,7 @@ async def update_settlement(
         await _validate_members_in_group(session, group_id, member_check)
 
     if "transaction_id" in update_data:
-        await _validate_transaction(session, update_data["transaction_id"], user_id)
+        await _validate_transaction(session, update_data["transaction_id"], workspace_id)
 
     for key, value in update_data.items():
         setattr(settlement, key, value)
@@ -370,9 +376,10 @@ async def delete_settlement(
     session: AsyncSession,
     group_id: uuid.UUID,
     settlement_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> bool:
-    group = await _ensure_group_visible(session, group_id, user_id)
+    group = await _ensure_group_visible(session, group_id, workspace_id, user_id)
     if not group:
         return False
     result = await session.execute(

@@ -22,6 +22,7 @@ interface ImportReviewTableProps {
   groups: CategoryGroup[]
   userCurrency: string
   locale: string
+  dateLocale: string
   searchQuery: string
   filterCategoryIds: string[]
   filterUncategorized: boolean
@@ -42,6 +43,7 @@ export function ImportReviewTable({
   groups,
   userCurrency,
   locale,
+  dateLocale,
   searchQuery,
   filterCategoryIds,
   filterUncategorized,
@@ -156,7 +158,7 @@ export function ImportReviewTable({
                     />
                   </TableCell>
                   <TableCell className="py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(tx.date).toLocaleDateString(locale)}
+                    {new Date(tx.date).toLocaleDateString(dateLocale)}
                   </TableCell>
                   <TableCell className={`py-2.5 text-sm ${tx.excluded ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                     {tx.description}

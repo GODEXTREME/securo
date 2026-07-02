@@ -51,6 +51,7 @@ async def create_user(
     from app.models.account import Account
     from app.services.category_service import create_default_categories
     from app.services.rule_service import create_default_rules
+    from app.services.workspace_service import create_personal_workspace_for_user
 
     create_schema = BaseUserCreate(
         email=data.email,
@@ -77,9 +78,15 @@ async def create_user(
     # request=None — which is exactly this path — so admin-created users
     # would otherwise land with no defaults and a broken UX.
     lang = (user.preferences or {}).get("language", "en")
+    # Every new user gets a Personal workspace + owner membership so the
+    # seeded wallet/categories/rules below have somewhere to live.
+    workspace = await create_personal_workspace_for_user(session, user)
+    await session.commit()
+
     wallet_name = "Carteira" if lang.startswith("pt") else "Wallet"
     wallet = Account(
         user_id=user.id,
+        workspace_id=workspace.id,
         name=wallet_name,
         type="checking",
         balance=Decimal("0.00"),
@@ -88,8 +95,8 @@ async def create_user(
     session.add(wallet)
     await session.commit()
 
-    await create_default_categories(session, user.id, lang)
-    await create_default_rules(session, user.id, lang)
+    await create_default_categories(session, user.id, lang, workspace_id=workspace.id)
+    await create_default_rules(session, user.id, lang, workspace_id=workspace.id)
 
     return user
 
@@ -257,6 +264,32 @@ async def get_accounts_view_mode(session: AsyncSession) -> str:
     if setting and setting.value in ("grouped", "compact"):
         return setting.value
     return "grouped"
+
+
+async def get_number_format(session: AsyncSession) -> str:
+    """Return the global number/date display format.
+
+    Global app setting controlling thousands/decimal separators (and, on the
+    frontend, the locale used for date display). One of 'auto', 'comma_dot'
+    (1,000.00), 'dot_comma' (1.000,00) or 'space_comma' (1 000,00). Defaults to
+    'auto', which derives the format from the user's display currency."""
+    setting = await get_app_setting(session, "number_format")
+    if setting and setting.value in ("auto", "comma_dot", "dot_comma", "space_comma"):
+        return setting.value
+    return "auto"
+
+
+async def get_date_format(session: AsyncSession) -> str:
+    """Return the global date display format.
+
+    Global app setting controlling the date field order. One of 'auto'
+    (derive from the number format / currency), 'dmy' (DD/MM/YYYY), 'mdy'
+    (MM/DD/YYYY) or 'ymd' (YYYY-MM-DD). Month names follow the user's app
+    language regardless. Defaults to 'auto'."""
+    setting = await get_app_setting(session, "date_format")
+    if setting and setting.value in ("auto", "dmy", "mdy", "ymd"):
+        return setting.value
+    return "auto"
 
 
 async def use_provider_categories(session: AsyncSession) -> bool:

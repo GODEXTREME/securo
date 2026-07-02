@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.asset import Asset
 from app.models.asset_value import AssetValue
+from app.models.fx_rate import FxRate
 from app.models.user import User
 from app.schemas.asset import AssetCreate, AssetUpdate, AssetValueCreate
 from app.services import asset_service
@@ -15,8 +16,80 @@ from app.services.asset_service import (
     _compute_current_value,
     _generate_growth_values,
     _next_due_date,
+    build_market_value_series,
     get_portfolio_trend,
 )
+
+
+def test_build_market_value_series_reflects_quantity_over_time():
+    """A backdated buy steps the value up from its date, not just today."""
+    rows = [
+        (date(2026, 5, 12), Decimal("9286"), Decimal("46.43")),
+        (date(2026, 5, 17), Decimal("9094"), Decimal("45.47")),
+        (date(2026, 6, 11), Decimal("8330"), Decimal("41.65")),
+    ]
+    txs = [
+        (date(2025, 12, 1), "buy", Decimal("200"), Decimal("40")),
+        (date(2026, 5, 15), "buy", Decimal("50"), Decimal("46")),  # backdated, between value points
+    ]
+    out = dict(build_market_value_series(rows, txs))
+    # The trade dates get their own points so the chart isn't a flat line until
+    # the first stored price. Before any market price, value at the trade price.
+    assert round(out[date(2025, 12, 1)]) == round(200 * 40)       # no market price yet → trade price
+    assert round(out[date(2026, 5, 12)]) == round(200 * 46.43)    # before the 05-15 buy → 200 units
+    # A trade between two stored prices carries the last known market price.
+    assert round(out[date(2026, 5, 15)]) == round(250 * 46.43)    # 250 units at the carried price
+    assert round(out[date(2026, 5, 17)]) == round(250 * 45.47)    # after → 250 units
+    assert round(out[date(2026, 6, 11)]) == round(250 * 41.65)
+
+
+def test_build_market_value_series_handles_sell_and_missing_price():
+    rows = [
+        (date(2026, 1, 1), Decimal("1000"), Decimal("10")),   # 100 units
+        (date(2026, 2, 1), Decimal("0"), Decimal("12")),      # after selling 40 → 60 units
+        (date(2026, 3, 1), Decimal("777"), None),             # no price → fall back to amount
+    ]
+    txs = [
+        (date(2026, 1, 1), "buy", Decimal("100"), Decimal("10")),
+        (date(2026, 1, 20), "sell", Decimal("40"), Decimal("11")),
+    ]
+    out = dict(build_market_value_series(rows, txs))
+    assert out[date(2026, 1, 1)] == 1000.0   # 100 × 10
+    assert out[date(2026, 1, 20)] == 600.0   # mid-month sell point: 60 × 10 (carried price)
+    assert out[date(2026, 2, 1)] == 720.0    # 60 × 12
+    assert out[date(2026, 3, 1)] == 777.0    # fallback to stored amount
+
+
+def test_build_market_value_series_backdated_trades_predating_prices():
+    """The reported bug: trades years before price tracking each get a point.
+
+    A market-priced holding records prices only from when it was added (recent
+    dates), so every backdated buy must still produce a dated point — otherwise
+    the chart collapses them onto one anchor and draws a single interpolation.
+    """
+    rows = [(date(2026, 6, 15), Decimal("5335.56"), Decimal("296.42"))]
+    txs = [
+        (date(2021, 1, 15), "buy", Decimal("10"), Decimal("50")),
+        (date(2022, 2, 2), "buy", Decimal("5"), Decimal("80")),
+        (date(2022, 4, 11), "buy", Decimal("3"), Decimal("120")),
+    ]
+    out = dict(build_market_value_series(rows, txs))
+    assert round(out[date(2021, 1, 15)]) == round(10 * 50)            # 10 units @ trade price
+    assert round(out[date(2022, 2, 2)]) == round(15 * 80)             # 15 units @ trade price
+    assert round(out[date(2022, 4, 11)]) == round(18 * 120)           # 18 units @ trade price
+    assert round(out[date(2026, 6, 15)]) == round(18 * 296.42)        # 18 units @ market price
+    assert len(out) == 4  # a point per trade date plus the stored value
+
+
+def test_build_market_value_series_no_ledger_keeps_amounts():
+    """A holding with no transactions must not be zeroed — keep stored amounts."""
+    rows = [
+        (date(2026, 1, 1), Decimal("500"), Decimal("5")),
+        (date(2026, 2, 1), Decimal("600"), Decimal("6")),
+    ]
+    out = dict(build_market_value_series(rows, []))
+    assert out[date(2026, 1, 1)] == 500.0
+    assert out[date(2026, 2, 1)] == 600.0
 
 
 @pytest_asyncio.fixture
@@ -61,9 +134,9 @@ async def test_asset_with_values(session: AsyncSession, test_asset: Asset) -> As
 
 
 @pytest.mark.asyncio
-async def test_create_asset(session: AsyncSession, test_user: User):
+async def test_create_asset(session: AsyncSession, test_user: User, test_workspace):
     data = AssetCreate(name="Car", type="vehicle", currency="BRL")
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.name == "Car"
     assert result.type == "vehicle"
     assert result.current_value is None
@@ -71,28 +144,28 @@ async def test_create_asset(session: AsyncSession, test_user: User):
 
 
 @pytest.mark.asyncio
-async def test_create_asset_with_initial_value(session: AsyncSession, test_user: User):
+async def test_create_asset_with_initial_value(session: AsyncSession, test_user: User, test_workspace):
     data = AssetCreate(
         name="Watch", type="valuable", currency="BRL",
         current_value=Decimal("15000.00"),
         purchase_price=Decimal("12000.00"),
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.current_value == 15000.0
     assert result.gain_loss == 3000.0
     assert result.value_count == 1
 
 
 @pytest.mark.asyncio
-async def test_list_assets(session: AsyncSession, test_user: User, test_asset: Asset):
-    results = await asset_service.get_assets(session, test_user.id)
+async def test_list_assets(session: AsyncSession, test_user: User, test_workspace, test_asset: Asset):
+    results = await asset_service.get_assets(session, test_workspace.id)
     assert len(results) >= 1
     names = [a.name for a in results]
     assert "Test Property" in names
 
 
 @pytest.mark.asyncio
-async def test_list_assets_excludes_archived(session: AsyncSession, test_user: User):
+async def test_list_assets_excludes_archived(session: AsyncSession, test_user: User, test_workspace):
     asset = Asset(
         id=uuid.uuid4(),
         user_id=test_user.id,
@@ -105,46 +178,46 @@ async def test_list_assets_excludes_archived(session: AsyncSession, test_user: U
     session.add(asset)
     await session.commit()
 
-    results = await asset_service.get_assets(session, test_user.id, include_archived=False)
+    results = await asset_service.get_assets(session, test_workspace.id, include_archived=False)
     names = [a.name for a in results]
     assert "Archived Asset" not in names
 
-    results_all = await asset_service.get_assets(session, test_user.id, include_archived=True)
+    results_all = await asset_service.get_assets(session, test_workspace.id, include_archived=True)
     names_all = [a.name for a in results_all]
     assert "Archived Asset" in names_all
 
 
 @pytest.mark.asyncio
-async def test_get_asset(session: AsyncSession, test_user: User, test_asset: Asset):
-    result = await asset_service.get_asset(session, test_asset.id, test_user.id)
+async def test_get_asset(session: AsyncSession, test_user: User, test_workspace, test_asset: Asset):
+    result = await asset_service.get_asset(session, test_asset.id, test_workspace.id)
     assert result is not None
     assert result.name == "Test Property"
 
 
 @pytest.mark.asyncio
-async def test_get_asset_not_found(session: AsyncSession, test_user: User):
-    result = await asset_service.get_asset(session, uuid.uuid4(), test_user.id)
+async def test_get_asset_not_found(session: AsyncSession, test_user: User, test_workspace):
+    result = await asset_service.get_asset(session, uuid.uuid4(), test_workspace.id)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_update_asset(session: AsyncSession, test_user: User, test_asset: Asset):
+async def test_update_asset(session: AsyncSession, test_user: User, test_workspace, test_asset: Asset):
     data = AssetUpdate(name="Updated Property", type="investment")
-    result = await asset_service.update_asset(session, test_asset.id, test_user.id, data)
+    result = await asset_service.update_asset(session, test_asset.id, test_workspace.id, test_user.id, data)
     assert result is not None
     assert result.name == "Updated Property"
     assert result.type == "investment"
 
 
 @pytest.mark.asyncio
-async def test_update_asset_not_found(session: AsyncSession, test_user: User):
+async def test_update_asset_not_found(session: AsyncSession, test_user: User, test_workspace):
     data = AssetUpdate(name="Nope")
-    result = await asset_service.update_asset(session, uuid.uuid4(), test_user.id, data)
+    result = await asset_service.update_asset(session, uuid.uuid4(), test_workspace.id, test_user.id, data)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_delete_asset(session: AsyncSession, test_user: User):
+async def test_delete_asset(session: AsyncSession, test_user: User, test_workspace):
     asset = Asset(
         id=uuid.uuid4(),
         user_id=test_user.id,
@@ -156,15 +229,15 @@ async def test_delete_asset(session: AsyncSession, test_user: User):
     session.add(asset)
     await session.commit()
 
-    deleted = await asset_service.delete_asset(session, asset.id, test_user.id)
+    deleted = await asset_service.delete_asset(session, asset.id, test_workspace.id)
     assert deleted is True
 
-    result = await asset_service.get_asset(session, asset.id, test_user.id)
+    result = await asset_service.get_asset(session, asset.id, test_workspace.id)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_delete_asset_cascades_values(session: AsyncSession, test_user: User):
+async def test_delete_asset_cascades_values(session: AsyncSession, test_user: User, test_workspace):
     asset = Asset(
         id=uuid.uuid4(),
         user_id=test_user.id,
@@ -186,14 +259,14 @@ async def test_delete_asset_cascades_values(session: AsyncSession, test_user: Us
     session.add(v)
     await session.commit()
 
-    deleted = await asset_service.delete_asset(session, asset.id, test_user.id)
+    deleted = await asset_service.delete_asset(session, asset.id, test_workspace.id)
     assert deleted is True
 
 
 @pytest.mark.asyncio
-async def test_add_asset_value(session: AsyncSession, test_user: User, test_asset: Asset):
+async def test_add_asset_value(session: AsyncSession, test_user: User, test_workspace, test_asset: Asset):
     data = AssetValueCreate(amount=Decimal("600000.00"), date=date.today())
-    result = await asset_service.add_asset_value(session, test_asset.id, test_user.id, data)
+    result = await asset_service.add_asset_value(session, test_asset.id, test_workspace.id, data)
     assert result is not None
     assert result.amount == 600000.0
     assert result.source == "manual"
@@ -201,15 +274,15 @@ async def test_add_asset_value(session: AsyncSession, test_user: User, test_asse
 
 @pytest.mark.asyncio
 async def test_add_asset_value_not_owned(session: AsyncSession, test_asset: Asset):
-    other_user_id = uuid.uuid4()
+    other_workspace_id = uuid.uuid4()
     data = AssetValueCreate(amount=Decimal("100.00"), date=date.today())
-    result = await asset_service.add_asset_value(session, test_asset.id, other_user_id, data)
+    result = await asset_service.add_asset_value(session, test_asset.id, other_workspace_id, data)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_get_asset_values(session: AsyncSession, test_user: User, test_asset_with_values: Asset):
-    values = await asset_service.get_asset_values(session, test_asset_with_values.id, test_user.id)
+async def test_get_asset_values(session: AsyncSession, test_user: User, test_workspace, test_asset_with_values: Asset):
+    values = await asset_service.get_asset_values(session, test_asset_with_values.id, test_workspace.id)
     assert values is not None
     assert len(values) == 3
     # Should be ordered most recent first
@@ -217,7 +290,7 @@ async def test_get_asset_values(session: AsyncSession, test_user: User, test_ass
 
 
 @pytest.mark.asyncio
-async def test_delete_asset_value(session: AsyncSession, test_user: User, test_asset: Asset):
+async def test_delete_asset_value(session: AsyncSession, test_user: User, test_workspace, test_asset: Asset):
     v = AssetValue(
         id=uuid.uuid4(),
         asset_id=test_asset.id,
@@ -228,27 +301,27 @@ async def test_delete_asset_value(session: AsyncSession, test_user: User, test_a
     session.add(v)
     await session.commit()
 
-    deleted = await asset_service.delete_asset_value(session, v.id, test_user.id)
+    deleted = await asset_service.delete_asset_value(session, v.id, test_workspace.id)
     assert deleted is True
 
 
 @pytest.mark.asyncio
-async def test_get_asset_value_trend(session: AsyncSession, test_user: User, test_asset_with_values: Asset):
-    trend = await asset_service.get_asset_value_trend(session, test_asset_with_values.id, test_user.id)
+async def test_get_asset_value_trend(session: AsyncSession, test_user: User, test_workspace, test_asset_with_values: Asset):
+    trend = await asset_service.get_asset_value_trend(session, test_asset_with_values.id, test_workspace.id)
     assert trend is not None
     assert len(trend) == 3
     assert trend[0]["date"] <= trend[1]["date"]  # ordered by date asc
 
 
 @pytest.mark.asyncio
-async def test_get_total_asset_value(session: AsyncSession, test_user: User, test_asset_with_values: Asset):
-    totals = await asset_service.get_total_asset_value(session, test_user.id)
+async def test_get_total_asset_value(session: AsyncSession, test_user: User, test_workspace, test_asset_with_values: Asset):
+    totals, _ = await asset_service.get_asset_values_at(session, test_workspace.id, by_workspace=True)
     assert "BRL" in totals
     assert totals["BRL"] >= 550000.0  # latest value
 
 
 @pytest.mark.asyncio
-async def test_total_asset_value_excludes_sold(session: AsyncSession, test_user: User):
+async def test_total_asset_value_excludes_sold(session: AsyncSession, test_user: User, test_workspace):
     """Sold assets should not count in total."""
     asset = Asset(
         id=uuid.uuid4(),
@@ -272,7 +345,7 @@ async def test_total_asset_value_excludes_sold(session: AsyncSession, test_user:
     session.add(v)
     await session.commit()
 
-    totals = await asset_service.get_total_asset_value(session, test_user.id)
+    totals, _ = await asset_service.get_asset_values_at(session, test_workspace.id, by_workspace=True)
     assert isinstance(totals, dict)
 
 
@@ -314,37 +387,37 @@ async def test_growth_rule_task(session: AsyncSession, test_user: User):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_current_value_falls_back_to_purchase_price(session: AsyncSession, test_user: User):
+async def test_current_value_falls_back_to_purchase_price(session: AsyncSession, test_user: User, test_workspace):
     """When no AssetValue rows exist, current_value should equal purchase_price."""
     data = AssetCreate(
         name="New Car", type="vehicle", currency="BRL",
         purchase_price=Decimal("80000.00"),
         purchase_date=date(2025, 6, 1),
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.current_value == 80000.0
     assert result.gain_loss == 0.0
     assert result.value_count == 0
 
 
 @pytest.mark.asyncio
-async def test_current_value_none_when_no_price_no_values(session: AsyncSession, test_user: User):
+async def test_current_value_none_when_no_price_no_values(session: AsyncSession, test_user: User, test_workspace):
     """When no purchase_price and no AssetValue, current_value should be None."""
     data = AssetCreate(name="Empty Asset", type="other", currency="BRL")
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.current_value is None
     assert result.gain_loss is None
 
 
 @pytest.mark.asyncio
-async def test_current_value_prefers_latest_value_over_purchase(session: AsyncSession, test_user: User):
+async def test_current_value_prefers_latest_value_over_purchase(session: AsyncSession, test_user: User, test_workspace):
     """When AssetValue rows exist, current_value should use the latest one, not purchase_price."""
     data = AssetCreate(
         name="Appreciated Watch", type="valuable", currency="BRL",
         purchase_price=Decimal("5000.00"),
         current_value=Decimal("7500.00"),
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.current_value == 7500.0
     assert result.gain_loss == 2500.0
 
@@ -354,7 +427,7 @@ async def test_current_value_prefers_latest_value_over_purchase(session: AsyncSe
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_growth_rule_backfills_values_on_create(session: AsyncSession, test_user: User):
+async def test_growth_rule_backfills_values_on_create(session: AsyncSession, test_user: User, test_workspace):
     """Creating a growth_rule asset starting in the past should generate all intermediate values."""
     start = date.today() - timedelta(days=90)
     data = AssetCreate(
@@ -367,7 +440,7 @@ async def test_growth_rule_backfills_values_on_create(session: AsyncSession, tes
         growth_frequency="monthly",
         growth_start_date=start,
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
 
     # Should have the seed value + at least 2 monthly rule values (90 days ~ 3 months)
     assert result.value_count >= 3
@@ -377,7 +450,7 @@ async def test_growth_rule_backfills_values_on_create(session: AsyncSession, tes
 
 
 @pytest.mark.asyncio
-async def test_growth_rule_percentage_backfill_math(session: AsyncSession, test_user: User):
+async def test_growth_rule_percentage_backfill_math(session: AsyncSession, test_user: User, test_workspace):
     """Verify the exact math for percentage growth backfill."""
     # Start exactly 3 months ago on the 1st
     today = date.today()
@@ -393,7 +466,7 @@ async def test_growth_rule_percentage_backfill_math(session: AsyncSession, test_
         growth_frequency="monthly",
         growth_start_date=start,
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
 
     # 1000 * 1.1 * 1.1 * 1.1 = 1331.0
     assert result.current_value is not None
@@ -404,7 +477,7 @@ async def test_growth_rule_percentage_backfill_math(session: AsyncSession, test_
 
 
 @pytest.mark.asyncio
-async def test_growth_rule_absolute_backfill(session: AsyncSession, test_user: User):
+async def test_growth_rule_absolute_backfill(session: AsyncSession, test_user: User, test_workspace):
     """Verify absolute growth type adds a fixed amount each period."""
     today = date.today()
     start = date(today.year if today.month > 3 else today.year - 1,
@@ -419,7 +492,7 @@ async def test_growth_rule_absolute_backfill(session: AsyncSession, test_user: U
         growth_frequency="monthly",
         growth_start_date=start,
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
 
     # 5000 + 500 + 500 + 500 = 6500
     assert result.current_value is not None
@@ -428,7 +501,7 @@ async def test_growth_rule_absolute_backfill(session: AsyncSession, test_user: U
 
 
 @pytest.mark.asyncio
-async def test_growth_rule_future_start_no_backfill(session: AsyncSession, test_user: User):
+async def test_growth_rule_future_start_no_backfill(session: AsyncSession, test_user: User, test_workspace):
     """If growth_start_date is in the future, no rule values should be generated."""
     future = date.today() + timedelta(days=30)
     data = AssetCreate(
@@ -441,7 +514,7 @@ async def test_growth_rule_future_start_no_backfill(session: AsyncSession, test_
         growth_frequency="monthly",
         growth_start_date=future,
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
 
     # Only the seed value, no rule-generated values
     assert result.value_count == 1
@@ -449,7 +522,7 @@ async def test_growth_rule_future_start_no_backfill(session: AsyncSession, test_
 
 
 @pytest.mark.asyncio
-async def test_growth_rule_daily_backfill(session: AsyncSession, test_user: User):
+async def test_growth_rule_daily_backfill(session: AsyncSession, test_user: User, test_workspace):
     """Daily growth rule should generate one value per day."""
     start = date.today() - timedelta(days=5)
     data = AssetCreate(
@@ -462,7 +535,7 @@ async def test_growth_rule_daily_backfill(session: AsyncSession, test_user: User
         growth_frequency="daily",
         growth_start_date=start,
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
 
     # seed + 5 daily values = 6
     assert result.value_count == 6
@@ -472,7 +545,7 @@ async def test_growth_rule_daily_backfill(session: AsyncSession, test_user: User
 
 
 @pytest.mark.asyncio
-async def test_growth_rule_weekly_backfill(session: AsyncSession, test_user: User):
+async def test_growth_rule_weekly_backfill(session: AsyncSession, test_user: User, test_workspace):
     """Weekly growth rule should generate one value per week."""
     start = date.today() - timedelta(weeks=3)
     data = AssetCreate(
@@ -485,7 +558,7 @@ async def test_growth_rule_weekly_backfill(session: AsyncSession, test_user: Use
         growth_frequency="weekly",
         growth_start_date=start,
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
 
     # seed + 3 weekly values = 4
     assert result.value_count == 4
@@ -499,49 +572,49 @@ async def test_growth_rule_weekly_backfill(session: AsyncSession, test_user: Use
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_gain_loss_positive(session: AsyncSession, test_user: User):
+async def test_gain_loss_positive(session: AsyncSession, test_user: User, test_workspace):
     """Gain/loss should be positive when current value exceeds purchase price."""
     data = AssetCreate(
         name="Gainer", type="valuable", currency="BRL",
         purchase_price=Decimal("1000.00"),
         current_value=Decimal("1500.00"),
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.gain_loss == 500.0
 
 
 @pytest.mark.asyncio
-async def test_gain_loss_negative(session: AsyncSession, test_user: User):
+async def test_gain_loss_negative(session: AsyncSession, test_user: User, test_workspace):
     """Gain/loss should be negative when current value is below purchase price."""
     data = AssetCreate(
         name="Loser", type="vehicle", currency="BRL",
         purchase_price=Decimal("20000.00"),
         current_value=Decimal("15000.00"),
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.gain_loss == -5000.0
 
 
 @pytest.mark.asyncio
-async def test_gain_loss_zero_at_purchase_fallback(session: AsyncSession, test_user: User):
+async def test_gain_loss_zero_at_purchase_fallback(session: AsyncSession, test_user: User, test_workspace):
     """When falling back to purchase_price (no values), gain/loss should be 0."""
     data = AssetCreate(
         name="No Values", type="other", currency="BRL",
         purchase_price=Decimal("3000.00"),
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.current_value == 3000.0
     assert result.gain_loss == 0.0
 
 
 @pytest.mark.asyncio
-async def test_gain_loss_none_without_purchase_price(session: AsyncSession, test_user: User):
+async def test_gain_loss_none_without_purchase_price(session: AsyncSession, test_user: User, test_workspace):
     """Without a purchase_price, gain_loss should be None even if there's a current value."""
     data = AssetCreate(
         name="No Purchase", type="other", currency="BRL",
         current_value=Decimal("5000.00"),
     )
-    result = await asset_service.create_asset(session, test_user.id, data)
+    result = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     assert result.current_value == 5000.0
     assert result.gain_loss is None
 
@@ -551,7 +624,7 @@ async def test_gain_loss_none_without_purchase_price(session: AsyncSession, test
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_total_asset_value_includes_purchase_fallback(session: AsyncSession, test_user: User):
+async def test_total_asset_value_includes_purchase_fallback(session: AsyncSession, test_user: User, test_workspace):
     """Assets with only purchase_price (no values) should be included in totals."""
     asset = Asset(
         id=uuid.uuid4(),
@@ -565,13 +638,13 @@ async def test_total_asset_value_includes_purchase_fallback(session: AsyncSessio
     session.add(asset)
     await session.commit()
 
-    totals = await asset_service.get_total_asset_value(session, test_user.id)
+    totals, _ = await asset_service.get_asset_values_at(session, test_workspace.id, by_workspace=True)
     assert "BRL" in totals
     assert totals["BRL"] >= 200000.0
 
 
 @pytest.mark.asyncio
-async def test_total_asset_value_excludes_archived(session: AsyncSession, test_user: User):
+async def test_total_asset_value_excludes_archived(session: AsyncSession, test_user: User, test_workspace):
     """Archived assets should not count in total."""
     asset = Asset(
         id=uuid.uuid4(),
@@ -586,7 +659,7 @@ async def test_total_asset_value_excludes_archived(session: AsyncSession, test_u
     session.add(asset)
     await session.commit()
 
-    totals = await asset_service.get_total_asset_value(session, test_user.id)
+    totals, _ = await asset_service.get_asset_values_at(session, test_workspace.id, by_workspace=True)
     # If this is the only asset, BRL should not be in totals (or should not include 999999)
     assert totals.get("BRL", 0) < 999999.0
 
@@ -715,7 +788,7 @@ def test_compute_current_value_none_without_data():
 
 
 @pytest.mark.asyncio
-async def test_update_asset_regenerate_growth(session: AsyncSession, test_user: User):
+async def test_update_asset_regenerate_growth(session: AsyncSession, test_user: User, test_workspace):
     purchase_date = date.today() - timedelta(days=60)
     data = AssetCreate(
         name="Regen Asset", type="investment", currency="BRL",
@@ -723,62 +796,62 @@ async def test_update_asset_regenerate_growth(session: AsyncSession, test_user: 
         purchase_date=purchase_date, purchase_price=Decimal("5000"),
         growth_type="percentage", growth_rate=Decimal("3"), growth_frequency="monthly",
     )
-    created = await asset_service.create_asset(session, test_user.id, data)
+    created = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
 
     update_data = AssetUpdate(growth_rate=Decimal("5"))
     updated = await asset_service.update_asset(
-        session, created.id, test_user.id, update_data, regenerate_growth=True,
+        session, created.id, test_workspace.id, test_user.id, update_data, regenerate_growth=True,
     )
     assert updated is not None
     assert updated.name == "Regen Asset"
 
 
 @pytest.mark.asyncio
-async def test_update_asset_purchase_price(session: AsyncSession, test_user: User):
+async def test_update_asset_purchase_price(session: AsyncSession, test_user: User, test_workspace):
     data = AssetCreate(
         name="Price Update", type="other", currency="BRL",
         purchase_price=Decimal("1000"),
     )
-    created = await asset_service.create_asset(session, test_user.id, data)
+    created = await asset_service.create_asset(session, test_workspace.id, test_user.id, data)
     update_data = AssetUpdate(purchase_price=Decimal("2000"))
-    updated = await asset_service.update_asset(session, created.id, test_user.id, update_data)
+    updated = await asset_service.update_asset(session, created.id, test_workspace.id, test_user.id, update_data)
     assert updated.purchase_price == 2000.0
 
 
 @pytest.mark.asyncio
-async def test_get_asset_values_not_found(session: AsyncSession, test_user: User):
-    result = await asset_service.get_asset_values(session, uuid.uuid4(), test_user.id)
+async def test_get_asset_values_not_found(session: AsyncSession, test_user: User, test_workspace):
+    result = await asset_service.get_asset_values(session, uuid.uuid4(), test_workspace.id)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_add_asset_value_not_found(session: AsyncSession, test_user: User):
+async def test_add_asset_value_not_found(session: AsyncSession, test_user: User, test_workspace):
     val_data = AssetValueCreate(amount=Decimal("100"), date=date.today())
-    result = await asset_service.add_asset_value(session, uuid.uuid4(), test_user.id, val_data)
+    result = await asset_service.add_asset_value(session, uuid.uuid4(), test_workspace.id, val_data)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_delete_asset_value_not_found(session: AsyncSession, test_user: User):
-    assert await asset_service.delete_asset_value(session, uuid.uuid4(), test_user.id) is False
+async def test_delete_asset_value_not_found(session: AsyncSession, test_user: User, test_workspace):
+    assert await asset_service.delete_asset_value(session, uuid.uuid4(), test_workspace.id) is False
 
 
 @pytest.mark.asyncio
-async def test_get_asset_value_trend_not_found(session: AsyncSession, test_user: User):
-    result = await asset_service.get_asset_value_trend(session, uuid.uuid4(), test_user.id)
+async def test_get_asset_value_trend_not_found(session: AsyncSession, test_user: User, test_workspace):
+    result = await asset_service.get_asset_value_trend(session, uuid.uuid4(), test_workspace.id)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_portfolio_trend_empty(session: AsyncSession, test_user: User):
-    result = await get_portfolio_trend(session, test_user.id)
+async def test_portfolio_trend_empty(session: AsyncSession, test_user: User, test_workspace):
+    result = await get_portfolio_trend(session, test_workspace.id, test_user.id)
     assert result["assets"] == []
     assert result["trend"] == []
     assert result["total"] == 0.0
 
 
 @pytest.mark.asyncio
-async def test_portfolio_trend_with_assets(session: AsyncSession, test_user: User):
+async def test_portfolio_trend_with_assets(session: AsyncSession, test_user: User, test_workspace):
     a1 = AssetCreate(
         name="House", type="real_estate", currency="BRL",
         purchase_date=date.today() - timedelta(days=30),
@@ -789,39 +862,106 @@ async def test_portfolio_trend_with_assets(session: AsyncSession, test_user: Use
         purchase_date=date.today() - timedelta(days=10),
         purchase_price=Decimal("50000"), current_value=Decimal("45000"),
     )
-    await asset_service.create_asset(session, test_user.id, a1)
-    await asset_service.create_asset(session, test_user.id, a2)
+    await asset_service.create_asset(session, test_workspace.id, test_user.id, a1)
+    await asset_service.create_asset(session, test_workspace.id, test_user.id, a2)
 
-    result = await get_portfolio_trend(session, test_user.id)
+    result = await get_portfolio_trend(session, test_workspace.id, test_user.id)
     assert len(result["assets"]) == 2
     assert len(result["trend"]) > 0
     assert result["total"] > 0
 
 
 @pytest.mark.asyncio
-async def test_get_assets_include_archived(session: AsyncSession, test_user: User):
+async def test_portfolio_trend_total_consistent_with_get_asset_values_at(
+    session: AsyncSession, test_user: User, test_workspace,
+):
+    """portfolio trend _total must match get_asset_values_at at the same date.
+
+    Uses a USD asset whose value entry pre-dates the display date, so
+    it is fill-forwarded. Two different BRL/USD rates are inserted so the
+    old behavior (convert at value-entry date) and the new behavior
+    (convert at display date) produce different numbers — only the new
+    behavior matches get_asset_values_at.
+    """
+    date_jan = date(2025, 1, 31)  # USD asset gets its value here (rate 5.0)
+    date_mar = date(2025, 3, 31)  # display date — different rate (6.0)
+
+    # Two FX snapshots so convert() finds an exact match at each date
+    for fx_date, fx_rate in [(date_jan, "5.0"), (date_mar, "6.0")]:
+        session.add(FxRate(
+            id=uuid.uuid4(),
+            base_currency="USD",
+            quote_currency="BRL",
+            date=fx_date,
+            rate=Decimal(fx_rate),
+            source="test",
+        ))
+
+    # USD asset: one value entry in January, no subsequent entries (fill-forwarded in March)
+    usd_asset = Asset(
+        id=uuid.uuid4(), user_id=test_user.id, name="Stock",
+        type="investment", currency="USD", valuation_method="manual",
+        purchase_date=date_jan, purchase_price=Decimal("100"), position=0,
+    )
+    session.add(usd_asset)
+    await session.flush()
+    session.add(AssetValue(
+        id=uuid.uuid4(), asset_id=usd_asset.id,
+        amount=Decimal("100"), date=date_jan, source="manual",
+    ))
+
+    # BRL anchor asset: value in March so that date_mar appears in sorted_dates
+    brl_asset = Asset(
+        id=uuid.uuid4(), user_id=test_user.id, name="House",
+        type="real_estate", currency="BRL", valuation_method="manual",
+        purchase_date=date_mar, purchase_price=Decimal("1000"), position=1,
+    )
+    session.add(brl_asset)
+    await session.flush()
+    session.add(AssetValue(
+        id=uuid.uuid4(), asset_id=brl_asset.id,
+        amount=Decimal("1000"), date=date_mar, source="manual",
+    ))
+
+    await session.commit()
+
+    trend_result = await get_portfolio_trend(session, test_workspace.id, test_user.id)
+    _, values_at_total = await asset_service.get_asset_values_at(
+        session, test_workspace.id, as_of_date=date_mar,
+        primary_currency=test_user.primary_currency,
+        by_workspace=True,
+    )
+
+    # At date_mar: USD 100 @ 6.0 = BRL 600, plus BRL 1000 = 1600
+    trend_at_mar = next(r for r in trend_result["trend"] if r["date"] == date_mar.isoformat())
+    assert trend_at_mar["_total"] == pytest.approx(1600.0, rel=1e-2)
+    assert trend_at_mar["_total"] == pytest.approx(values_at_total, rel=1e-2)
+
+
+@pytest.mark.asyncio
+async def test_get_assets_include_archived(session: AsyncSession, test_user: User, test_workspace):
     await asset_service.create_asset(
-        session, test_user.id, AssetCreate(name="A1", type="other", currency="BRL"),
+        session, test_workspace.id, test_user.id, AssetCreate(name="A1", type="other", currency="BRL"),
     )
     await asset_service.create_asset(
-        session, test_user.id, AssetCreate(name="A2", type="other", currency="BRL", is_archived=True),
+        session, test_workspace.id, test_user.id, AssetCreate(name="A2", type="other", currency="BRL", is_archived=True),
     )
-    assets = await asset_service.get_assets(session, test_user.id, include_archived=True)
+    assets = await asset_service.get_assets(session, test_workspace.id, include_archived=True)
     names = [a.name for a in assets]
     assert "A1" in names
     assert "A2" in names
 
 
 @pytest.mark.asyncio
-async def test_get_assets_excludes_archived_by_default(session: AsyncSession, test_user: User):
+async def test_get_assets_excludes_archived_by_default(session: AsyncSession, test_user: User, test_workspace):
     await asset_service.create_asset(
-        session, test_user.id, AssetCreate(name="Visible", type="other", currency="BRL"),
+        session, test_workspace.id, test_user.id, AssetCreate(name="Visible", type="other", currency="BRL"),
     )
     await asset_service.create_asset(
-        session, test_user.id, AssetCreate(name="Archived", type="other", currency="BRL", is_archived=True),
+        session, test_workspace.id, test_user.id, AssetCreate(name="Archived", type="other", currency="BRL", is_archived=True),
     )
 
-    assets = await asset_service.get_assets(session, test_user.id)
+    assets = await asset_service.get_assets(session, test_workspace.id)
     names = [a.name for a in assets]
     assert "Visible" in names
     assert "Archived" not in names

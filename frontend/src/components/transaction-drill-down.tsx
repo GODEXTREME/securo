@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery } from '@tanstack/react-query'
 import { transactions as transactionsApi, dashboard, admin } from '@/lib/api'
 import { AlertTriangle, Info, Paperclip, X } from 'lucide-react'
@@ -13,6 +14,8 @@ export type DrillDownFilter = {
   category_id?: string
   uncategorized?: boolean
   account_id?: string
+  // Scope to a set of accounts (e.g. the active collection's accounts).
+  account_ids?: string[]
   type?: 'credit' | 'debit'
   from?: string
   to?: string
@@ -47,11 +50,12 @@ export function TransactionDrillDown({
   onClose: () => void
   onTransactionClick?: (tx: Transaction) => void
 }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { user } = useAuth()
   const { mask } = usePrivacyMode()
   const userCurrency = user?.preferences?.currency_display ?? 'USD'
-  const locale = i18n.language === 'en' ? 'en-US' : i18n.language
+  const locale = useDisplayLocale()
+  const dateLocale = useDateLocale()
   const panelRef = useRef<HTMLDivElement>(null)
 
   const { data, isLoading } = useQuery({
@@ -61,6 +65,7 @@ export function TransactionDrillDown({
         category_id: filter?.category_id,
         uncategorized: filter?.uncategorized,
         account_id: filter?.account_id,
+        account_ids: filter?.account_ids,
         type: filter?.type,
         from: filter?.from,
         to: filter?.to,
@@ -257,7 +262,7 @@ export function TransactionDrillDown({
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(item.date + 'T00:00:00').toLocaleDateString(locale)}
+                      {new Date(item.date + 'T00:00:00').toLocaleDateString(dateLocale)}
                       {item.categoryName && ` · ${item.categoryName}`}
                     </p>
                   </div>

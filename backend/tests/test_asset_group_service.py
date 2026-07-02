@@ -11,7 +11,7 @@ from app.services.asset_group_service import get_groups
 
 @pytest.mark.asyncio
 async def test_get_groups_hides_empty_synced_wallets(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     active_connection = BankConnection(
         id=uuid.uuid4(),
@@ -48,7 +48,7 @@ async def test_get_groups_hides_empty_synced_wallets(
     session.add_all([manual_group, orphan_synced_group, active_synced_group])
     await session.commit()
 
-    groups = await get_groups(session, test_user.id)
+    groups = await get_groups(session, test_workspace.id, test_user.id)
     names = {g.name for g in groups}
 
     assert "Manual Wallet" in names

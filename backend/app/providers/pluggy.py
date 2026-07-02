@@ -1,7 +1,10 @@
+import asyncio
+import logging
 import time
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -13,10 +16,72 @@ from app.providers.base import (
     ConnectionData,
     ConnectTokenData,
     HoldingData,
+    RefreshOutcome,
     TransactionData,
 )
+from app.providers.pluggy_constants import pluggy_icon_for_compe
+
+logger = logging.getLogger(__name__)
+
+# How long to wait for Pluggy to finish syncing with the bank before giving up
+# and reading whatever Pluggy already has. Pluggy docs describe credential
+# connectors completing in tens of seconds; we cap at 90s to keep manual sync
+# requests bounded.
+PLUGGY_REFRESH_TIMEOUT_SECONDS = 90
+PLUGGY_REFRESH_POLL_INTERVAL = 3.0
+
+# Item statuses we treat as terminal when polling /items/{id}.
+# https://docs.pluggy.ai/docs/item-lifecycle
+_PLUGGY_TERMINAL_STATUSES = {
+    "UPDATED",
+    "LOGIN_ERROR",
+    "OUTDATED",
+    "WAITING_USER_INPUT",
+}
+
+# Pluggy 400 ``codeDescription`` values that genuinely require the user to
+# re-authenticate through the widget (MFA path). Every other 400 — items
+# under MeuPluggy that can't be PATCHed, transient rate limits, etc. — is
+# treated as a soft failure: we fall back to reading whatever Pluggy
+# already has rather than punishing the user with a reconnect prompt.
+_PLUGGY_REFRESH_USER_ACTION_CODES = {
+    "MFA_PARAMERTER_WAS_ALREADY_USED_ERROR",
+    "CONNECTOR_REQUIRED_PARAMETER_VALIDATION_ERROR",
+}
 
 PLUGGY_API_BASE = "https://api.pluggy.ai"
+
+
+def _compe_from_transfer_number(transfer_number) -> Optional[str]:
+    """Extract the 3-digit COMPE bank code from a Pluggy ``transferNumber``.
+
+    Format is ``"<compe>/<branch>/<account>"`` (e.g. ``"260/0001/06809695-5"``).
+    Returns the zero-padded code, or None when absent/unparseable.
+    """
+    if not isinstance(transfer_number, str) or "/" not in transfer_number:
+        return None
+    code = transfer_number.split("/", 1)[0].strip()
+    return code.zfill(3) if code.isdigit() else None
+
+
+def _resolve_connector_logo(connector: dict, accounts: list[dict]) -> Optional[str]:
+    """Institution logo URL for a Pluggy connection, or None.
+
+    Real connectors expose the bank logo directly in ``imageUrl`` (e.g.
+    Nubank -> ``.../212.svg``). The demo "MeuPluggy" connector returns the
+    generic ``sandbox.svg`` placeholder instead — in that case fall back to
+    the real bank's icon resolved from an account's COMPE code. If neither is
+    available, return None so the frontend shows the account-type icon.
+    """
+    image = connector.get("imageUrl")
+    if image and not image.rstrip("/").endswith("/sandbox.svg"):
+        return image
+    for acc in accounts:
+        compe = _compe_from_transfer_number((acc.get("bankData") or {}).get("transferNumber"))
+        icon = pluggy_icon_for_compe(compe)
+        if icon:
+            return icon
+    return None
 
 
 def _parse_day(value) -> Optional[int]:
@@ -236,7 +301,12 @@ class PluggyProvider(BankProvider):
             data = resp.json()
         return ConnectTokenData(access_token=data["accessToken"])
 
-    def get_oauth_url(self, redirect_uri: str, state: str) -> str:
+    async def get_oauth_url(
+        self,
+        redirect_uri: str,
+        state: str,
+        flow_params: Optional[dict] = None,
+    ) -> str:
         raise NotImplementedError("Pluggy uses widget flow, not OAuth redirect")
 
     async def handle_oauth_callback(self, code: str) -> ConnectionData:
@@ -262,10 +332,12 @@ class PluggyProvider(BankProvider):
             accounts_resp.raise_for_status()
             accounts_data = accounts_resp.json()
 
-        institution_name = item_data.get("connector", {}).get("name", "Unknown Bank")
+        connector = item_data.get("connector", {})
+        institution_name = connector.get("name", "Unknown Bank")
 
+        raw_accounts = accounts_data.get("results", [])
         account_list = []
-        for acc in accounts_data.get("results", []):
+        for acc in raw_accounts:
             account_list.append(_build_account_data(acc, self._map_account_type))
 
         return ConnectionData(
@@ -273,7 +345,27 @@ class PluggyProvider(BankProvider):
             institution_name=institution_name,
             credentials={"item_id": item_id},
             accounts=account_list,
+            logo_url=_resolve_connector_logo(connector, raw_accounts),
         )
+
+    async def get_institution_logo(self, credentials: dict) -> Optional[str]:
+        item_id = credentials["item_id"]
+        headers = await self._headers()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                f"{PLUGGY_API_BASE}/items/{item_id}", headers=headers
+            )
+            resp.raise_for_status()
+            connector = resp.json().get("connector", {})
+            # The connector logo may be the demo placeholder; fetch accounts so
+            # the COMPE-code fallback can recover the real bank icon.
+            accts_resp = await client.get(
+                f"{PLUGGY_API_BASE}/accounts", headers=headers,
+                params={"itemId": item_id},
+            )
+            accts_resp.raise_for_status()
+            raw_accounts = accts_resp.json().get("results", [])
+        return _resolve_connector_logo(connector, raw_accounts)
 
     async def get_accounts(self, credentials: dict) -> list[AccountData]:
         item_id = credentials["item_id"]
@@ -299,27 +391,31 @@ class PluggyProvider(BankProvider):
     ) -> list[TransactionData]:
         headers = await self._headers()
         all_transactions: list[TransactionData] = []
-        page = 1
+        after: Optional[str] = None
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             while True:
-                params: dict = {
-                    "accountId": account_external_id,
-                    "pageSize": 500,
-                    "page": page,
-                }
+                # v2 cursor-based listing. Pluggy deprecated v1 GET
+                # /transactions — it returns 410 ENDPOINT_DEPRECATED on newer
+                # API keys (rolled out per key). /v2/transactions pages via an
+                # opaque `after` cursor (returned in `next`) instead of
+                # page/pageSize.
+                params: dict = {"accountId": account_external_id}
                 if since:
                     # Filter by Pluggy ingestion time, NOT transaction date.
-                    # `from`/`to` filter on `date` (when the txn happened),
-                    # which silently drops transactions Pluggy ingests later
-                    # but backdates — e.g. credit card bill payments dated
-                    # to the bill close, or merchants that settle weeks late.
-                    # `createdAtFrom` filters on Pluggy's row creation time,
-                    # so any newly-ingested row is fetched regardless of date.
+                    # `dateFrom`/`dateTo` filter on `date` (when the txn
+                    # happened), which silently drops transactions Pluggy
+                    # ingests later but backdates — e.g. credit card bill
+                    # payments dated to the bill close, or merchants that
+                    # settle weeks late. `createdAtFrom` filters on Pluggy's
+                    # row creation time, so any newly-ingested row is fetched
+                    # regardless of date. v2 still supports it.
                     params["createdAtFrom"] = since.isoformat()
+                if after:
+                    params["after"] = after
 
                 resp = await client.get(
-                    f"{PLUGGY_API_BASE}/transactions",
+                    f"{PLUGGY_API_BASE}/v2/transactions",
                     headers=headers,
                     params=params,
                 )
@@ -405,16 +501,128 @@ class PluggyProvider(BankProvider):
                         )
                     )
 
-                total_pages = data.get("totalPages", 1)
-                if page >= total_pages:
+                next_after = self._extract_after(data.get("next"))
+                if not next_after or next_after == after:
                     break
-                page += 1
+                after = next_after
 
         return all_transactions
+
+    @staticmethod
+    def _extract_after(next_value: Optional[str]) -> Optional[str]:
+        """Pull the `after` cursor out of v2's `next` field.
+
+        Pluggy returns `next` as a URL carrying the cursor
+        (".../v2/transactions?accountId=...&after=<cursor>"), or null on the
+        last page. Returns None when there's no further page so the caller
+        stops — and never loops on a malformed value.
+        """
+        if not next_value:
+            return None
+        after_vals = parse_qs(urlparse(next_value).query).get("after")
+        return after_vals[0] if after_vals else None
 
     async def refresh_credentials(self, credentials: dict) -> dict:
         # Pluggy manages API keys at the provider level, not per-connection
         return credentials
+
+    async def trigger_refresh(self, credentials: dict) -> RefreshOutcome:
+        """Trigger ``PATCH /items/{id}`` and poll the item until it leaves
+        the ``UPDATING`` state.
+
+        See https://docs.pluggy.ai/docs/item-lifecycle for the state machine.
+        Pluggy's own auto-sync runs daily; this triggers an on-demand pull so
+        Securo reads what the bank shows now, not what Pluggy last cached.
+        """
+        item_id = credentials.get("item_id") if credentials else None
+        if not item_id:
+            return "skipped"
+
+        headers = await self._headers()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                trigger_resp = await client.patch(
+                    f"{PLUGGY_API_BASE}/items/{item_id}",
+                    headers=headers,
+                    json={},
+                )
+            except httpx.HTTPError:
+                logger.warning("Pluggy refresh PATCH failed for item %s", item_id)
+                return "failed"
+
+            if trigger_resp.status_code == 400:
+                # Pluggy returns 400 for several distinct cases. Only treat
+                # the explicit MFA-related codes as "needs_user_action" — the
+                # others (MeuPluggy-managed items that can't be PATCHed,
+                # consecutive-failure backoffs, etc.) are transient or
+                # outside the user's control. For those, fall through to a
+                # read of cached data.
+                body: dict = {}
+                try:
+                    body = trigger_resp.json()
+                except ValueError:
+                    pass
+                code_desc = str(body.get("codeDescription") or "").upper()
+                logger.info(
+                    "Pluggy refresh rejected for item %s (code=%s): %s",
+                    item_id,
+                    code_desc or "<no code>",
+                    trigger_resp.text[:200],
+                )
+                if code_desc in _PLUGGY_REFRESH_USER_ACTION_CODES:
+                    return "needs_user_action"
+                return "failed"
+            if trigger_resp.status_code >= 400:
+                logger.warning(
+                    "Pluggy refresh returned %s for item %s: %s",
+                    trigger_resp.status_code,
+                    item_id,
+                    trigger_resp.text[:200],
+                )
+                return "failed"
+
+            deadline = time.monotonic() + PLUGGY_REFRESH_TIMEOUT_SECONDS
+            while time.monotonic() < deadline:
+                await asyncio.sleep(PLUGGY_REFRESH_POLL_INTERVAL)
+                try:
+                    status_resp = await client.get(
+                        f"{PLUGGY_API_BASE}/items/{item_id}", headers=headers
+                    )
+                except httpx.HTTPError:
+                    continue  # transient — retry until deadline
+                if status_resp.status_code >= 400:
+                    logger.warning(
+                        "Pluggy item poll returned %s for %s",
+                        status_resp.status_code,
+                        item_id,
+                    )
+                    return "failed"
+
+                item = status_resp.json() or {}
+                status = (item.get("status") or "").upper()
+                if status == "UPDATING":
+                    continue
+                if status not in _PLUGGY_TERMINAL_STATUSES:
+                    # Unknown status — be conservative.
+                    return "failed"
+                if status == "UPDATED":
+                    return "refreshed"
+                if status == "WAITING_USER_INPUT":
+                    return "needs_user_action"
+                if status == "LOGIN_ERROR":
+                    return "needs_user_action"
+                # OUTDATED: previous sync failed but credentials were valid.
+                # Surfacing this as a hard error would hide otherwise-readable
+                # cached data, so treat as a soft failure and read what we have.
+                return "failed"
+
+            logger.info(
+                "Pluggy refresh for item %s timed out after %ss; "
+                "proceeding with cached data",
+                item_id,
+                PLUGGY_REFRESH_TIMEOUT_SECONDS,
+            )
+            return "failed"
 
     async def get_holdings(self, credentials: dict) -> list[HoldingData]:
         """Fetch investment holdings from Pluggy's /investments endpoint.

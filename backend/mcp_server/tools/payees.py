@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import payee_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
+from mcp_server.tools._helpers import resolve_workspace_id
 
 
 @tool(
@@ -20,7 +21,8 @@ async def list_payees(
     session: AsyncSession,
     ctx: CallContext,
 ) -> dict[str, Any]:
-    payees = await payee_service.get_payees(session, ctx.user_id)
+    ws_id = await resolve_workspace_id(session, ctx)
+    payees = await payee_service.get_payees(session, ws_id)
     items = [
         {
             "id": str(p.id),

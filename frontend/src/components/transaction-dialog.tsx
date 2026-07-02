@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { getAccountName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@tanstack/react-query'
+import { useDateLocale } from '@/hooks/use-display-locale'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/auth-context'
-import { currencies as currenciesApi, transactions as transactionsApi, settings as settingsApi, payees as payeesApi } from '@/lib/api'
+import { currencies as currenciesApi, transactions as transactionsApi, settings as settingsApi, payees as payeesApi, rules as rulesApi } from '@/lib/api'
+import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
+import { normalizeRuleMatchValue } from '@/lib/rule-match-utils'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,22 +15,31 @@ import { DatePickerInput } from '@/components/ui/date-picker-input'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { AlertTriangle, ChevronDown, ChevronLeft, Download, Paperclip, Upload, X, FileText, Plus, Unlink } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronLeft, Download, Eye, EyeClosed, Paperclip, Upload, X, FileText, Plus, Unlink, SlidersHorizontal, ListPlus } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { TransactionAttachments } from '@/components/transaction-attachments'
 import type { AttachmentPreview } from '@/components/transaction-attachments'
 import { TransactionSplitsSection } from '@/components/transaction-splits-section'
 import { CategoryGroupedSelect } from '@/components/category-grouped-select'
-import type { Transaction, RecurringTransaction, TransactionSplitsInput, CategoryGroup, Category } from '@/types'
+import { usePrivacyMode } from '@/hooks/use-privacy-mode'
+import type { Transaction, RecurringTransaction, TransactionSplitsInput, CategoryGroup, Category, Rule, RuleCondition } from '@/types'
 import { toast } from 'sonner'
 
 export type SaveAction = 'save' | 'saveAndNew' | 'saveAndDuplicate'
@@ -60,6 +72,14 @@ function isImageType(contentType: string): boolean {
   return contentType.startsWith('image/')
 }
 
+function getRuleCategoryId(rule: Rule): string | null {
+  return rule.actions.find(action => action.op === 'set_category' && action.value)?.value ?? null
+}
+
+function canExtendRuleFromTransaction(rule: Rule): boolean {
+  return rule.is_active && !!getRuleCategoryId(rule) && (rule.conditions_op === 'or' || rule.conditions.length <= 1)
+}
+
 export function TransactionDialog({
   open,
   onClose,
@@ -71,6 +91,8 @@ export function TransactionDialog({
   onSave,
   onDelete,
   onUnlinkTransfer,
+  onIgnoreChanged,
+  onCreateRule,
   loading,
   error,
   isSynced = false,
@@ -87,6 +109,8 @@ export function TransactionDialog({
   onSave: (data: Partial<Transaction>, recurringData?: { frequency: string; end_date?: string }, pendingFiles?: File[], action?: SaveAction) => void
   onDelete?: () => void
   onUnlinkTransfer?: (pairId: string) => void
+  onIgnoreChanged?: () => void
+  onCreateRule?: (tx: Transaction) => void
   loading: boolean
   error: string | null
   isSynced?: boolean
@@ -135,12 +159,19 @@ export function TransactionDialog({
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className={cn(
-        'transition-[max-width] duration-300',
+        // Bound the dialog to the viewport (dvh accounts for mobile browser
+        // chrome) and make it a flex column so the inner scroll region works
+        // on small screens, not just at the sm: breakpoint (issue #286).
+        'transition-[max-width] duration-300 flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden',
         hasPreview ? 'sm:max-w-5xl max-w-2xl' : 'sm:max-w-2xl max-w-2xl'
       )}>
-        <div className={isEditing ? 'sm:flex sm:gap-0 sm:h-[80vh]' : ''}>
+        <div className={isEditing
+          ? 'flex flex-col min-h-0 flex-1 sm:flex-row sm:flex-none sm:gap-0 sm:h-[80vh]'
+          : 'flex flex-col min-h-0 flex-1'}>
           {/* Left column: form */}
-          <div className={isEditing ? 'sm:flex-1 sm:min-w-0 sm:flex sm:flex-col sm:overflow-hidden sm:pr-6' : ''}>
+          <div className={isEditing
+            ? 'flex flex-col min-w-0 min-h-0 flex-1 overflow-hidden sm:pr-6'
+            : 'flex flex-col min-h-0 flex-1'}>
             <DialogHeader className="mb-4">
               <DialogTitle>
                 {transaction ? t('common.edit') : t('transactions.addManual')}
@@ -157,6 +188,8 @@ export function TransactionDialog({
               onSave={onSave}
               onDelete={onDelete}
               onUnlinkTransfer={onUnlinkTransfer}
+              onIgnoreChanged={onIgnoreChanged}
+              onCreateRule={onCreateRule}
               onCancel={onClose}
               loading={loading}
               error={error}
@@ -273,6 +306,8 @@ function TransactionForm({
   onSave,
   onDelete,
   onUnlinkTransfer,
+  onIgnoreChanged,
+  onCreateRule,
   onCancel,
   loading,
   error,
@@ -290,6 +325,8 @@ function TransactionForm({
   onSave: (data: Partial<Transaction>, recurringData?: { frequency: string; end_date?: string }, pendingFiles?: File[], action?: SaveAction) => void
   onDelete?: () => void
   onUnlinkTransfer?: (pairId: string) => void
+  onIgnoreChanged?: () => void
+  onCreateRule?: (tx: Transaction) => void
   onCancel: () => void
   loading: boolean
   error: string | null
@@ -298,10 +335,12 @@ function TransactionForm({
   activePreviewId: string | null
   hasPreview: boolean
 }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const { user } = useAuth()
+  const { privacyMode, MASK } = usePrivacyMode()
   const userCurrency = user?.preferences?.currency_display ?? 'USD'
-  const locale = i18n.language === 'en' ? 'en-US' : i18n.language
+  const dateLocale = useDateLocale()
   const { data: supportedCurrencies } = useQuery({
     queryKey: ['currencies'],
     queryFn: currenciesApi.list,
@@ -329,6 +368,9 @@ function TransactionForm({
   )
   const [fxRate, setFxRate] = useState(
     seed?.fx_rate_used != null ? seed.fx_rate_used.toString() : ''
+  )
+  const [hadInitialFx] = useState(
+    !!transaction && (seed?.amount_primary != null || seed?.fx_rate_used != null)
   )
   const [isRecurring, setIsRecurring] = useState(false)
   const [frequency, setFrequency] = useState<'monthly' | 'weekly' | 'yearly'>('monthly')
@@ -359,11 +401,106 @@ function TransactionForm({
   })
   const isCreating = !transaction
   const showConversion = currency !== userCurrency && !isSynced
+  // Privacy mode hides monetary values across the app, but the edit modal
+  // surfaced the raw amount anyway (issue #323). Only existing transactions
+  // carry a value worth hiding — when creating, the user must see what they
+  // type. A reveal toggle keeps the field editable when needed.
+  const [revealAmounts, setRevealAmounts] = useState(false)
+  const canHideAmounts = privacyMode && !isCreating
+  const hideAmounts = canHideAmounts && !revealAmounts
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [pendingDragOver, setPendingDragOver] = useState(false)
   const pendingFileInputRef = useRef<HTMLInputElement>(null)
   const pendingActionRef = useRef<SaveAction>('save')
   const formRef = useRef<HTMLFormElement>(null)
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
+
+  // Bank-synced descriptions are read-only and can be long; auto-grow the
+  // textarea so the full text is always visible (issue #256).
+  useEffect(() => {
+    const el = descriptionRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    // border-box: add the border so scrollHeight content isn't clipped
+    const border = el.offsetHeight - el.clientHeight
+    el.style.height = `${el.scrollHeight + border}px`
+  }, [description, isSynced])
+  const [isIgnored, setIsIgnored] = useState(seed?.is_ignored ?? false)
+  const [togglingIgnore, setTogglingIgnore] = useState(false)
+  const [addToRuleOpen, setAddToRuleOpen] = useState(false)
+
+  const { data: rulesList, isLoading: rulesLoading } = useQuery({
+    queryKey: ['rules'],
+    queryFn: rulesApi.list,
+    enabled: !!transaction && !!onCreateRule,
+  })
+  const extendableRules = useMemo(
+    () => (rulesList ?? []).filter(canExtendRuleFromTransaction),
+    [rulesList],
+  )
+
+  const extendRuleMutation = useMutation({
+    mutationFn: async ({
+      rule,
+      condition,
+    }: {
+      rule: Rule
+      condition: RuleCondition
+    }) => {
+      const duplicate = rule.conditions.some(existing =>
+        existing.field === condition.field &&
+        existing.op === condition.op &&
+        normalizeRuleMatchValue(existing.value) === normalizeRuleMatchValue(condition.value)
+      )
+      if (duplicate) {
+        throw new Error('duplicate-condition')
+      }
+
+      return rulesApi.update(rule.id, {
+        conditions_op: rule.conditions.length <= 1 ? 'or' : rule.conditions_op,
+        conditions: [...rule.conditions, condition],
+      })
+    },
+    onSuccess: (updatedRule) => {
+      const targetCategoryId = getRuleCategoryId(updatedRule)
+      if (targetCategoryId) setCategoryId(targetCategoryId)
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+      const applied = updatedRule.applied_count ?? 0
+      if (applied > 0) {
+        invalidateFinancialQueries(queryClient)
+      }
+      setAddToRuleOpen(false)
+      toast.success(
+        applied > 0
+          ? t('rules.updatedAndApplied', { count: applied })
+          : t('transactions.addedToExistingRule'),
+      )
+    },
+    onError: (error) => {
+      if (error instanceof Error && error.message === 'duplicate-condition') {
+        toast.info(t('transactions.duplicateRuleCondition'))
+      } else {
+        toast.error(t('common.error'))
+      }
+    },
+  })
+
+  const handleToggleIgnore = async () => {
+    if (!seed?.id || togglingIgnore) return
+    setTogglingIgnore(true)
+    try {
+      const updated = await transactionsApi.toggleIgnore(seed.id)
+      setIsIgnored(updated.is_ignored)
+      toast.success(updated.is_ignored
+        ? t('transactions.ignoreSuccess')
+        : t('transactions.unignoreSuccess'))
+      onIgnoreChanged?.()
+    } catch {
+      toast.error(t('common.error'))
+    } finally {
+      setTogglingIgnore(false)
+    }
+  }
 
   const triggerSubmit = (action: SaveAction) => {
     pendingActionRef.current = action
@@ -464,6 +601,10 @@ function TransactionForm({
         if (showConversion && fxRate) {
           fxFields.fx_rate_used = parseFloat(fxRate)
         }
+        if (showConversion && hadInitialFx && !convertedAmount && !fxRate) {
+          fxFields.amount_primary = null
+          fxFields.fx_rate_used = null
+        }
         // Active CC account ⇒ surface effective_bill_date in the payload
         // (sent both for synced and manual edits since the user can hand-
         // correct the bucketing on either; null clears the override back to
@@ -487,6 +628,7 @@ function TransactionForm({
               category_id: categoryId || null,
               payee_id: payeeId || null,
               notes: notes.trim() || null,
+              is_ignored: isIgnored,
               ...overridePayload,
               ...splitsPayload,
             } as Partial<Transaction>
@@ -500,6 +642,7 @@ function TransactionForm({
               payee_id: payeeId || null,
               account_id: accountId || undefined,
               notes: notes.trim() || null,
+              is_ignored: isIgnored,
               ...fxFields,
               ...overridePayload,
               ...splitsPayload,
@@ -510,8 +653,9 @@ function TransactionForm({
         onSave(txData, recurringData, isCreating && pendingFiles.length > 0 ? pendingFiles : undefined, action)
       }}
       className={cn(
-        'flex flex-col',
-        !isCreating ? 'flex-1 min-h-0' : 'max-h-[85vh]',
+        // Always a bounded flex column; the DialogContent caps the overall
+        // height and this lets the body below scroll within it (issue #286).
+        'flex flex-col flex-1 min-h-0',
         hasPreview && 'mt-4'
       )}
     >
@@ -556,33 +700,65 @@ function TransactionForm({
         <div className="flex items-center gap-2 p-3 text-sm bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
           <span>{t('transactions.recurringInfo', {
             frequency: t(`recurring.${recurringMatch.frequency}`),
-            next: new Date(recurringMatch.next_occurrence).toLocaleDateString(locale),
+            next: new Date(recurringMatch.next_occurrence).toLocaleDateString(dateLocale),
           })}</span>
         </div>
       )}
       <div className="space-y-2">
         <Label>{t('transactions.description')}</Label>
-        <Input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          required
-          disabled={isSynced}
-        />
+        {isSynced ? (
+          <textarea
+            ref={descriptionRef}
+            className="w-full border border-input rounded-md px-3 py-2 text-sm bg-muted/40 text-muted-foreground resize-none overflow-hidden cursor-default outline-none focus:outline-none focus-visible:outline-none"
+            value={description}
+            readOnly
+            rows={1}
+          />
+        ) : (
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            required
+          />
+        )}
         {isSynced && transaction?.payee && transaction.payee !== transaction.description && (
           <p className="text-xs text-muted-foreground">{transaction.payee}</p>
         )}
       </div>
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label>{t('transactions.amount')}</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={amount}
-            onChange={(e) => handleAmountChange(e.target.value)}
-            required
-            disabled={isSynced}
-          />
+          <div className="flex items-center justify-between min-h-5">
+            <Label>{t('transactions.amount')}</Label>
+            {canHideAmounts && (
+              <button
+                type="button"
+                onClick={() => setRevealAmounts((v) => !v)}
+                className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                title={revealAmounts ? t('privacy.hide') : t('privacy.show')}
+                aria-label={revealAmounts ? t('privacy.hide') : t('privacy.show')}
+              >
+                {revealAmounts ? <EyeClosed size={14} /> : <Eye size={14} />}
+              </button>
+            )}
+          </div>
+          {hideAmounts ? (
+            <Input
+              type="text"
+              value={MASK}
+              readOnly
+              tabIndex={-1}
+              className="bg-muted/40 text-muted-foreground cursor-default select-none"
+            />
+          ) : (
+            <Input
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(e) => handleAmountChange(e.target.value)}
+              required
+              disabled={isSynced}
+            />
+          )}
         </div>
         <div className="space-y-2">
           <Label>{t('transactions.currency')}</Label>
@@ -622,13 +798,23 @@ function TransactionForm({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label className="text-xs">{t('transactions.convertedAmount', { currency: userCurrency })}</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={convertedAmount}
-                onChange={(e) => handleConvertedAmountChange(e.target.value)}
-                placeholder={t('transactions.autoCalculated')}
-              />
+              {hideAmounts ? (
+                <Input
+                  type="text"
+                  value={MASK}
+                  readOnly
+                  tabIndex={-1}
+                  className="bg-muted/40 text-muted-foreground cursor-default select-none"
+                />
+              ) : (
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={convertedAmount}
+                  onChange={(e) => handleConvertedAmountChange(e.target.value)}
+                  placeholder={t('transactions.autoCalculated')}
+                />
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t('transactions.exchangeRate')}</Label>
@@ -734,16 +920,16 @@ function TransactionForm({
         return (
           <div className="space-y-2">
             <Label>
-              {t('transactions.effectiveBillDate', 'Data efetiva da fatura')}{' '}
+              {t('transactions.effectiveBillDate', 'Effective bill date')}{' '}
               <span className="text-muted-foreground font-normal text-xs">
-                ({t('transactions.effectiveBillDateHint', 'manual, sobrescreve o ciclo automático')})
+                ({t('transactions.effectiveBillDateHint', 'manual, overrides the automatic cycle')})
               </span>
             </Label>
             <div className="inline-flex items-center gap-1">
               <DatePickerInput
                 value={effectiveBillDate}
                 onChange={setEffectiveBillDate}
-                placeholder={t('transactions.effectiveBillDatePlaceholder', 'Vencimento da fatura (opcional)')}
+                placeholder={t('transactions.effectiveBillDatePlaceholder', 'Bill due date (optional)')}
               />
               {effectiveBillDate && (
                 <button
@@ -838,16 +1024,64 @@ function TransactionForm({
       </div>
 
       <DialogFooter className={cn(
-        'shrink-0 border-t pt-4 mt-2',
-        onDelete ? 'flex justify-between sm:justify-between' : ''
+        'shrink-0 border-t pt-4 mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
+        !(onDelete || seed?.id) ? 'sm:justify-end' : ''
       )}>
-        {onDelete && (
-          <Button type="button" variant="destructive" onClick={onDelete} disabled={loading}>
-            {t('common.delete')}
-          </Button>
-        )}
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={onCancel}>
+        <div className="flex min-w-0 flex-wrap gap-2 items-center">
+          {onDelete && (
+            <Button type="button" variant="destructive" onClick={onDelete} disabled={loading} className="whitespace-nowrap">
+              {t('common.delete')}
+            </Button>
+          )}
+          {seed?.id && (
+            <Button
+              type="button"
+              variant={isIgnored ? 'secondary' : 'outline'}
+              onClick={handleToggleIgnore}
+              disabled={loading || togglingIgnore}
+              title={t('transactions.ignoreTransferHint')}
+              className="gap-1.5 whitespace-nowrap"
+            >
+              {isIgnored ? <Eye size={16} /> : <EyeClosed size={16} />}
+              {isIgnored ? t('transactions.unignoreAction') : t('transactions.ignoreAction')}
+            </Button>
+          )}
+          {transaction && onCreateRule && (
+            <div className="inline-flex">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onCreateRule(transaction)}
+                className="gap-1.5 rounded-r-none whitespace-nowrap"
+                title={t('transactions.createRule')}
+              >
+                <SlidersHorizontal size={16} />
+                {t('transactions.createRule')}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    aria-label={t('transactions.ruleActions')}
+                    className="rounded-l-none border-l-0 px-2 has-[>svg]:px-2"
+                    disabled={extendRuleMutation.isPending}
+                  >
+                    <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem onSelect={() => setAddToRuleOpen(true)}>
+                    <ListPlus size={16} />
+                    {t('transactions.addToExistingRule')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 justify-end sm:ml-auto">
+          <Button type="button" variant="outline" onClick={onCancel} className="whitespace-nowrap">
             {t('common.cancel')}
           </Button>
           {showSaveVariants ? (
@@ -855,7 +1089,7 @@ function TransactionForm({
               <Button
                 type="submit"
                 disabled={loading || !splitsValid}
-                className="rounded-r-none"
+                className="rounded-r-none whitespace-nowrap"
               >
                 {loading ? t('common.loading') : t('common.save')}
               </Button>
@@ -881,13 +1115,166 @@ function TransactionForm({
               </DropdownMenu>
             </div>
           ) : (
-            <Button type="submit" disabled={loading || !splitsValid}>
+            <Button type="submit" disabled={loading || !splitsValid} className="whitespace-nowrap">
               {loading ? t('common.loading') : t('common.save')}
             </Button>
           )}
         </div>
       </DialogFooter>
+      {transaction && addToRuleOpen && (
+        <AddTransactionToRuleDialog
+          open={true}
+          onOpenChange={setAddToRuleOpen}
+          transactionDescription={transaction.description}
+          rules={extendableRules}
+          categories={categories}
+          loadingRules={rulesLoading}
+          loading={extendRuleMutation.isPending}
+          onSubmit={({ rule, condition }) => extendRuleMutation.mutate({ rule, condition })}
+        />
+      )}
     </form>
+  )
+}
+
+function AddTransactionToRuleDialog({
+  open,
+  onOpenChange,
+  transactionDescription,
+  rules,
+  categories,
+  loadingRules,
+  loading,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  transactionDescription: string
+  rules: Rule[]
+  categories: Category[]
+  loadingRules: boolean
+  loading: boolean
+  onSubmit: (data: { rule: Rule; condition: RuleCondition }) => void
+}) {
+  const { t } = useTranslation()
+  const [ruleId, setRuleId] = useState('')
+  const [matchOp, setMatchOp] = useState<'contains' | 'starts_with'>('contains')
+  const [matchText, setMatchText] = useState(transactionDescription)
+
+  const effectiveRuleId = ruleId && rules.some(rule => rule.id === ruleId)
+    ? ruleId
+    : rules[0]?.id ?? ''
+  const selectedRule = rules.find(rule => rule.id === effectiveRuleId) ?? null
+
+  function getCategoryName(rule: Rule): string {
+    const categoryId = getRuleCategoryId(rule)
+    return categories.find(category => category.id === categoryId)?.name ?? t('transactions.category')
+  }
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    // This dialog renders inside the transaction's <form>; without stopping
+    // propagation the submit event bubbles up the React tree (portals preserve
+    // it) and also triggers the parent transaction save.
+    event.stopPropagation()
+    if (!selectedRule || !matchText.trim()) return
+    onSubmit({
+      rule: selectedRule,
+      condition: {
+        field: 'description',
+        op: matchOp,
+        value: matchText.trim(),
+      },
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t('transactions.addToExistingRuleTitle')}</DialogTitle>
+          <DialogDescription>
+            {t('transactions.addToExistingRuleDescription')}
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>{t('transactions.existingRule')}</Label>
+            <Select
+              value={effectiveRuleId}
+              onValueChange={setRuleId}
+              disabled={loadingRules || loading || rules.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue
+                  className="min-w-0 flex-1 text-left [&_span]:items-start [&_span]:text-left"
+                  placeholder={loadingRules
+                    ? t('common.loading')
+                    : t('transactions.noExistingRules')}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {rules.map(rule => (
+                  <SelectItem key={rule.id} value={rule.id}>
+                    <span className="flex w-full min-w-0 flex-col items-start text-left">
+                      <span className="w-full truncate">{rule.name}</span>
+                      <span className="w-full text-xs text-muted-foreground truncate">
+                        {getCategoryName(rule)}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!loadingRules && rules.length === 0 && (
+              <p className="text-xs text-muted-foreground">{t('transactions.noExistingRules')}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-[140px_1fr] gap-3">
+            <div className="space-y-2">
+              <Label>{t('transactions.matchOperator')}</Label>
+              <Select
+                value={matchOp}
+                onValueChange={(value) => setMatchOp(value as 'contains' | 'starts_with')}
+                disabled={loading}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="contains">{t('rules.opContains')}</SelectItem>
+                  <SelectItem value="starts_with">{t('rules.opStartsWith')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 min-w-0">
+              <Label>{t('transactions.matchText')}</Label>
+              <Input
+                value={matchText}
+                onChange={(event) => setMatchText(event.target.value)}
+                disabled={loading}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={loading}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={!selectedRule || !matchText.trim() || loading}>
+              {loading ? t('common.loading') : t('transactions.assignRule')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

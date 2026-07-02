@@ -43,3 +43,21 @@ def num(x: Any) -> Optional[float]:
     if isinstance(x, Decimal):
         return float(x)
     return float(x)
+
+
+async def resolve_workspace_id(session, ctx) -> uuid.UUID:
+    """Return the workspace the call operates in.
+
+    Prefer the explicit `ws_id` claim from the JWT. Fall back to the
+    caller's default (first) workspace — supports tokens minted before
+    the workspace migration AND keeps single-workspace callers free of
+    having to specify a workspace.
+    """
+    if ctx.workspace_id is not None:
+        return ctx.workspace_id
+    from app.services.workspace_service import get_default_workspace
+
+    ws = await get_default_workspace(session, ctx.user_id)
+    if ws is None:
+        raise ValueError("No workspace available for this user")
+    return ws.id

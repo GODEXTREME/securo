@@ -174,10 +174,28 @@ async def test_search_respects_user_scope(
     client: AsyncClient, auth_headers: dict, session: AsyncSession, test_user: User
 ) -> None:
     # Create an account owned by a different user — should NOT appear in results.
-    other_user_id = uuid.uuid4()
+    import bcrypt as _bcrypt
+    from app.services.workspace_service import create_personal_workspace_for_user
+
+    hashed = _bcrypt.hashpw(b"otherpass", _bcrypt.gensalt()).decode()
+    other_user = User(
+        id=uuid.uuid4(),
+        email="search-other@example.com",
+        hashed_password=hashed,
+        is_active=True,
+        is_superuser=False,
+        is_verified=True,
+        preferences={"language": "en", "currency_display": "USD"},
+    )
+    session.add(other_user)
+    await session.flush()
+    other_ws = await create_personal_workspace_for_user(session, other_user)
+    await session.commit()
+
     other_account = Account(
         id=uuid.uuid4(),
-        user_id=other_user_id,
+        user_id=other_user.id,
+        workspace_id=other_ws.id,
         name="Other User Secret Account",
         type="checking",
         balance=Decimal("0"),

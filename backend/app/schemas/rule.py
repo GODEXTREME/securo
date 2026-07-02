@@ -45,3 +45,39 @@ class RuleRead(BaseModel):
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class RuleMutationResponse(RuleRead):
+    """A changed rule plus how many existing transactions it just affected."""
+
+    applied_count: int = 0
+
+
+class RuleCreateResponse(RuleMutationResponse):
+    """A created rule response kept for API compatibility."""
+
+
+class RuleExportItem(BaseModel):
+    name: str
+    conditions_op: str = "and"
+    conditions: list[RuleCondition]
+    actions: list[RuleAction]
+    priority: int = 0
+    is_active: bool = True
+
+
+class RuleExportPayload(BaseModel):
+    format: str = "securo-categorization-rules"
+    version: int = 1
+    rules: list[RuleExportItem]
+
+
+class RuleImportRequest(BaseModel):
+    payload: RuleExportPayload
+    overwrite: bool = False
+
+
+class RuleImportResponse(BaseModel):
+    imported: int
+    skipped: int
+    overwritten: int

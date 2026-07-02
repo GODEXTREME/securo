@@ -37,13 +37,20 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         from app.models.account import Account
         from app.services.category_service import create_default_categories
         from app.services.rule_service import create_default_rules
+        from app.services.workspace_service import create_personal_workspace_for_user
 
         session = self.user_db.session
         currency = user.primary_currency
         lang = (user.preferences or {}).get("language", "en")
+
+        # Every new user gets a Personal workspace + owner membership.
+        # All their seeded data (wallet, categories, rules) reparent to it.
+        workspace = await create_personal_workspace_for_user(session, user)
+
         wallet_name = "Carteira" if lang.startswith("pt") else "Wallet"
         wallet = Account(
             user_id=user.id,
+            workspace_id=workspace.id,
             name=wallet_name,
             type="checking",
             balance=Decimal("0.00"),
@@ -53,8 +60,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         await session.commit()
 
         # Create default categories and rules for the new user
-        await create_default_categories(session, user.id, lang)
-        await create_default_rules(session, user.id, lang)
+        await create_default_categories(session, user.id, lang, workspace_id=workspace.id)
+        await create_default_rules(session, user.id, lang, workspace_id=workspace.id)
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):

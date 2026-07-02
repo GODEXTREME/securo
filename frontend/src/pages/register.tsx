@@ -1,31 +1,25 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useTheme } from 'next-themes'
 import { useAuth } from '@/contexts/auth-context'
 import { admin as adminApi } from '@/lib/api'
+import { resolveSupportedLang } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import { CurrencySelect } from '@/components/currency-select'
 import { ShellLogo } from '@/components/shell-logo'
-import { cn } from '@/lib/utils'
+import { setThemeBasedOnSystem } from '@/lib/theme-utils'
+import { isServerUnreachable } from '@/lib/auth-errors'
 import type { AxiosError } from 'axios'
-
-const currencies = [
-  { code: 'USD', flag: '\u{1F1FA}\u{1F1F8}', symbol: '$' },
-  { code: 'EUR', flag: '\u{1F1EA}\u{1F1FA}', symbol: '\u20AC' },
-  { code: 'GBP', flag: '\u{1F1EC}\u{1F1E7}', symbol: '\u00A3' },
-  { code: 'BRL', flag: '\u{1F1E7}\u{1F1F7}', symbol: 'R$' },
-  { code: 'CAD', flag: '\u{1F1E8}\u{1F1E6}', symbol: 'C$' },
-  { code: 'AUD', flag: '\u{1F1E6}\u{1F1FA}', symbol: 'A$' },
-  { code: 'CHF', flag: '\u{1F1E8}\u{1F1ED}', symbol: 'Fr' },
-  { code: 'ARS', flag: '\u{1F1E6}\u{1F1F7}', symbol: '$' },
-] as const
 
 export default function RegisterPage() {
   const { t, i18n } = useTranslation()
   const { register } = useAuth()
   const navigate = useNavigate()
+  const { resolvedTheme } = useTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -37,7 +31,10 @@ export default function RegisterPage() {
     adminApi.registrationStatus().then(({ enabled }) => {
       if (!enabled) navigate('/login', { replace: true })
     }).catch(() => {})
-  }, [navigate])
+  adminApi.defaultColors().then(({ light, dark }) => {
+      setThemeBasedOnSystem(light, dark, resolvedTheme)
+    }).catch(() => {})
+  }, [navigate, resolvedTheme])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,7 +52,7 @@ export default function RegisterPage() {
 
     setIsLoading(true)
     try {
-      const lang = i18n.language?.startsWith('pt') ? 'pt-BR' : 'en'
+      const lang = resolveSupportedLang(i18n.resolvedLanguage ?? i18n.language)
       await register(email, password, {
         currency_display: currency,
         language: lang,
@@ -63,7 +60,9 @@ export default function RegisterPage() {
       navigate('/')
     } catch (err) {
       const axiosErr = err as AxiosError
-      if (axiosErr?.response?.status === 429) {
+      if (isServerUnreachable(err)) {
+        setError(t('auth.serverError'))
+      } else if (axiosErr?.response?.status === 429) {
         setError(t('auth.tooManyAttempts'))
       } else {
         setError(t('auth.registrationError'))
@@ -122,27 +121,9 @@ export default function RegisterPage() {
                 required
               />
             </div>
-            <div className="space-y-2 pt-1">
-              <Label className="text-sm">{t('auth.currency')}</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {currencies.map(({ code, flag, symbol }) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => setCurrency(code)}
-                    className={cn(
-                      'flex flex-col items-center gap-1 py-2.5 rounded-lg border transition-all',
-                      currency === code
-                        ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
-                        : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
-                    )}
-                  >
-                    <span className="text-lg leading-none">{flag}</span>
-                    <span className="text-[11px] font-bold">{code}</span>
-                    <span className="text-[10px] opacity-60">{symbol}</span>
-                  </button>
-                ))}
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="currency" className="text-sm">{t('auth.currency')}</Label>
+              <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4 px-8 pb-8 pt-2">

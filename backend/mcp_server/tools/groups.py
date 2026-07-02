@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import balance_service, group_service, settlement_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
-from mcp_server.tools._helpers import num, parse_uuid
+from mcp_server.tools._helpers import num, parse_uuid, resolve_workspace_id
 
 
 @tool(
@@ -42,7 +42,8 @@ async def list_groups(
     ctx: CallContext,
     include_archived: bool = False,
 ) -> dict[str, Any]:
-    groups = await group_service.list_groups(session, ctx.user_id, include_archived=include_archived)
+    ws_id = await resolve_workspace_id(session, ctx)
+    groups = await group_service.list_groups(session, ws_id, ctx.user_id, include_archived=include_archived)
     return {
         "items": [
             {
@@ -95,7 +96,8 @@ async def get_group_balances(
     group_id: str,
 ) -> dict[str, Any]:
     gid = parse_uuid(group_id)
-    result = await balance_service.compute_balances(session, gid, ctx.user_id)
+    ws_id = await resolve_workspace_id(session, ctx)
+    result = await balance_service.compute_balances(session, gid, ws_id, ctx.user_id)
     if result is None:
         return {"error": "group not found or not visible to this user"}
 
@@ -154,7 +156,8 @@ async def list_group_settlements(
     group_id: str,
 ) -> dict[str, Any]:
     gid = parse_uuid(group_id)
-    rows = await settlement_service.list_settlements(session, gid, ctx.user_id)
+    ws_id = await resolve_workspace_id(session, ctx)
+    rows = await settlement_service.list_settlements(session, gid, ws_id, ctx.user_id)
     if rows is None:
         return {"error": "group not found or not visible to this user"}
 

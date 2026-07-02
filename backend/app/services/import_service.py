@@ -484,18 +484,18 @@ def parse_csv(
 
 async def enrich_with_category_suggestions(
     session: AsyncSession,
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     transactions: list[TransactionImport],
 ) -> list[TransactionImport]:
     result = await session.execute(
         select(Rule)
-        .where(Rule.user_id == user_id, Rule.is_active == True)
+        .where(Rule.workspace_id == workspace_id, Rule.is_active == True)
         .order_by(Rule.priority, Rule.id)
     )
     rules = result.scalars().all()
 
     category_result = await session.execute(
-        select(Category).where(Category.user_id == user_id)
+        select(Category).where(Category.workspace_id == workspace_id)
     )
     category_name_map = {str(c.id): c.name for c in category_result.scalars()}
 
@@ -528,6 +528,7 @@ async def enrich_with_category_suggestions(
 
 async def import_transactions(
     session: AsyncSession,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     account_id: uuid.UUID,
     transactions: list[TransactionImport],
@@ -536,7 +537,11 @@ async def import_transactions(
     detected_format: str = "",
     detect_duplicates: bool = True,
 ) -> tuple[int, int, int, uuid.UUID]:
-    """Import transactions into an account. Returns (imported, skipped, excluded, import_log_id)."""
+    """Import transactions into an account in the given workspace.
+
+    `workspace_id` scopes tenant filters + stamps new rows. `user_id`
+    is the creator/author recorded on Transaction + ImportLog.
+    Returns (imported, skipped, excluded, import_log_id)."""
     from app.models.import_log import ImportLog
 
     included = [t for t in transactions if not t.excluded]
@@ -549,6 +554,7 @@ async def import_transactions(
     # Create import log first to get its ID
     import_log = ImportLog(
         user_id=user_id,
+        workspace_id=workspace_id,
         account_id=account_id,
         filename=filename,
         format=detected_format,
@@ -566,9 +572,9 @@ async def import_transactions(
     account = account_result.scalar_one_or_none()
     account_currency = account.currency if account else get_settings().default_currency
 
-    # Build category name → id map for this user (used when CSV provides category names)
+    # Build category name → id map scoped to the workspace.
     category_result = await session.execute(
-        select(Category).where(Category.user_id == user_id)
+        select(Category).where(Category.workspace_id == workspace_id)
     )
     category_map = {c.name: c.id for c in category_result.scalars()}
 
@@ -627,6 +633,7 @@ async def import_transactions(
 
         transaction = Transaction(
             user_id=user_id,
+            workspace_id=workspace_id,
             account_id=account_id,
             description=txn_data.description,
             amount=txn_data.amount,

@@ -16,9 +16,13 @@ async def test_list_providers(client: AsyncClient, auth_headers):
     response = await client.get("/api/connections/providers", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
-    assert len(data["providers"]) == 1
-    assert data["providers"][0]["name"] == "pluggy"
-    assert data["providers"][0]["configured"] is False
+    by_name = {p["name"]: p for p in data["providers"]}
+    assert "pluggy" in by_name
+    assert by_name["pluggy"]["configured"] is False
+    assert by_name["pluggy"]["flow_type"] == "widget"
+    assert "enable_banking" in by_name
+    assert by_name["enable_banking"]["flow_type"] == "oauth"
+    assert by_name["enable_banking"]["requires_institution_select"] is True
 
 
 @pytest.mark.asyncio

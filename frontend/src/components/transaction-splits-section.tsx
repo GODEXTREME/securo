@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { useQuery } from '@tanstack/react-query'
 import { Users } from 'lucide-react'
 
@@ -57,6 +58,7 @@ export function TransactionSplitsSection({
   onValidityChange?: (valid: boolean) => void
 }) {
   const { t } = useTranslation()
+  const locale = useDisplayLocale()
   const [enabled, setEnabled] = useState(value !== null)
   const [groupId, setGroupId] = useState<string>('')
   const [shareType, setShareType] = useState<ShareType>(value?.share_type ?? 'equal')
@@ -269,7 +271,7 @@ export function TransactionSplitsSection({
                             </label>
                             {computed !== null && (
                               <span className="text-xs text-muted-foreground tabular-nums">
-                                {formatCurrency(computed, currency)}
+                                {formatCurrency(computed, currency, locale)}
                               </span>
                             )}
                             {shareType === 'exact' && row.selected && (

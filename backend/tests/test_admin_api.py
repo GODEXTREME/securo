@@ -469,3 +469,51 @@ class TestUseProviderCategoriesToggle:
             headers=auth_headers,
         )
         assert response.status_code == 403
+
+
+class TestThemeSettings:
+    """Test theme color settings and the public default-colors endpoint."""
+
+    async def test_get_default_colors_empty(self, client: AsyncClient, clean_db):
+        response = await client.get("/api/admin/default-colors")
+        assert response.status_code == 200
+        assert response.json() == {"light": None, "dark": None}
+
+    async def test_get_default_colors_populated(self, client: AsyncClient, session: AsyncSession, clean_db):
+        session.add_all([
+            AppSetting(key="theme_color_light", value="#FFFFFF"),
+            AppSetting(key="theme_color_dark", value="#000000"),
+        ])
+        await session.commit()
+
+        response = await client.get("/api/admin/default-colors")
+        assert response.status_code == 200
+        assert response.json() == {"light": "#FFFFFF", "dark": "#000000"}
+
+    async def test_update_theme_color_valid(self, client: AsyncClient, admin_auth_headers: dict, test_superuser: User):
+        response = await client.patch(
+            "/api/admin/settings/theme_color_light",
+            json={"value": "#6366F1"},
+            headers=admin_auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["value"] == "#6366F1"
+
+    @pytest.mark.parametrize("invalid_color", [
+        "6366F1",      # missing #
+        "#6366F",       # too short
+        "#6366F11",     # too long
+        "#GGGGGG",      # invalid hex chars
+        "red",          # named color
+        "#123",         # 3-digit hex (not allowed by regex)
+    ])
+    async def test_update_theme_color_invalid(
+        self, client: AsyncClient, admin_auth_headers: dict, test_superuser: User, invalid_color: str
+    ):
+        response = await client.patch(
+            "/api/admin/settings/theme_color_light",
+            json={"value": invalid_color},
+            headers=admin_auth_headers,
+        )
+        assert response.status_code == 400
+        assert "invalid hex color code" in response.json()["detail"].lower()

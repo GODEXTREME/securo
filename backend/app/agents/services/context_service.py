@@ -9,6 +9,7 @@ Goals:
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
@@ -40,10 +41,16 @@ def _user_label(user: User) -> str:
     return email or "the user"
 
 
-async def build_context_primer(session: AsyncSession, user: User, *, max_accounts: int = 10) -> str:
+async def build_context_primer(
+    session: AsyncSession,
+    user: User,
+    *,
+    workspace_id: uuid.UUID | None = None,
+    max_accounts: int = 10,
+) -> str:
     """Returns a short Markdown block describing who the user is and
-    what their accounts look like. Empty string when there's nothing
-    useful to say."""
+    what their accounts look like in the active workspace. Empty string
+    when there's nothing useful to say."""
     from app.services import account_service
 
     prefs = getattr(user, "preferences", None) or {}
@@ -64,10 +71,12 @@ async def build_context_primer(session: AsyncSession, user: User, *, max_account
     lines.append(f"- Today is {today_utc} (UTC)")
     lines.append("")
 
-    try:
-        rows = await account_service.get_accounts(session, user.id, include_closed=False)
-    except Exception:  # noqa: BLE001
-        rows = []
+    rows: list[dict] = []
+    if workspace_id is not None:
+        try:
+            rows = await account_service.get_accounts(session, workspace_id, include_closed=False)
+        except Exception:  # noqa: BLE001
+            rows = []
 
     if rows:
         lines.append(f"Their open accounts (top {min(len(rows), max_accounts)}):")

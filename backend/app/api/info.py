@@ -19,5 +19,6 @@ async def get_app_info():
     return {
         "features": {
             "agents": _flag("AGENTS_ENABLED"),
+            "tesouro_direto": _flag("TESOURO_DIRETO_ENABLED"),
         },
     }

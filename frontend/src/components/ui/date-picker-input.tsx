@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { ptBR, enUS } from 'date-fns/locale'
 import { CalendarIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useDateLocale } from '@/hooks/use-display-locale'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
+import { resolveDateFnsLocale } from '@/lib/date-fns-locale'
 import { cn } from '@/lib/utils'
 
 interface DatePickerInputProps {
@@ -26,12 +27,12 @@ function DatePickerInput({
 }: DatePickerInputProps) {
   const { i18n } = useTranslation()
   const [open, setOpen] = useState(false)
-  const dateFnsLocale = i18n.language === 'pt-BR' ? ptBR : enUS
-  const locale = i18n.language === 'en' ? 'en-US' : i18n.language
+  const dateFnsLocale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language)
+  const dateLocale = useDateLocale()
 
   const selectedDate = value ? new Date(value + 'T00:00:00') : undefined
   const displayText = selectedDate
-    ? selectedDate.toLocaleDateString(locale)
+    ? selectedDate.toLocaleDateString(dateLocale)
     : placeholder || 'dd/mm/yyyy'
 
   return (

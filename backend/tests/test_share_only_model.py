@@ -93,10 +93,15 @@ async def _make_tx(
 
 
 async def _setup_group(
-    session: AsyncSession, user, *member_names: str, default_currency: str = "USD"
+    session: AsyncSession,
+    user,
+    workspace_id,
+    *member_names: str,
+    default_currency: str = "USD",
 ):
     group = await group_service.create_group(
         session,
+        workspace_id,
         user.id,
         GroupCreate(name=f"G-{uuid.uuid4().hex[:6]}", default_currency=default_currency),
     )
@@ -105,7 +110,7 @@ async def _setup_group(
         m = await group_service.create_member(
             session,
             group.id,
-            user.id,
+            workspace_id,
             GroupMemberCreate(name=name, is_self=(i == 0)),
         )
         members.append(m)
@@ -135,7 +140,7 @@ def _month_window(d: date) -> tuple[date, date]:
 
 @pytest.mark.asyncio
 async def test_summary_owner_share_caps_expense(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """Owner pays $150 split equally with two friends ($50 share). The
     dashboard should report a $50 expense, not $150."""
@@ -143,7 +148,9 @@ async def test_summary_owner_share_caps_expense(
     today = date.today()
     account = await _make_account(session, test_user.id)
     tx = await _make_tx(session, test_user.id, account.id, "150.00", when=today)
-    _, members = await _setup_group(session, test_user, "Me", "A", "B")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "A", "B"
+    )
 
     await split_service.replace_splits(
         session,
@@ -157,21 +164,25 @@ async def test_summary_owner_share_caps_expense(
     await session.commit()
 
     summary = await dashboard_service.get_summary(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     assert summary.monthly_expenses_primary == pytest.approx(50.0, abs=0.01)
     assert summary.monthly_income_primary == 0.0
 
 
 @pytest.mark.asyncio
-async def test_summary_owner_with_zero_share(session: AsyncSession, test_user):
+async def test_summary_owner_with_zero_share(
+    session: AsyncSession, test_user, test_workspace
+):
     """Owner fronts a $150 expense entirely for two friends. They each
     have a $75 share; owner has no share. Expense should be $0."""
     await _force_user_currency(session, test_user, "USD")
     today = date.today()
     account = await _make_account(session, test_user.id)
     tx = await _make_tx(session, test_user.id, account.id, "150.00", when=today)
-    _, members = await _setup_group(session, test_user, "Me", "A", "B")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "A", "B"
+    )
     me, friend_a, friend_b = members
 
     await split_service.replace_splits(
@@ -193,14 +204,14 @@ async def test_summary_owner_with_zero_share(session: AsyncSession, test_user):
     await session.commit()
 
     summary = await dashboard_service.get_summary(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     assert summary.monthly_expenses_primary == 0.0
 
 
 @pytest.mark.asyncio
 async def test_summary_no_split_full_amount_counts(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """A regular non-split transaction must still count its full amount —
     the offset only applies when splits exist."""
@@ -211,14 +222,14 @@ async def test_summary_no_split_full_amount_counts(
     await session.commit()
 
     summary = await dashboard_service.get_summary(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     assert summary.monthly_expenses_primary == pytest.approx(80.0, abs=0.01)
 
 
 @pytest.mark.asyncio
 async def test_summary_drops_settlement_credits_from_income(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """Receiver-side settlement credits no longer count as income — the
     parent share already booked the expense, so the credit would
@@ -227,7 +238,9 @@ async def test_summary_drops_settlement_credits_from_income(
     today = date.today()
     account = await _make_account(session, test_user.id)
     tx = await _make_tx(session, test_user.id, account.id, "60.00", when=today)
-    _, members = await _setup_group(session, test_user, "Me", "Friend")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "Friend"
+    )
     me, friend = members
 
     await split_service.replace_splits(
@@ -247,6 +260,7 @@ async def test_summary_drops_settlement_credits_from_income(
     await settlement_service.create_settlement(
         session,
         members[0].group_id,
+        test_workspace.id,
         test_user.id,
         GroupSettlementCreate(
             from_member_id=friend.id,
@@ -258,7 +272,7 @@ async def test_summary_drops_settlement_credits_from_income(
     )
 
     summary = await dashboard_service.get_summary(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     # Owner's expense = $30 share. No income from the settlement credit.
     assert summary.monthly_expenses_primary == pytest.approx(30.0, abs=0.01)
@@ -267,7 +281,7 @@ async def test_summary_drops_settlement_credits_from_income(
 
 @pytest.mark.asyncio
 async def test_summary_settlement_debit_excluded_for_payer(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """Linked-member side: paying back a debt is not an expense — the
     share already captured it."""
@@ -286,7 +300,7 @@ async def test_summary_settlement_debit_excluded_for_payer(
     await session.commit()
 
     summary = await dashboard_service.get_summary(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     assert summary.monthly_expenses_primary == 0.0
 
@@ -296,7 +310,7 @@ async def test_summary_settlement_debit_excluded_for_payer(
 
 @pytest.mark.asyncio
 async def test_spending_by_category_uses_owner_share(
-    session: AsyncSession, test_user, test_categories
+    session: AsyncSession, test_user, test_workspace, test_categories
 ):
     """A categorized split contributes only the owner's share to its
     bucket. No share → category drops out."""
@@ -315,7 +329,9 @@ async def test_spending_by_category_uses_owner_share(
         description="Brunch",
         when=today,
     )
-    _, members = await _setup_group(session, test_user, "Me", "Friend")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "Friend"
+    )
     me, friend = members
     await split_service.replace_splits(
         session,
@@ -332,7 +348,7 @@ async def test_spending_by_category_uses_owner_share(
     await session.commit()
 
     spending = await dashboard_service.get_spending_by_category(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     food_row = next(s for s in spending if s.category_name == "Alimentação")
     assert food_row.total == pytest.approx(25.0, abs=0.01)
@@ -340,7 +356,7 @@ async def test_spending_by_category_uses_owner_share(
 
 @pytest.mark.asyncio
 async def test_spending_by_category_drops_zero_share_category(
-    session: AsyncSession, test_user, test_categories
+    session: AsyncSession, test_user, test_workspace, test_categories
 ):
     """A split where the owner has no share = category contributes $0
     and should not appear in the breakdown at all."""
@@ -356,7 +372,9 @@ async def test_spending_by_category_drops_zero_share_category(
         category_id=food.id,
         when=today,
     )
-    _, members = await _setup_group(session, test_user, "Me", "A")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "A"
+    )
     me, friend = members
     await split_service.replace_splits(
         session,
@@ -374,7 +392,7 @@ async def test_spending_by_category_drops_zero_share_category(
     await session.commit()
 
     spending = await dashboard_service.get_spending_by_category(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     assert all(s.category_name != "Alimentação" for s in spending)
 
@@ -384,7 +402,7 @@ async def test_spending_by_category_drops_zero_share_category(
 
 @pytest.mark.asyncio
 async def test_owner_self_member_recognized_without_link(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """The owner's GroupMember has is_self=True but linked_user_id=NULL.
     The offset query must still recognize it as the owner's own share —
@@ -395,7 +413,9 @@ async def test_owner_self_member_recognized_without_link(
     today = date.today()
     account = await _make_account(session, test_user.id)
     tx = await _make_tx(session, test_user.id, account.id, "90.00", when=today)
-    _, members = await _setup_group(session, test_user, "Me", "Friend")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "Friend"
+    )
     me, friend = members
     # Sanity-check the schema invariant the bug exploited.
     assert me.is_self is True
@@ -416,7 +436,7 @@ async def test_owner_self_member_recognized_without_link(
     await session.commit()
 
     summary = await dashboard_service.get_summary(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     # Owner's $45 share survives; the previous bug would have returned 0.
     assert summary.monthly_expenses_primary == pytest.approx(45.0, abs=0.01)
@@ -443,7 +463,7 @@ async def _seed_eur_rate(session: AsyncSession, when: date) -> None:
 
 @pytest.mark.asyncio
 async def test_balance_line_includes_fx_converted_amount(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """A EUR-denominated debt line on a USD-default group must surface
     `amount_in_default_currency` so the frontend can sum cross-currency
@@ -455,7 +475,7 @@ async def test_balance_line_includes_fx_converted_amount(
         session, test_user.id, account.id, "100.00", currency="EUR", when=today
     )
     _, members = await _setup_group(
-        session, test_user, "Me", "Friend", default_currency="USD"
+        session, test_user, test_workspace.id, "Me", "Friend", default_currency="USD"
     )
     me, friend = members
 
@@ -475,7 +495,7 @@ async def test_balance_line_includes_fx_converted_amount(
     await session.commit()
 
     balances = await balance_service.compute_balances(
-        session, members[0].group_id, test_user.id
+        session, members[0].group_id, test_workspace.id, test_user.id
     )
     assert balances is not None
     assert balances["default_currency"] == "USD"
@@ -491,14 +511,16 @@ async def test_balance_line_includes_fx_converted_amount(
 
 @pytest.mark.asyncio
 async def test_balance_line_default_currency_passthrough(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """Same-currency line: amount_in_default_currency should equal amount
     (no FX needed). Guards against accidental rounding."""
     today = date.today()
     account = await _make_account(session, test_user.id)
     tx = await _make_tx(session, test_user.id, account.id, "60.00", when=today)
-    _, members = await _setup_group(session, test_user, "Me", "Friend")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "Friend"
+    )
     me, friend = members
     await split_service.replace_splits(
         session,
@@ -516,7 +538,7 @@ async def test_balance_line_default_currency_passthrough(
     await session.commit()
 
     balances = await balance_service.compute_balances(
-        session, members[0].group_id, test_user.id
+        session, members[0].group_id, test_workspace.id, test_user.id
     )
     line = balances["lines"][0]
     assert Decimal(str(line["amount"])) == Decimal(str(line["amount_in_default_currency"]))
@@ -526,7 +548,9 @@ async def test_balance_line_default_currency_passthrough(
 
 
 @pytest.mark.asyncio
-async def test_owner_split_offset_pnl_helper(session: AsyncSession, test_user):
+async def test_owner_split_offset_pnl_helper(
+    session: AsyncSession, test_user, test_workspace
+):
     """The income/expenses report uses Postgres `to_char`, so we can't
     exercise it under SQLite. Instead pin its underlying helper — the
     same one the dashboard uses — directly."""
@@ -536,7 +560,9 @@ async def test_owner_split_offset_pnl_helper(session: AsyncSession, test_user):
     today = date.today()
     account = await _make_account(session, test_user.id)
     tx = await _make_tx(session, test_user.id, account.id, "120.00", when=today)
-    _, members = await _setup_group(session, test_user, "Me", "A", "B", "C")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "A", "B", "C"
+    )
 
     await split_service.replace_splits(
         session,
@@ -561,7 +587,7 @@ async def test_owner_split_offset_pnl_helper(session: AsyncSession, test_user):
 
 @pytest.mark.asyncio
 async def test_budget_actual_uses_share_only(
-    session: AsyncSession, test_user, test_categories
+    session: AsyncSession, test_user, test_workspace, test_categories
 ):
     """Budget vs. actual: a category's "actual" spent should be the
     user's share, not the full amount fronted."""
@@ -577,7 +603,9 @@ async def test_budget_actual_uses_share_only(
         category_id=food.id,
         when=today,
     )
-    _, members = await _setup_group(session, test_user, "Me", "A", "B")
+    _, members = await _setup_group(
+        session, test_user, test_workspace.id, "Me", "A", "B"
+    )
     me, *friends = members
     await split_service.replace_splits(
         session,
@@ -606,7 +634,7 @@ async def test_budget_actual_uses_share_only(
     await session.commit()
 
     rows = await budget_service.get_budget_vs_actual(
-        session, test_user.id, today.replace(day=1)
+        session, test_workspace.id, test_user.id, today.replace(day=1)
     )
     food_row = next(r for r in rows if r.category_id == food.id)
     # Owner's share is $20 (60/3); the full $60 would be the bug.

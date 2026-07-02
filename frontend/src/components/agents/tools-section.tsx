@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { agents } from '@/lib/api'
 import type { AgentToolHandle } from '@/lib/api'
+import { useWorkspace } from '@/contexts/workspace-context'
 
 export function ToolsSection({ agentId }: { agentId: string }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const { canWrite } = useWorkspace()
   const { data, isLoading } = useQuery({
     queryKey: ['agent-tools', agentId],
     queryFn: () => agents.tools(agentId),
@@ -45,9 +47,11 @@ export function ToolsSection({ agentId }: { agentId: string }) {
           <h3 className="text-sm font-semibold">{t('agents.tools.title')}</h3>
           <p className="text-xs text-muted-foreground">{t('agents.tools.subtitle')}</p>
         </div>
-        <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-          {save.isPending ? t('agents.tools.saving') : t('agents.tools.save')}
-        </Button>
+        {canWrite && (
+          <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? t('agents.tools.saving') : t('agents.tools.save')}
+          </Button>
+        )}
       </div>
 
       {Object.keys(grouped).length === 0 ? (
@@ -75,6 +79,7 @@ export function ToolsSection({ agentId }: { agentId: string }) {
                     </div>
                     <Switch
                       checked={tool.enabled}
+                      disabled={!canWrite}
                       onCheckedChange={(v) => {
                         setDraft((d) => d.map((x) => (x.server === tool.server && x.name === tool.name ? { ...x, enabled: !!v } : x)))
                       }}

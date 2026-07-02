@@ -48,6 +48,7 @@ class TransactionUpdate(BaseModel):
     notes: Optional[str] = None
     amount_primary: Optional[Decimal] = None
     fx_rate_used: Optional[Decimal] = None
+    is_ignored: Optional[bool] = None
     apply_to_transfer_pair: bool = False
     # CC bucketing override (issue #92). Empty string / explicit null clears
     # it back to auto. Only meaningful for credit-card accounts.
@@ -93,6 +94,7 @@ class TransactionRead(TransactionBase):
     # is_self member at request time. Helps the UI show who paid
     # instead of a generic "shared" badge.
     parent_owner_name: Optional[str] = None
+    is_ignored: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -126,6 +128,13 @@ class TransferCreate(BaseModel):
 
 class LinkTransferRequest(BaseModel):
     transaction_ids: list[uuid.UUID]
+
+
+class CreateCounterpartRequest(BaseModel):
+    """Mark a transaction as a transfer by auto-creating its counterpart in
+    another account. Used when the counterpart account is manual, so no
+    matching transaction exists to link against."""
+    to_account_id: uuid.UUID
 
 
 class BulkTagsRequest(BaseModel):

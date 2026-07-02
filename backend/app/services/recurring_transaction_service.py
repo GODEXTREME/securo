@@ -15,18 +15,18 @@ from app.services.credit_card_service import apply_effective_date
 from app.services.fx_rate_service import stamp_primary_amount
 
 
-async def _verify_account_owned(
-    session: AsyncSession, user_id: uuid.UUID, account_id: uuid.UUID
+async def _verify_account_in_workspace(
+    session: AsyncSession, workspace_id: uuid.UUID, account_id: uuid.UUID
 ) -> None:
-    """Raise ValueError if the account does not belong to the user (directly or via a bank connection)."""
+    """Raise ValueError if the account isn't reachable from this workspace."""
     result = await session.execute(
         select(Account)
         .outerjoin(BankConnection)
         .where(
             Account.id == account_id,
             or_(
-                Account.user_id == user_id,
-                BankConnection.user_id == user_id,
+                Account.workspace_id == workspace_id,
+                BankConnection.workspace_id == workspace_id,
             ),
         )
     )
@@ -35,30 +35,33 @@ async def _verify_account_owned(
 
 
 async def get_recurring_transactions(
-    session: AsyncSession, user_id: uuid.UUID
+    session: AsyncSession, workspace_id: uuid.UUID
 ) -> list[RecurringTransaction]:
     result = await session.execute(
         select(RecurringTransaction)
-        .where(RecurringTransaction.user_id == user_id)
+        .where(RecurringTransaction.workspace_id == workspace_id)
         .order_by(RecurringTransaction.next_occurrence)
     )
     return list(result.scalars().all())
 
 
 async def get_recurring_transaction(
-    session: AsyncSession, recurring_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, recurring_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> Optional[RecurringTransaction]:
     result = await session.execute(
         select(RecurringTransaction)
-        .where(RecurringTransaction.id == recurring_id, RecurringTransaction.user_id == user_id)
+        .where(RecurringTransaction.id == recurring_id, RecurringTransaction.workspace_id == workspace_id)
     )
     return result.scalar_one_or_none()
 
 
 async def create_recurring_transaction(
-    session: AsyncSession, user_id: uuid.UUID, data: RecurringTransactionCreate
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: RecurringTransactionCreate,
 ) -> RecurringTransaction:
-    await _verify_account_owned(session, user_id, data.account_id)
+    await _verify_account_in_workspace(session, workspace_id, data.account_id)
     next_occ = data.start_date
     if data.skip_first:
         next_occ = _advance_date(
@@ -67,6 +70,7 @@ async def create_recurring_transaction(
         )
     recurring = RecurringTransaction(
         user_id=user_id,
+        workspace_id=workspace_id,
         account_id=data.account_id,
         category_id=data.category_id,
         description=data.description,
@@ -91,9 +95,9 @@ async def create_recurring_transaction(
 
 
 async def update_recurring_transaction(
-    session: AsyncSession, recurring_id: uuid.UUID, user_id: uuid.UUID, data: RecurringTransactionUpdate
+    session: AsyncSession, recurring_id: uuid.UUID, workspace_id: uuid.UUID, data: RecurringTransactionUpdate
 ) -> Optional[RecurringTransaction]:
-    recurring = await get_recurring_transaction(session, recurring_id, user_id)
+    recurring = await get_recurring_transaction(session, recurring_id, workspace_id)
     if not recurring:
         return None
 
@@ -106,7 +110,7 @@ async def update_recurring_transaction(
         if new_account_id is None:
             raise ValueError("account_id is required")
         if new_account_id != recurring.account_id:
-            await _verify_account_owned(session, user_id, new_account_id)
+            await _verify_account_in_workspace(session, workspace_id, new_account_id)
 
     for key, value in update_data.items():
         setattr(recurring, key, value)
@@ -117,9 +121,9 @@ async def update_recurring_transaction(
 
 
 async def delete_recurring_transaction(
-    session: AsyncSession, recurring_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, recurring_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> bool:
-    recurring = await get_recurring_transaction(session, recurring_id, user_id)
+    recurring = await get_recurring_transaction(session, recurring_id, workspace_id)
     if not recurring:
         return False
 

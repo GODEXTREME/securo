@@ -1,4 +1,3 @@
-import asyncio
 import os
 import uuid
 from datetime import date, datetime, timezone
@@ -47,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from app.core.database import Base, get_async_session  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.user import User  # noqa: E402
+from app.models.passkey import UserPasskey  # noqa: E402,F401
 from app.models.category import Category  # noqa: E402
 from app.models.bank_connection import BankConnection  # noqa: E402
 from app.models.account import Account  # noqa: E402
@@ -62,6 +62,7 @@ from app.models.credit_card_bill import CreditCardBill  # noqa: E402,F401
 from app.models.group import Group, GroupMember  # noqa: E402,F401
 from app.models.transaction_split import TransactionSplit  # noqa: E402,F401
 from app.models.group_settlement import GroupSettlement  # noqa: E402,F401
+from app.models.workspace import Workspace, WorkspaceMember  # noqa: E402,F401
 # Agent models — gated by AGENTS_ENABLED above so tests always cover them.
 from app.agents.models import (  # noqa: E402,F401
     Agent,
@@ -73,10 +74,22 @@ from app.agents.models import (  # noqa: E402,F401
     LlmUsage,
 )
 
-# Use SQLite for tests — fast, no external dependency
-TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+# Use SQLite for tests — fast, no external dependency.
+# Keep the DB file off the bind-mounted project dir (macOS bind mounts
+# have known SQLite locking/journal quirks under aiosqlite) — /tmp is a
+# tmpfs inside the container. StaticPool + a single shared connection
+# is required so async fixtures and tests running on the shared
+# session-scoped event loop see the same in-memory schema state.
+from sqlalchemy.pool import StaticPool  # noqa: E402
 
-engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+engine = create_async_engine(
+    TEST_DATABASE_URL,
+    echo=False,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -86,14 +99,7 @@ TestSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_com
 # UUID comparisons.
 
 
-@pytest_asyncio.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def setup_database():
     """Create all tables once for the test session."""
     async with engine.begin() as conn:
@@ -104,7 +110,7 @@ async def setup_database():
     # Clean up test db file
     import os
     try:
-        os.remove("./test.db")
+        os.remove("/tmp/securo_test.db")
     except FileNotFoundError:
         pass
 
@@ -145,7 +151,12 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
 @pytest_asyncio.fixture
 async def test_user(session: AsyncSession, clean_db) -> User:
-    """Create a test user."""
+    """Create a test user with an auto-created Personal workspace.
+
+    Pre-creates the workspace so the auto-stamp listener (registered on
+    the financial models) can resolve `workspace_id` from `user_id` for
+    legacy test fixtures that construct rows without setting it.
+    """
     import bcrypt as _bcrypt
 
     hashed = _bcrypt.hashpw(b"testpass123", _bcrypt.gensalt()).decode()
@@ -164,9 +175,43 @@ async def test_user(session: AsyncSession, clean_db) -> User:
         },
     )
     session.add(user)
+    await session.flush()
+
+    workspace = Workspace(
+        id=uuid.uuid4(),
+        name="Pessoal",
+        kind="personal",
+        created_by_user_id=user.id,
+        default_currency="BRL",
+        locale="pt-BR",
+    )
+    session.add(workspace)
+    await session.flush()
+    session.add(
+        WorkspaceMember(
+            id=uuid.uuid4(),
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role="owner",
+        )
+    )
     await session.commit()
     await session.refresh(user)
     return user
+
+
+@pytest_asyncio.fixture
+async def test_workspace(session: AsyncSession, test_user: User) -> Workspace:
+    """Return the test user's default workspace (created by `test_user`)."""
+    from sqlalchemy import select as _select
+    result = await session.execute(
+        _select(Workspace)
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .where(WorkspaceMember.user_id == test_user.id)
+        .limit(1)
+    )
+    ws = result.scalar_one()
+    return ws
 
 
 @pytest_asyncio.fixture

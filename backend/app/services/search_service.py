@@ -71,15 +71,21 @@ def _like(term: str) -> str:
 
 async def search_all(
     session: AsyncSession,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     query: str,
     per_type_limit: int = 5,
 ) -> list[dict[str, Any]]:
-    """Search across all entity types for the given user.
+    """Search across all entity types in the current workspace.
 
     Returns a flat list of hits ordered by entity type, newest first within
     each group. Matching is case-insensitive ILIKE on the most useful string
     columns per model.
+
+    Transaction search additionally pulls in cross-workspace rows the
+    caller participates in via group splits (the Splitwise projection
+    — "concert" finds the parent that someone else paid for but is on
+    the caller's settlement ledger).
     """
     term = (query or "").strip()
     if len(term) < 1:
@@ -89,14 +95,12 @@ async def search_all(
     hits: list[SearchHit] = []
 
     # -- Transactions -------------------------------------------------------
-    # Search returns the user's own transactions PLUS transactions
-    # they participate in via group splits — so "concert" finds the
-    # parent that someone else paid for but is on the user's ledger.
     from app.models.group import GroupMember
     from app.models.transaction_split import TransactionSplit
 
     viewer_member_ids = select(GroupMember.id).where(
-        GroupMember.linked_user_id == user_id
+        GroupMember.linked_user_id == user_id,
+        GroupMember.is_self.is_(False),
     )
     shared_tx_ids = (
         select(TransactionSplit.transaction_id)
@@ -107,7 +111,7 @@ async def search_all(
         select(Transaction)
         .where(
             or_(
-                Transaction.user_id == user_id,
+                Transaction.workspace_id == workspace_id,
                 Transaction.id.in_(shared_tx_ids),
             ),
             or_(
@@ -141,7 +145,7 @@ async def search_all(
     acc_result = await session.execute(
         select(Account)
         .where(
-            Account.user_id == user_id,
+            Account.workspace_id == workspace_id,
             Account.name.ilike(pattern, escape="\\"),
         )
         .order_by(Account.is_closed.asc(), Account.name.asc())
@@ -164,7 +168,7 @@ async def search_all(
     payee_result = await session.execute(
         select(Payee)
         .where(
-            Payee.user_id == user_id,
+            Payee.workspace_id == workspace_id,
             or_(
                 Payee.name.ilike(pattern, escape="\\"),
                 Payee.notes.ilike(pattern, escape="\\"),
@@ -188,7 +192,7 @@ async def search_all(
     cat_result = await session.execute(
         select(Category)
         .where(
-            Category.user_id == user_id,
+            Category.workspace_id == workspace_id,
             Category.name.ilike(pattern, escape="\\"),
         )
         .order_by(Category.name.asc())
@@ -209,7 +213,7 @@ async def search_all(
     goal_result = await session.execute(
         select(Goal)
         .where(
-            Goal.user_id == user_id,
+            Goal.workspace_id == workspace_id,
             Goal.name.ilike(pattern, escape="\\"),
         )
         .order_by(Goal.position.asc(), Goal.name.asc())
@@ -233,7 +237,7 @@ async def search_all(
     asset_result = await session.execute(
         select(Asset)
         .where(
-            Asset.user_id == user_id,
+            Asset.workspace_id == workspace_id,
             Asset.name.ilike(pattern, escape="\\"),
         )
         .order_by(Asset.is_archived.asc(), Asset.position.asc(), Asset.name.asc())

@@ -30,9 +30,8 @@ import logging
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from typing import Optional
-from urllib.parse import urlparse
 
-from app.core.config import get_settings
+from app.providers.favicon import favicon_url_for
 from app.schemas.asset import MarketSymbolMatch, MarketSymbolQuote
 
 logger = logging.getLogger(__name__)
@@ -363,42 +362,9 @@ class YFinanceProvider(MarketPriceProvider):
             return None
 
 
-def _extract_domain(url: Optional[str]) -> Optional[str]:
-    """Extract the bare domain from a URL, stripping ``www.`` and scheme.
-
-    Returns None for blanks / unparseable inputs. Used as the identifier
-    Brandfetch (or any logo-by-domain service) expects.
-    """
-    if not url:
-        return None
-    try:
-        parsed = urlparse(url if "://" in url else f"https://{url}")
-    except ValueError:
-        return None
-    host = (parsed.hostname or "").strip().lower()
-    if not host:
-        return None
-    return host[4:] if host.startswith("www.") else host
-
-
-def _logo_url_for(website: Optional[str]) -> Optional[str]:
-    """Build a logo URL for a company website, or None if unavailable.
-
-    Uses Google's free favicon service — no API key, no third-party sign-up,
-    works for any public domain. Quality caps at 128×128 and can be lower
-    for older sites; when Google doesn't have a favicon it returns a
-    generic globe, which the frontend treats as "good enough" (falling
-    back to the type icon is reserved for image-load failures).
-
-    Returns None when the upstream quote didn't include a website (most
-    crypto tickers), which is the signal for the frontend to show the
-    type icon instead.
-    """
-    domain = _extract_domain(website)
-    if not domain:
-        return None
-    size = get_settings().logo_size
-    return f"https://www.google.com/s2/favicons?domain={domain}&sz={size}"
+# Asset logos reuse the shared favicon helper. Kept as a module-local alias so
+# existing call sites stay untouched.
+_logo_url_for = favicon_url_for
 
 
 def _last_decimal_close(series) -> Optional[Decimal]:
@@ -469,6 +435,127 @@ class _UnreachableException(Exception):
     """Placeholder used when yfinance doesn't expose its rate-limit exception."""
 
 
+
+class CompositeMarketPriceProvider(MarketPriceProvider):
+    """Market-price provider that routes provider-specific symbols.
+
+    Yahoo remains the default for ordinary tickers. Tesouro Direto bonds are
+    exposed as compact TD:* symbols so they reuse the same market_price asset
+    ledger, creation, refresh, and UI flows.
+    """
+
+    name = "composite"
+
+    def __init__(self, default_provider: Optional[MarketPriceProvider] = None) -> None:
+        self.default_provider = default_provider or YFinanceProvider()
+
+    async def search(self, query: str, limit: int = 20) -> list[MarketSymbolMatch]:
+        q = (query or "").strip()
+        # A Tesouro search wants bonds, not Yahoo's "tesouro" text matches — so
+        # when we have bond results, return them alone. Fall through to Yahoo
+        # only when Tesouro is off or has nothing (e.g. flag disabled).
+        if _tesouro_enabled() and _looks_like_tesouro_query(q):
+            tesouro = await self._search_tesouro(q, limit=limit)
+            if tesouro:
+                return tesouro[:limit]
+        return await self.default_provider.search(q, limit=limit)
+
+    async def get_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
+        if _is_tesouro_symbol(symbol):
+            return await self._tesouro_quote(symbol)
+        return await self.default_provider.get_quote(symbol)
+
+    async def get_latest_prices(self, symbols: list[str]) -> dict[str, Optional[Decimal]]:
+        out: dict[str, Optional[Decimal]] = {}
+        regular: list[str] = []
+        tesouro: list[str] = []
+        for symbol in symbols:
+            if _is_tesouro_symbol(symbol):
+                tesouro.append(symbol)
+            else:
+                regular.append(symbol)
+        if regular:
+            out.update(await self.default_provider.get_latest_prices(regular))
+        if tesouro:
+            out.update(await self._tesouro_latest_prices(tesouro))
+        return out
+
+    async def _search_tesouro(self, query: str, limit: int) -> list[MarketSymbolMatch]:
+        from app.providers.tesouro_direto import (
+            _normalize,
+            get_tesouro_direto_provider,
+            tesouro_symbol_for,
+        )
+
+        quotes = await get_tesouro_direto_provider().get_available_bonds()
+        # Filter by name so the shared search box behaves like ticker search:
+        # "selic" → Selic bonds, "ipca 2035" → that maturity. "tesouro"/"direto"
+        # are dropped as filler so a bare "tesouro" lists everything.
+        tokens = [t for t in _normalize(query).split() if t and t not in ("tesouro", "direto")]
+        if tokens:
+            quotes = [
+                q
+                for q in quotes
+                if all(tok in _normalize(f"{q.title_type} {q.maturity_date.year}") for tok in tokens)
+            ]
+        return [
+            MarketSymbolMatch(
+                symbol=tesouro_symbol_for(q.title_type, q.maturity_date),
+                name=f"{q.title_type} · {q.maturity_date.strftime('%d/%m/%Y')}",
+                exchange="Tesouro Direto",
+                quote_type="BOND",
+            )
+            for q in quotes[:limit]
+        ]
+
+    async def _tesouro_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
+        from app.providers.tesouro_direto import get_tesouro_direto_provider, tesouro_symbol_for
+
+        quote = await get_tesouro_direto_provider().get_quote_by_symbol(symbol)
+        if quote is None:
+            return None
+        return MarketSymbolQuote(
+            symbol=tesouro_symbol_for(quote.title_type, quote.maturity_date),
+            name=f"{quote.title_type} {quote.maturity_date.year}",
+            exchange="Tesouro Direto",
+            currency="BRL",
+            price=float(quote.pu_base),
+            quote_type="BOND",
+        )
+
+    async def _tesouro_latest_prices(self, symbols: list[str]) -> dict[str, Optional[Decimal]]:
+        from app.providers.tesouro_direto import get_tesouro_direto_provider
+
+        quotes = await get_tesouro_direto_provider().get_quotes_by_symbol(symbols)
+        return {symbol.upper(): (q.pu_base if q else None) for symbol, q in quotes.items()}
+
+def _tesouro_enabled() -> bool:
+    try:
+        from app.core.config import get_settings
+
+        return bool(get_settings().tesouro_direto_enabled)
+    except Exception:
+        return False
+
+# Bond-name keywords that route the shared search to Tesouro Direto. A bare
+# "td" prefix is deliberately excluded — it collides with real tickers like TD
+# (Toronto-Dominion Bank). Stock/crypto queries skip the bond path entirely so
+# they never wait on the Treasury CSV.
+_TESOURO_KEYWORDS = ("tesouro", "selic", "ipca", "prefixado", "igpm", "educa", "renda")
+
+
+def _looks_like_tesouro_query(query: str) -> bool:
+    normalized = query.strip().casefold()
+    return any(keyword in normalized for keyword in _TESOURO_KEYWORDS)
+
+def _is_tesouro_symbol(symbol: str | None) -> bool:
+    try:
+        from app.providers.tesouro_direto import is_tesouro_symbol
+
+        return is_tesouro_symbol(symbol)
+    except Exception:
+        return False
+
 # Module-level singleton — cheap to construct, stateless beyond the yfinance
 # import, and consumers need a stable instance for dependency overrides.
 _default_provider: Optional[MarketPriceProvider] = None
@@ -478,7 +565,7 @@ def get_market_price_provider() -> MarketPriceProvider:
     """Return the configured market-price provider (yfinance by default)."""
     global _default_provider
     if _default_provider is None:
-        _default_provider = YFinanceProvider()
+        _default_provider = CompositeMarketPriceProvider()
     return _default_provider
 
 

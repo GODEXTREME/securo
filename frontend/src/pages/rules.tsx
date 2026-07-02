@@ -1,25 +1,23 @@
-import { useState, useMemo } from 'react'
-import { getAccountName } from '@/lib/account-utils'
+import { useRef, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { categories as categoriesApi, categoryGroups as categoryGroupsApi, rules as rulesApi, accounts as accountsApi, payees as payeesApi } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog'
-import type { Category, CategoryGroup, Payee, Rule, RuleCondition, RuleAction } from '@/types'
-import { Trash2, Plus, RefreshCw, X, Package, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import type { Category, Payee, Rule, RuleAction, RuleCondition, RuleExportPayload } from '@/types'
+import { Trash2, Plus, RefreshCw, Package, Check, ArrowUpDown, ArrowUp, ArrowDown, Download, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CategorySelect } from '@/components/category-select'
 import { PageHeader } from '@/components/page-header'
+import { useWorkspace } from '@/contexts/workspace-context'
+import { RuleDialog } from '@/components/rule-dialog'
 
 function SectionCard({ children }: { children: React.ReactNode }) {
   return (
@@ -107,6 +105,7 @@ function actionSummary(actions: RuleAction[], categories: Category[], payeesList
       return p ? `→ ${t('payees.payee')}: ${p.name}` : `→ ${t('payees.payee')}`
     }
     if (a.op === 'append_notes') return `→ ${t('rules.fieldNotes')}: ${a.value}`
+    if (a.op === 'ignore') return `→ ${t('rules.ignoreAction')}`
     return a.op
   }).join('  ') || t('rules.noActions')
 }
@@ -114,9 +113,29 @@ function actionSummary(actions: RuleAction[], categories: Category[], payeesList
 export default function RulesPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { canWrite } = useWorkspace()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [packsDialogOpen, setPacksDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [pendingImport, setPendingImport] = useState<RuleExportPayload | null>(null)
+  const [pendingImportName, setPendingImportName] = useState('')
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   const [editing, setEditing] = useState<Rule | null>(null)
+  // Bumped on every open so the dialog remounts with fresh state instead of
+  // retaining the previously entered rule (issue #306).
+  const [dialogInstance, setDialogInstance] = useState(0)
+
+  function openCreate() {
+    setEditing(null)
+    setDialogInstance((n) => n + 1)
+    setDialogOpen(true)
+  }
+
+  function openEdit(rule: Rule) {
+    setEditing(rule)
+    setDialogInstance((n) => n + 1)
+    setDialogOpen(true)
+  }
 
   const { data: rulesList } = useQuery({
     queryKey: ['rules'],
@@ -145,11 +164,19 @@ export default function RulesPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: Omit<Rule, 'id' | 'user_id'>) => rulesApi.create(data),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['rules'] })
       queryClient.invalidateQueries({ queryKey: ['rule-packs'] })
       setDialogOpen(false)
-      toast.success(t('rules.created'))
+      // The rule was applied to existing transactions on creation; refresh
+      // financial views and report how many were affected for transparency.
+      const applied = result.applied_count ?? 0
+      if (applied > 0) {
+        invalidateFinancialQueries(queryClient)
+        toast.success(t('rules.createdAndApplied', { count: applied }))
+      } else {
+        toast.success(t('rules.created'))
+      }
     },
     onError: (error: unknown) => {
       const err = error as { response?: { status?: number } }
@@ -163,12 +190,18 @@ export default function RulesPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, ...data }: Partial<Rule> & { id: string }) => rulesApi.update(id, data),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['rules'] })
       queryClient.invalidateQueries({ queryKey: ['rule-packs'] })
       setDialogOpen(false)
       setEditing(null)
-      toast.success(t('rules.updated'))
+      const applied = result.applied_count ?? 0
+      if (applied > 0) {
+        invalidateFinancialQueries(queryClient)
+        toast.success(t('rules.updatedAndApplied', { count: applied }))
+      } else {
+        toast.success(t('rules.updated'))
+      }
     },
     onError: (error: unknown) => {
       const err = error as { response?: { status?: number } }
@@ -198,8 +231,44 @@ export default function RulesPage() {
     onError: () => toast.error(t('common.error')),
   })
 
-  const categories = categoriesList ?? []
-  const payees = payeesList ?? []
+  const exportMutation = useMutation({
+    mutationFn: () => rulesApi.exportFile(),
+    onSuccess: () => toast.success(t('rules.exported')),
+    onError: () => toast.error(t('common.error')),
+  })
+
+  const importMutation = useMutation({
+    mutationFn: (payload: RuleExportPayload) => rulesApi.importFile(payload, true),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+      queryClient.invalidateQueries({ queryKey: ['rule-packs'] })
+      setImportDialogOpen(false)
+      setPendingImport(null)
+      setPendingImportName('')
+      toast.success(t('rules.imported', { imported: data.imported, skipped: data.skipped }))
+    },
+    onError: () => toast.error(t('common.error')),
+  })
+
+  async function handleImportFile(file: File) {
+    try {
+      const parsed = JSON.parse(await file.text()) as RuleExportPayload
+      if (parsed.format !== 'securo-categorization-rules' || !Array.isArray(parsed.rules)) {
+        toast.error(t('rules.invalidImportFile'))
+        return
+      }
+      setPendingImport(parsed)
+      setPendingImportName(file.name)
+      setImportDialogOpen(true)
+    } catch {
+      toast.error(t('rules.invalidImportFile'))
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = ''
+    }
+  }
+
+  const categories = useMemo(() => categoriesList ?? [], [categoriesList])
+  const payees = useMemo(() => payeesList ?? [], [payeesList])
 
   const [sortBy, setSortBy] = useState<'priority' | 'name' | 'category'>('priority')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -230,30 +299,62 @@ export default function RulesPage() {
         <SectionHeader
           title={t('rules.sectionTitle')}
           action={
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 h-8"
-                onClick={() => setPacksDialogOpen(true)}
-              >
-                <Package size={12} />
-                <span className="hidden sm:inline">{t('rules.packs')}</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 h-8"
-                onClick={() => applyAllMutation.mutate()}
-                disabled={applyAllMutation.isPending}
-              >
-                <RefreshCw size={12} />
-                <span className="hidden sm:inline">{t('rules.reapplyAll')}</span>
-              </Button>
-              <Button size="sm" className="gap-1.5 h-8" onClick={() => { setEditing(null); setDialogOpen(true) }}>
-                <Plus size={13} /> <span className="hidden sm:inline">{t('rules.add')}</span>
-              </Button>
-            </div>
+            canWrite ? (
+              <div className="flex gap-2">
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) void handleImportFile(file)
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-8"
+                  onClick={() => exportMutation.mutate()}
+                  disabled={exportMutation.isPending}
+                >
+                  <Download size={12} />
+                  <span className="hidden sm:inline">{t('rules.export')}</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-8"
+                  onClick={() => importInputRef.current?.click()}
+                  disabled={importMutation.isPending}
+                >
+                  <Upload size={12} />
+                  <span className="hidden sm:inline">{t('rules.import')}</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-8"
+                  onClick={() => setPacksDialogOpen(true)}
+                >
+                  <Package size={12} />
+                  <span className="hidden sm:inline">{t('rules.packs')}</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-8"
+                  onClick={() => applyAllMutation.mutate()}
+                  disabled={applyAllMutation.isPending}
+                >
+                  <RefreshCw size={12} />
+                  <span className="hidden sm:inline">{t('rules.reapplyAll')}</span>
+                </Button>
+                <Button size="sm" className="gap-1.5 h-8" onClick={openCreate}>
+                  <Plus size={13} /> <span className="hidden sm:inline">{t('rules.add')}</span>
+                </Button>
+              </div>
+            ) : undefined
           }
         />
         <div className="px-4 sm:px-5 py-2 bg-muted/50 border-b border-border flex items-center gap-2">
@@ -284,8 +385,11 @@ export default function RulesPage() {
             {sortedRules.map((rule) => (
               <div
                 key={rule.id}
-                className="px-4 sm:px-5 py-3 hover:bg-muted transition-colors cursor-pointer"
-                onClick={() => { setEditing(rule); setDialogOpen(true) }}
+                className={cn(
+                  'px-4 sm:px-5 py-3 hover:bg-muted transition-colors',
+                  canWrite && 'cursor-pointer',
+                )}
+                onClick={() => { if (canWrite) openEdit(rule) }}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -307,15 +411,17 @@ export default function RulesPage() {
                       {actionSummary(rule.actions, categories, payees, t)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                      onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(rule.id) }}
-                      disabled={deleteMutation.isPending}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {canWrite && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(rule.id) }}
+                        disabled={deleteMutation.isPending}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -330,8 +436,38 @@ export default function RulesPage() {
         onClose={() => setPacksDialogOpen(false)}
       />
 
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('rules.importConfirmTitle')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <p>{t('rules.importConfirmDescription', { count: pendingImport?.rules.length ?? 0, file: pendingImportName })}</p>
+            <p className="font-medium text-amber-600">{t('rules.importOverwriteWarning')}</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => { setImportDialogOpen(false); setPendingImport(null); setPendingImportName('') }}
+              disabled={importMutation.isPending}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => { if (pendingImport) importMutation.mutate(pendingImport) }}
+              disabled={!pendingImport || importMutation.isPending}
+            >
+              {t('rules.confirmOverwriteImport')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <RuleDialog
-        key={editing?.id ?? 'new'}
+        key={dialogInstance}
         open={dialogOpen}
         onClose={() => { setDialogOpen(false); setEditing(null) }}
         rule={editing}
@@ -445,269 +581,6 @@ function RulePacksDialog({ open, onClose }: { open: boolean; onClose: () => void
             </div>
           ))}
         </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function RuleDialog({
-  open, onClose, rule, categories, categoryGroups, accounts, payees, onSave, loading,
-}: {
-  open: boolean
-  onClose: () => void
-  rule: Rule | null
-  categories: Category[]
-  categoryGroups: CategoryGroup[]
-  accounts: { id: string; name: string }[]
-  payees: Payee[]
-  onSave: (data: Partial<Rule>) => void
-  loading: boolean
-}) {
-  const { t } = useTranslation()
-  const [name, setName] = useState(rule?.name ?? '')
-  const [conditionsOp, setConditionsOp] = useState<'and' | 'or'>(rule?.conditions_op ?? 'and')
-  const [conditions, setConditions] = useState<RuleCondition[]>(
-    rule?.conditions?.length ? rule.conditions as RuleCondition[] : [{ field: 'description', op: 'contains', value: '' }]
-  )
-  const [actions, setActions] = useState<RuleAction[]>(
-    rule?.actions?.length ? rule.actions as RuleAction[] : [{ op: 'set_category', value: '' }]
-  )
-  const [priority, setPriority] = useState(rule?.priority ?? 0)
-  const [isActive, setIsActive] = useState(rule?.is_active ?? true)
-
-  const selectClass = 'border border-border rounded-lg px-2 py-1.5 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
-
-  function updateCondition(i: number, field: keyof RuleCondition, val: string | number) {
-    setConditions(prev => prev.map((c, idx) => idx === i ? { ...c, [field]: val } : c))
-  }
-
-  function removeCondition(i: number) {
-    setConditions(prev => prev.filter((_, idx) => idx !== i))
-  }
-
-  function addCondition() {
-    setConditions(prev => [...prev, { field: 'description', op: 'contains', value: '' }])
-  }
-
-  function updateAction(i: number, field: keyof RuleAction, val: string) {
-    setActions(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: val } : a))
-  }
-
-  function removeAction(i: number) {
-    setActions(prev => prev.filter((_, idx) => idx !== i))
-  }
-
-  function addAction() {
-    setActions(prev => [...prev, { op: 'set_category', value: '' }])
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    onSave({ name, conditions_op: conditionsOp, conditions, actions, priority, is_active: isActive })
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
-        <DialogHeader>
-          <DialogTitle>{rule ? t('rules.editRule') : t('rules.newRule')}</DialogTitle>
-        </DialogHeader>
-        <form key={rule?.id ?? 'new'} onSubmit={handleSubmit} className="space-y-5">
-          {/* Name + Priority */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <Label>{t('rules.name')}</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Ex: Uber" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t('rules.priority')}</Label>
-              <Input type="number" value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
-            </div>
-          </div>
-
-          {/* Conditions */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>{t('rules.conditions')}</Label>
-              <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
-                {(['and', 'or'] as const).map(op => (
-                  <button
-                    key={op}
-                    type="button"
-                    className={cn(
-                      'px-3 py-1 text-xs font-semibold rounded-md transition-all',
-                      conditionsOp === op ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                    )}
-                    onClick={() => setConditionsOp(op)}
-                  >
-                    {op === 'and' ? t('rules.andOp') : t('rules.orOp')}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              {conditions.map((cond, i) => (
-                <div key={i} className="flex items-center gap-2 min-w-0">
-                  <select
-                    className={`${selectClass} w-32 shrink-0`}
-                    value={cond.field}
-                    onChange={(e) => updateCondition(i, 'field', e.target.value)}
-                  >
-                    {CONDITION_FIELDS.map(f => (
-                      <option key={f.value} value={f.value}>{t(f.label)}</option>
-                    ))}
-                  </select>
-                  <select
-                    className={`${selectClass} w-32 shrink-0`}
-                    value={cond.op}
-                    onChange={(e) => updateCondition(i, 'op', e.target.value)}
-                  >
-                    {getOpsForField(cond.field).map(o => (
-                      <option key={o.value} value={o.value}>{t(o.label)}</option>
-                    ))}
-                  </select>
-                  {cond.field === 'type' ? (
-                    <select
-                      className={`${selectClass} w-0 flex-1 min-w-0`}
-                      value={String(cond.value)}
-                      onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                    >
-                      <option value="debit">{t('rules.typeExpense')}</option>
-                      <option value="credit">{t('rules.typeIncome')}</option>
-                    </select>
-                  ) : cond.field === 'account_id' ? (
-                    <select
-                      className={`${selectClass} w-0 flex-1 min-w-0`}
-                      value={String(cond.value)}
-                      onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                    >
-                      <option value="">{t('rules.selectAccount')}</option>
-                      {accounts.map(acc => (
-                        <option key={acc.id} value={acc.id}>{getAccountName(acc)}</option>
-                      ))}
-                    </select>
-                  ) : cond.field === 'payee_id' ? (
-                    <select
-                      className={`${selectClass} w-0 flex-1 min-w-0`}
-                      value={String(cond.value)}
-                      onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                    >
-                      <option value="">{t('rules.selectPayee')}</option>
-                      {payees.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Input
-                      className="w-0 flex-1 min-w-0 h-8 text-sm"
-                      value={String(cond.value)}
-                      onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                      placeholder={cond.field === 'amount' ? '0.00' : cond.field === 'date' ? 'YYYY-MM-DD' : t('rules.valuePlaceholder')}
-                      type={cond.field === 'amount' ? 'number' : cond.field === 'date' ? 'date' : 'text'}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="p-1 text-muted-foreground hover:text-rose-500 transition-colors shrink-0"
-                    onClick={() => removeCondition(i)}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1"
-                onClick={addCondition}
-              >
-                <Plus size={12} /> {t('rules.addCondition')}
-              </button>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="space-y-2">
-            <Label>{t('rules.actions')}</Label>
-            <div className="space-y-2">
-              {actions.map((action, i) => (
-                <div key={i} className="flex items-center gap-2 min-w-0">
-                  <select
-                    className={`${selectClass} w-40 shrink-0`}
-                    value={action.op}
-                    onChange={(e) => updateAction(i, 'op', e.target.value)}
-                  >
-                    <option value="set_category">{t('rules.setCategory')}</option>
-                    <option value="set_payee">{t('rules.setPayee')}</option>
-                    <option value="append_notes">{t('rules.appendNotes')}</option>
-                  </select>
-                  {action.op === 'set_category' ? (
-                    <div className="w-0 flex-1 min-w-0">
-                      <CategorySelect
-                        value={action.value}
-                        onChange={(val) => updateAction(i, 'value', val)}
-                        categories={categories}
-                        groups={categoryGroups}
-                        placeholder={t('rules.selectCategory')}
-                        className={`${selectClass} w-full`}
-                      />
-                    </div>
-                  ) : action.op === 'set_payee' ? (
-                    <select
-                      className={`${selectClass} w-0 flex-1 min-w-0`}
-                      value={action.value}
-                      onChange={(e) => updateAction(i, 'value', e.target.value)}
-                      required
-                    >
-                      <option value="">{t('rules.selectPayee')}</option>
-                      {payees.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Input
-                      className="w-0 flex-1 min-w-0 h-8 text-sm"
-                      value={action.value}
-                      onChange={(e) => updateAction(i, 'value', e.target.value)}
-                      placeholder="Ex: #work #reimbursable"
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="p-1 text-muted-foreground hover:text-rose-500 transition-colors shrink-0"
-                    onClick={() => removeAction(i)}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1"
-                onClick={addAction}
-              >
-                <Plus size={12} /> {t('rules.addAction')}
-              </button>
-            </div>
-          </div>
-
-          {/* Active toggle */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="h-4 w-4 rounded border-border"
-            />
-            <span className="text-sm text-foreground">{t('rules.ruleActive')}</span>
-          </label>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? t('common.loading') : t('common.save')}
-            </Button>
-          </DialogFooter>
-        </form>
       </DialogContent>
     </Dialog>
   )

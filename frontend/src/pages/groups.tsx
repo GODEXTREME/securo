@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { groups as groupsApi, currencies as currenciesApi, type GroupCreatePayload } from '@/lib/api'
 import { useAuth } from '@/contexts/auth-context'
+import { useWorkspace } from '@/contexts/workspace-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,6 +37,7 @@ export default function GroupsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const { canWrite } = useWorkspace()
   const userCurrency = user?.preferences?.currency_display ?? 'USD'
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -143,7 +145,7 @@ export default function GroupsPage() {
         section={t('splitGroups.section')}
         title={t('splitGroups.title')}
         action={
-          <Button onClick={openCreate}>+ {t('splitGroups.add')}</Button>
+          canWrite ? <Button onClick={openCreate}>+ {t('splitGroups.add')}</Button> : undefined
         }
       />
 
@@ -215,7 +217,7 @@ export default function GroupsPage() {
                     {t('splitGroups.memberCount', { count: group.members.length })} · {group.default_currency}
                   </p>
                 </div>
-                {group.is_owner && (
+                {group.is_owner && canWrite && (
                   <Button
                     variant="ghost"
                     size="sm"

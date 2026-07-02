@@ -22,9 +22,51 @@ export interface AdminUserList {
   total: number
 }
 
+export interface Passkey {
+  id: string
+  name: string
+  transports: string[] | null
+  aaguid: string | null
+  device_type: string | null
+  backed_up: boolean | null
+  created_at: string
+  last_used_at: string | null
+}
+
+export interface PasskeyOptionsResponse {
+  challenge_id: string
+  options: Record<string, unknown>
+}
+
 export interface AppSetting {
   key: string
   value: string
+}
+
+export type WorkspaceRole = 'owner' | 'editor' | 'viewer' | 'manager'
+
+export interface Workspace {
+  id: string
+  name: string
+  kind: string
+  is_archived: boolean
+  default_currency: string
+  locale: string | null
+  icon: string | null
+  color: string | null
+  created_at: string
+  created_by_user_id: string | null
+  managed_by_user_id: string | null
+  role: WorkspaceRole | null
+}
+
+export interface WorkspaceMember {
+  id: string
+  user_id: string
+  email: string
+  display_name: string | null
+  role: WorkspaceRole
+  joined_at: string
 }
 
 export interface UserPreferences {
@@ -45,6 +87,7 @@ export interface Category {
   color: string
   is_system: boolean
   treat_as_transfer: boolean
+  is_ignored: boolean
 }
 
 export interface CategoryGroup {
@@ -63,6 +106,8 @@ export interface BankConnection {
   user_id: string
   provider: string
   institution_name: string
+  display_name: string | null
+  logo_url: string | null
   external_id: string
   status: string
   settings: ConnectionSettings | null
@@ -82,6 +127,10 @@ export interface Account {
   external_id: string | null
   name: string
   display_name: string | null
+  // Denormalized bank identity from the linked connection (null for manual
+  // accounts). Used to render the institution logo next to the account.
+  institution_name: string | null
+  institution_logo_url: string | null
   type: string
   balance: number
   current_balance: number
@@ -109,6 +158,19 @@ export interface CreditCardBill {
   total_amount: number
   currency: string
   minimum_payment: number | null
+}
+
+export interface Collection {
+  id: string
+  user_id: string
+  name: string
+  icon: string
+  color: string
+  position: number
+  account_ids: string[]
+  account_count: number
+  wallet_ids: string[]
+  wallet_count: number
 }
 
 export interface AccountSummary {
@@ -165,6 +227,8 @@ export interface Transaction {
   // Display name of the parent's owner (the person who actually paid).
   // Derived per-request from the group's `is_self` member.
   parent_owner_name?: string | null
+  // Flag to exclude this transaction from reports and dashboard aggregations
+  is_ignored: boolean
 }
 
 export type ShareType = 'equal' | 'exact' | 'percent'
@@ -292,6 +356,27 @@ export interface Rule {
   is_active: boolean
 }
 
+export interface RuleExportItem {
+  name: string
+  conditions_op: 'and' | 'or'
+  conditions: RuleCondition[]
+  actions: RuleAction[]
+  priority: number
+  is_active: boolean
+}
+
+export interface RuleExportPayload {
+  format: 'securo-categorization-rules'
+  version: number
+  rules: RuleExportItem[]
+}
+
+export interface RuleImportResponse {
+  imported: number
+  skipped: number
+  overwritten: number
+}
+
 export interface ImportLog {
   id: string
   user_id: string
@@ -359,6 +444,7 @@ export interface ProjectedTransaction {
   category_name: string | null
   category_icon: string | null
   category_color: string | null
+  is_ignored: boolean
 }
 
 export interface DashboardSummary {
@@ -462,6 +548,29 @@ export interface Asset {
   last_price: number | null
   last_price_at: string | null
   logo_url: string | null
+  // Ledger-derived (issue #235): weighted-average cost per unit (preço médio),
+  // cost basis of held units, cumulative realized gain, and whether the holding
+  // is driven by the transactions ledger.
+  average_price: number | null
+  total_invested: number | null
+  realized_gain: number | null
+  transaction_count: number
+}
+
+export interface AssetTransaction {
+  id: string
+  asset_id: string
+  kind: 'buy' | 'sell'
+  quantity: number
+  price: number
+  fee: number
+  date: string
+  source: string
+  notes: string | null
+  asset_name: string | null
+  ticker: string | null
+  currency: string | null
+  logo_url: string | null
 }
 
 export interface MarketSymbolMatch {
@@ -513,9 +622,10 @@ export interface Goal {
   target_amount_primary: number | null
   current_amount_primary: number | null
   target_date: string | null
-  tracking_type: 'manual' | 'account' | 'asset' | 'net_worth'
+  tracking_type: 'manual' | 'account' | 'asset' | 'asset_group' | 'net_worth'
   account_id: string | null
   asset_id: string | null
+  asset_group_id: string | null
   status: 'active' | 'completed' | 'paused' | 'archived'
   icon: string | null
   color: string | null
@@ -528,6 +638,7 @@ export interface Goal {
   on_track: 'ahead' | 'on_track' | 'behind' | 'overdue' | 'achieved' | null
   account_name: string | null
   asset_name: string | null
+  asset_group_name: string | null
 }
 
 export interface GoalSummary {
@@ -558,6 +669,9 @@ export interface TransactionsSummary {
   income: number
   expense: number
   net: number
+  // Absolute total of everything excluded from income/expense for the same
+  // rows — transfers, treat_as_transfer categories and ignored items (#242).
+  excluded: number
   currency: string
 }
 
@@ -584,6 +698,8 @@ export interface ReportDataPoint {
   date: string
   value: number
   breakdowns: Record<string, number>
+  change: number | null
+  composition?: ReportCompositionItem[]
 }
 
 export interface ReportMeta {
@@ -591,6 +707,9 @@ export interface ReportMeta {
   series_keys: string[]
   currency: string
   interval: string
+  forecast_start_date?: string | null
+  baseline_active?: boolean
+  baseline_lookback_days?: number | null
 }
 
 export interface ReportCompositionItem {
