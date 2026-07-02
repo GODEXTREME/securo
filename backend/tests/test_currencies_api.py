@@ -22,3 +22,27 @@ async def test_currencies_include_brl_and_usd(client: AsyncClient):
     codes = [c["code"] for c in response.json()]
     assert "BRL" in codes
     assert "USD" in codes
+
+
+@pytest.mark.asyncio
+async def test_currencies_include_clp_with_metadata(client: AsyncClient):
+    response = await client.get("/api/currencies")
+    data = response.json()
+    clp = next((currency for currency in data if currency["code"] == "CLP"), None)
+
+    assert clp is not None
+    assert clp["symbol"] == "$"
+    assert clp["name"] == "Peso Chileno"
+    assert clp["flag"] == "🇨🇱"
+
+
+@pytest.mark.asyncio
+async def test_currencies_include_dop_with_metadata(client: AsyncClient):
+    response = await client.get("/api/currencies")
+    data = response.json()
+    dop = next((currency for currency in data if currency["code"] == "DOP"), None)
+
+    assert dop is not None
+    assert dop["symbol"] == "RD$"
+    assert dop["name"] == "Peso Dominicano"
+    assert dop["flag"] == "🇩🇴"

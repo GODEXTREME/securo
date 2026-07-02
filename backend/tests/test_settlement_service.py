@@ -14,23 +14,23 @@ from app.schemas.group_settlement import (
     GroupSettlementCreate,
     GroupSettlementUpdate,
 )
-from app.services import group_service, settlement_service
+from app.services import group_service, settlement_service, workspace_service
 
 
-async def _setup_group(session, user_id):
+async def _setup_group(session, user_id, workspace_id):
     group = await group_service.create_group(
-        session, user_id, GroupCreate(name=f"S-{uuid.uuid4().hex[:6]}")
+        session, workspace_id, user_id, GroupCreate(name=f"S-{uuid.uuid4().hex[:6]}")
     )
     a = await group_service.create_member(
-        session, group.id, user_id, GroupMemberCreate(name="Alice")
+        session, group.id, workspace_id, GroupMemberCreate(name="Alice")
     )
     b = await group_service.create_member(
-        session, group.id, user_id, GroupMemberCreate(name="Bob")
+        session, group.id, workspace_id, GroupMemberCreate(name="Bob")
     )
     return group, a, b
 
 
-async def _make_user(session, email):
+async def _make_user_with_workspace(session, email):
     hashed = _bcrypt.hashpw(b"x", _bcrypt.gensalt()).decode()
     user = User(
         id=uuid.uuid4(),
@@ -43,7 +43,10 @@ async def _make_user(session, email):
     )
     session.add(user)
     await session.flush()
-    return user
+    workspace = await workspace_service.create_personal_workspace_for_user(
+        session, user, commit=True
+    )
+    return user, workspace
 
 
 async def _make_account(session, user_id, account_type="checking"):
@@ -61,11 +64,14 @@ async def _make_account(session, user_id, account_type="checking"):
 
 
 @pytest.mark.asyncio
-async def test_create_settlement_happy_path(session: AsyncSession, test_user):
-    group, a, b = await _setup_group(session, test_user.id)
+async def test_create_settlement_happy_path(
+    session: AsyncSession, test_user, test_workspace
+):
+    group, a, b = await _setup_group(session, test_user.id, test_workspace.id)
     s = await settlement_service.create_settlement(
         session,
         group.id,
+        test_workspace.id,
         test_user.id,
         GroupSettlementCreate(
             from_member_id=a.id,
@@ -82,15 +88,16 @@ async def test_create_settlement_happy_path(session: AsyncSession, test_user):
 
 @pytest.mark.asyncio
 async def test_settlement_members_must_belong_to_group(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
-    group, a, _b = await _setup_group(session, test_user.id)
-    other_group, _x, y = await _setup_group(session, test_user.id)
+    group, a, _b = await _setup_group(session, test_user.id, test_workspace.id)
+    other_group, _x, y = await _setup_group(session, test_user.id, test_workspace.id)
 
     with pytest.raises(ValueError, match="must belong to the group"):
         await settlement_service.create_settlement(
             session,
             group.id,
+            test_workspace.id,
             test_user.id,
             GroupSettlementCreate(
                 from_member_id=a.id,
@@ -104,9 +111,9 @@ async def test_settlement_members_must_belong_to_group(
 
 @pytest.mark.asyncio
 async def test_settlement_from_to_must_differ_at_creation(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
-    group, a, _b = await _setup_group(session, test_user.id)
+    group, a, _b = await _setup_group(session, test_user.id, test_workspace.id)
     # Pydantic-level validation rejects from == to before service runs.
     with pytest.raises(ValueError, match="must differ"):
         GroupSettlementCreate(
@@ -119,11 +126,14 @@ async def test_settlement_from_to_must_differ_at_creation(
 
 
 @pytest.mark.asyncio
-async def test_settlement_update_keeps_invariants(session: AsyncSession, test_user):
-    group, a, b = await _setup_group(session, test_user.id)
+async def test_settlement_update_keeps_invariants(
+    session: AsyncSession, test_user, test_workspace
+):
+    group, a, b = await _setup_group(session, test_user.id, test_workspace.id)
     s = await settlement_service.create_settlement(
         session,
         group.id,
+        test_workspace.id,
         test_user.id,
         GroupSettlementCreate(
             from_member_id=a.id,
@@ -138,6 +148,7 @@ async def test_settlement_update_keeps_invariants(session: AsyncSession, test_us
         session,
         group.id,
         s.id,
+        test_workspace.id,
         test_user.id,
         GroupSettlementUpdate(amount=Decimal("12.00"), notes="adjusted"),
     )
@@ -150,19 +161,27 @@ async def test_settlement_update_keeps_invariants(session: AsyncSession, test_us
             session,
             group.id,
             s.id,
+            test_workspace.id,
             test_user.id,
             GroupSettlementUpdate(to_member_id=a.id),
         )
 
 
 @pytest.mark.asyncio
-async def test_settlement_owner_isolation(session: AsyncSession, test_user):
-    group, a, b = await _setup_group(session, test_user.id)
-    other_user = uuid.uuid4()
+async def test_settlement_owner_isolation(
+    session: AsyncSession, test_user, test_workspace
+):
+    group, a, b = await _setup_group(session, test_user.id, test_workspace.id)
+    # A different workspace with a different user — neither can see the
+    # group through their own scope.
+    other_user, other_ws = await _make_user_with_workspace(
+        session, "isolated@example.com"
+    )
     result = await settlement_service.create_settlement(
         session,
         group.id,
-        other_user,
+        other_ws.id,
+        other_user.id,
         GroupSettlementCreate(
             from_member_id=a.id,
             to_member_id=b.id,
@@ -184,28 +203,34 @@ async def test_settlement_owner_isolation(session: AsyncSession, test_user):
 
 @pytest.mark.asyncio
 async def test_receiver_credit_created_when_to_member_is_linked_with_account(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
-    receiver = await _make_user(session, "rx-with-acc@example.com")
+    receiver, _receiver_ws = await _make_user_with_workspace(
+        session, "rx-with-acc@example.com"
+    )
     receiver_account = await _make_account(session, receiver.id)
     payer_account = await _make_account(session, test_user.id)
 
     group = await group_service.create_group(
-        session, test_user.id, GroupCreate(name="LinkedReceiver")
+        session, test_workspace.id, test_user.id, GroupCreate(name="LinkedReceiver")
     )
     me = await group_service.create_member(
-        session, group.id, test_user.id, GroupMemberCreate(name="Me", is_self=True)
+        session,
+        group.id,
+        test_workspace.id,
+        GroupMemberCreate(name="Me", is_self=True),
     )
     bob = await group_service.create_member(
         session,
         group.id,
-        test_user.id,
+        test_workspace.id,
         GroupMemberCreate(name="Bob", linked_user_id=receiver.id),
     )
 
     s = await settlement_service.create_settlement(
         session,
         group.id,
+        test_workspace.id,
         test_user.id,
         GroupSettlementCreate(
             from_member_id=me.id,
@@ -231,24 +256,28 @@ async def test_receiver_credit_created_when_to_member_is_linked_with_account(
 
 @pytest.mark.asyncio
 async def test_receiver_credit_skipped_when_to_member_is_shadow(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """Shadow member (no linked_user_id, not is_self) — there's no real
     user on the receiving side, so no credit transaction is created."""
     payer_account = await _make_account(session, test_user.id)
     group = await group_service.create_group(
-        session, test_user.id, GroupCreate(name="ShadowReceiver")
+        session, test_workspace.id, test_user.id, GroupCreate(name="ShadowReceiver")
     )
     me = await group_service.create_member(
-        session, group.id, test_user.id, GroupMemberCreate(name="Me", is_self=True)
+        session,
+        group.id,
+        test_workspace.id,
+        GroupMemberCreate(name="Me", is_self=True),
     )
     shadow = await group_service.create_member(
-        session, group.id, test_user.id, GroupMemberCreate(name="Shadow")
+        session, group.id, test_workspace.id, GroupMemberCreate(name="Shadow")
     )
 
     s = await settlement_service.create_settlement(
         session,
         group.id,
+        test_workspace.id,
         test_user.id,
         GroupSettlementCreate(
             from_member_id=me.id,
@@ -265,31 +294,37 @@ async def test_receiver_credit_skipped_when_to_member_is_shadow(
 
 @pytest.mark.asyncio
 async def test_receiver_credit_skipped_when_linked_user_has_no_cash_account(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """Linked receiver, but their only account is a credit card (not
     checking/savings). The mirror credit can't be placed and is silently
     skipped — settlement is still recorded."""
-    receiver = await _make_user(session, "rx-cc-only@example.com")
+    receiver, _receiver_ws = await _make_user_with_workspace(
+        session, "rx-cc-only@example.com"
+    )
     await _make_account(session, receiver.id, account_type="credit_card")
     payer_account = await _make_account(session, test_user.id)
 
     group = await group_service.create_group(
-        session, test_user.id, GroupCreate(name="CCOnly")
+        session, test_workspace.id, test_user.id, GroupCreate(name="CCOnly")
     )
     me = await group_service.create_member(
-        session, group.id, test_user.id, GroupMemberCreate(name="Me", is_self=True)
+        session,
+        group.id,
+        test_workspace.id,
+        GroupMemberCreate(name="Me", is_self=True),
     )
     bob = await group_service.create_member(
         session,
         group.id,
-        test_user.id,
+        test_workspace.id,
         GroupMemberCreate(name="Bob", linked_user_id=receiver.id),
     )
 
     s = await settlement_service.create_settlement(
         session,
         group.id,
+        test_workspace.id,
         test_user.id,
         GroupSettlementCreate(
             from_member_id=me.id,
@@ -306,20 +341,23 @@ async def test_receiver_credit_skipped_when_linked_user_has_no_cash_account(
 
 @pytest.mark.asyncio
 async def test_receiver_credit_lands_on_owner_when_self_member_unlinked(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     """When the to_member is the owner's self-member with no
     linked_user_id, the service falls back to group.user_id — the
     credit lands on the owner's checking account."""
     owner_account = await _make_account(session, test_user.id)
     group = await group_service.create_group(
-        session, test_user.id, GroupCreate(name="SelfFallback")
+        session, test_workspace.id, test_user.id, GroupCreate(name="SelfFallback")
     )
     owner_self = await group_service.create_member(
-        session, group.id, test_user.id, GroupMemberCreate(name="Me", is_self=True)
+        session,
+        group.id,
+        test_workspace.id,
+        GroupMemberCreate(name="Me", is_self=True),
     )
     friend = await group_service.create_member(
-        session, group.id, test_user.id, GroupMemberCreate(name="Friend")
+        session, group.id, test_workspace.id, GroupMemberCreate(name="Friend")
     )
 
     # Friend pays the owner back. Caller is the owner (allowed to record
@@ -328,6 +366,7 @@ async def test_receiver_credit_lands_on_owner_when_self_member_unlinked(
     s = await settlement_service.create_settlement(
         session,
         group.id,
+        test_workspace.id,
         test_user.id,
         GroupSettlementCreate(
             from_member_id=friend.id,

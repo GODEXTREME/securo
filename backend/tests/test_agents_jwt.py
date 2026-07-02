@@ -123,3 +123,27 @@ def test_optional_conv_id_is_truly_optional():
     ctx = verify_request(_Req())  # type: ignore[arg-type]
     assert ctx.conversation_id is None
     assert ctx.agent_id is None
+
+
+def test_external_token_round_trip():
+    from mcp_server.auth import verify_request
+
+    token = mint_token(user_id=uuid.uuid4(), external=True)
+
+    class _Req:
+        headers = {"authorization": f"Bearer {token}"}
+
+    ctx = verify_request(_Req())  # type: ignore[arg-type]
+    assert ctx.external is True
+
+
+def test_default_token_has_no_external_flag():
+    from mcp_server.auth import verify_request
+
+    token = mint_token(user_id=uuid.uuid4())
+
+    class _Req:
+        headers = {"authorization": f"Bearer {token}"}
+
+    ctx = verify_request(_Req())  # type: ignore[arg-type]
+    assert ctx.external is False

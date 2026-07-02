@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import dashboard_service, report_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
-from mcp_server.tools._helpers import parse_date
+from mcp_server.tools._helpers import parse_date, resolve_workspace_id
 
 
 def _pri_currency(ctx: CallContext) -> str:
@@ -43,8 +43,9 @@ async def get_net_worth(
     months: int = 12,
     interval: str = "monthly",
 ) -> dict[str, Any]:
+    ws_id = await resolve_workspace_id(session, ctx)
     rep = await report_service.get_net_worth_report(
-        session, ctx.user_id, months=int(months), interval=interval, currency=_pri_currency(ctx)
+        session, ws_id, ctx.user_id, months=int(months), interval=interval, currency=_pri_currency(ctx)
     )
     return _serialize_report(rep)
 
@@ -69,8 +70,9 @@ async def get_income_expenses(
     months: int = 12,
     interval: str = "monthly",
 ) -> dict[str, Any]:
+    ws_id = await resolve_workspace_id(session, ctx)
     rep = await report_service.get_income_expenses_report(
-        session, ctx.user_id, months=int(months), interval=interval, currency=_pri_currency(ctx)
+        session, ws_id, ctx.user_id, months=int(months), interval=interval, currency=_pri_currency(ctx)
     )
     return _serialize_report(rep)
 
@@ -95,8 +97,9 @@ async def get_cash_flow(
     months: int = 6,
     interval: str = "daily",
 ) -> dict[str, Any]:
+    ws_id = await resolve_workspace_id(session, ctx)
     rep = await report_service.get_cash_flow_report(
-        session, ctx.user_id, months=int(months), interval=interval, currency=_pri_currency(ctx)
+        session, ws_id, ctx.user_id, months=int(months), interval=interval, currency=_pri_currency(ctx)
     )
     return _serialize_report(rep)
 
@@ -123,7 +126,8 @@ async def get_dashboard_snapshot(
     month: str | None = None,
 ) -> dict[str, Any]:
     target = parse_date(month) or date.today().replace(day=1)
-    summary = await dashboard_service.get_summary(session, ctx.user_id, month=target)
+    ws_id = await resolve_workspace_id(session, ctx)
+    summary = await dashboard_service.get_summary(session, ws_id, ctx.user_id, month=target)
     if hasattr(summary, "model_dump"):
         return summary.model_dump(mode="json")
     return {"value": str(summary)}

@@ -10,10 +10,13 @@ import { PageHeader } from '@/components/page-header'
 import { agents } from '@/lib/api'
 import type { LlmConnection } from '@/lib/api'
 import { ConnectionFormDialog } from '@/components/agents/connection-form-dialog'
+import { McpExternalPanel } from '@/components/agents/mcp-external-panel'
+import { useWorkspace } from '@/contexts/workspace-context'
 
 export default function AgentConnectionsPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const { canWrite } = useWorkspace()
   const [editing, setEditing] = useState<LlmConnection | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; detail: string }>>({})
@@ -51,9 +54,11 @@ export default function AgentConnectionsPage() {
         section={t('agents.title')}
         title={t('agents.connections.title')}
         action={
-          <Button size="sm" className="gap-1.5 h-8" onClick={() => setCreateOpen(true)}>
-            <Plus size={13} /> {t('agents.connections.add')}
-          </Button>
+          canWrite ? (
+            <Button size="sm" className="gap-1.5 h-8" onClick={() => setCreateOpen(true)}>
+              <Plus size={13} /> {t('agents.connections.add')}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -72,9 +77,11 @@ export default function AgentConnectionsPage() {
           <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
             {t('agents.connections.empty.subtitle')}
           </p>
-          <Button size="sm" className="gap-1.5 h-8 mt-4" onClick={() => setCreateOpen(true)}>
-            <Plus size={13} /> {t('agents.connections.add')}
-          </Button>
+          {canWrite && (
+            <Button size="sm" className="gap-1.5 h-8 mt-4" onClick={() => setCreateOpen(true)}>
+              <Plus size={13} /> {t('agents.connections.add')}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
@@ -116,41 +123,45 @@ export default function AgentConnectionsPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs"
-                      onClick={() => testMut.mutate(c.id)}
-                      disabled={testMut.isPending}
-                    >
-                      {t('agents.connections.test')}
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => setEditing(c)}
-                      className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm(t('agents.connections.deleteConfirm', { name: c.name }))) {
-                          removeMut.mutate(c.id)
-                        }
-                      }}
-                      className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                  {canWrite && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs"
+                        onClick={() => testMut.mutate(c.id)}
+                        disabled={testMut.isPending}
+                      >
+                        {t('agents.connections.test')}
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => setEditing(c)}
+                        className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(t('agents.connections.deleteConfirm', { name: c.name }))) {
+                            removeMut.mutate(c.id)
+                          }
+                        }}
+                        className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
         </div>
       )}
+
+      <McpExternalPanel />
 
       <ConnectionFormDialog open={createOpen} onOpenChange={setCreateOpen} />
       <ConnectionFormDialog

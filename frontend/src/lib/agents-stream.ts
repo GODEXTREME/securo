@@ -5,6 +5,7 @@
  * Authorization header. Instead we POST with fetch, then parse the SSE
  * response stream by hand.
  */
+import { WORKSPACE_STORAGE_KEY } from '@/lib/api'
 
 export type AgentStreamEvent =
   | { kind: 'conversation'; conversation_id: string }
@@ -29,13 +30,19 @@ export interface SendMessageOptions {
 
 export async function streamChat(opts: SendMessageOptions): Promise<void> {
   const token = localStorage.getItem('token') || ''
+  // SSE uses raw fetch, so we have to set the workspace header here
+  // — the axios interceptor that adds it for the rest of the app
+  // doesn't run on this code path.
+  const workspaceId = localStorage.getItem(WORKSPACE_STORAGE_KEY) || ''
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: token ? `Bearer ${token}` : '',
+  }
+  if (workspaceId) headers['X-Workspace-Id'] = workspaceId
   const res = await fetch(`/api/agents/${opts.agentId}/chat`, {
     method: 'POST',
     signal: opts.signal,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token ? `Bearer ${token}` : '',
-    },
+    headers,
     body: JSON.stringify({
       content: opts.content,
       conversation_id: opts.conversationId ?? null,

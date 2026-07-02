@@ -3,9 +3,12 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
-from app.models.user import User
+from app.core.workspace_context import (
+    WorkspaceContext,
+    current_workspace,
+    current_writable_workspace,
+)
 from app.schemas.recurring_transaction import (
     RecurringTransactionCreate,
     RecurringTransactionRead,
@@ -18,20 +21,22 @@ router = APIRouter(prefix="/api/recurring-transactions", tags=["recurring-transa
 
 @router.get("", response_model=list[RecurringTransactionRead])
 async def list_recurring_transactions(
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    return await recurring_transaction_service.get_recurring_transactions(session, user.id)
+    return await recurring_transaction_service.get_recurring_transactions(session, ctx.workspace.id)
 
 
 @router.post("", response_model=RecurringTransactionRead, status_code=status.HTTP_201_CREATED)
 async def create_recurring_transaction(
     data: RecurringTransactionCreate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
-        return await recurring_transaction_service.create_recurring_transaction(session, user.id, data)
+        return await recurring_transaction_service.create_recurring_transaction(
+            session, ctx.workspace.id, ctx.user_id, data
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -40,12 +45,12 @@ async def create_recurring_transaction(
 async def update_recurring_transaction(
     recurring_id: uuid.UUID,
     data: RecurringTransactionUpdate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
         recurring = await recurring_transaction_service.update_recurring_transaction(
-            session, recurring_id, user.id, data
+            session, recurring_id, ctx.workspace.id, data
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -57,18 +62,20 @@ async def update_recurring_transaction(
 @router.delete("/{recurring_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_recurring_transaction(
     recurring_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    deleted = await recurring_transaction_service.delete_recurring_transaction(session, recurring_id, user.id)
+    deleted = await recurring_transaction_service.delete_recurring_transaction(
+        session, recurring_id, ctx.workspace.id
+    )
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurring transaction not found")
 
 
 @router.post("/generate")
 async def generate_recurring_transactions(
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    count = await recurring_transaction_service.generate_pending(session, user.id)
+    count = await recurring_transaction_service.generate_pending(session, ctx.user_id)
     return {"generated": count}

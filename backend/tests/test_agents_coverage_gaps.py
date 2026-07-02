@@ -17,7 +17,7 @@ from app.agents.services import agent_service
 
 @pytest.mark.asyncio
 async def test_list_agents_populates_conversation_and_knowledge_counts(
-    session, test_user, test_agent
+    session, test_user, test_workspace, test_agent
 ):
     """Ensures the GROUP BY count queries (lines 23-43) run."""
     from app.agents.models.conversation import Conversation
@@ -34,7 +34,7 @@ async def test_list_agents_populates_conversation_and_knowledge_counts(
     ])
     await session.commit()
 
-    rows = await agent_service.list_agents(session, test_user.id)
+    rows = await agent_service.list_agents(session, test_workspace.id)
     assert len(rows) == 1
     assert rows[0].conversation_count == 2  # type: ignore[attr-defined]
     assert rows[0].knowledge_count == 1  # type: ignore[attr-defined]
@@ -127,7 +127,7 @@ async def test_get_agent_tools_returns_merged_state(
     in api/agents.py without a live MCP server."""
     from app.agents.mcp.client import ToolHandle
 
-    async def fake_discover(self, *, user_id, conversation_id=None, agent_id=None):
+    async def fake_discover(self, *, user_id, workspace_id=None, conversation_id=None, agent_id=None):
         return [
             ToolHandle(server="securo", name="list_accounts", description="d", parameters={}),
             ToolHandle(server="securo", name="propose_x", description="d", parameters={}, is_proposal=True),

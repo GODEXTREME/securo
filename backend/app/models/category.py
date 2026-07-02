@@ -17,6 +17,9 @@ class Category(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
     group_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("category_groups.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(100))
     icon: Mapped[str] = mapped_column(String(50), default="circle-help")
@@ -30,6 +33,11 @@ class Category(Base):
     # can catch one-sided movements like an investment application where
     # the counterpart lives in Assets, not Accounts.
     treat_as_transfer: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    # Flag to exclude transactions in this category from reports and dashboard aggregations.
+    # When set to True, transactions with this category are treated as if they don't exist
+    # for income/expense calculations.
+    is_ignored: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     user: Mapped["User"] = relationship(back_populates="categories")
     group: Mapped[Optional["CategoryGroup"]] = relationship(back_populates="categories")

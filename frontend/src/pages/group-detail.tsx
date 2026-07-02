@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -27,10 +28,12 @@ import {
   groups as groupsApi,
   users as usersApi,
   accounts as accountsApi,
+  transactions as transactionsApi,
   type GroupMemberPayload,
   type GroupSettlementPayload,
 } from '@/lib/api'
 import { useAuth } from '@/contexts/auth-context'
+import { useWorkspace } from '@/contexts/workspace-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -45,7 +48,7 @@ import {
 import { CategoryIcon } from '@/components/category-icon'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { PageHeader } from '@/components/page-header'
-import type { GroupMember, GroupSettlement } from '@/types'
+import type { GroupMember, GroupSettlement, Transaction } from '@/types'
 
 function formatCurrency(value: number, currency = 'USD', locale = 'en-US') {
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value)
@@ -153,11 +156,13 @@ function KpiCard({
 export default function GroupDetailPage() {
   const { id } = useParams<{ id: string }>()
   const groupId = id ?? ''
-  const { t, i18n } = useTranslation()
-  const locale = i18n.language === 'en' ? 'en-US' : i18n.language
+  const { t } = useTranslation()
+  const locale = useDisplayLocale()
+  const dateLocale = useDateLocale()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const { canWrite } = useWorkspace()
 
   const { data: group, isLoading: loadingGroup } = useQuery({
     queryKey: ['groups', groupId],
@@ -306,8 +311,17 @@ export default function GroupDetailPage() {
   const [settleDate, setSettleDate] = useState(new Date().toISOString().split('T')[0])
   const [settleNotes, setSettleNotes] = useState('')
   const [settleCurrency, setSettleCurrency] = useState('USD')
-  const [settleAffectAccount, setSettleAffectAccount] = useState(false)
+  // Optional ledger integration for the payer: 'none' records the
+  // settlement only, 'create' makes a fresh debit, 'existing' links a
+  // transaction the payer already has.
+  const [settleTxMode, setSettleTxMode] = useState<'none' | 'create' | 'existing'>('none')
   const [settleAccountId, setSettleAccountId] = useState('')
+  // The transaction picked to link, plus the search box state. We keep
+  // the whole object so the selection stays visible even after the
+  // search term changes and it drops out of the result list.
+  const [settlePickedTx, setSettlePickedTx] = useState<Transaction | null>(null)
+  const [settleTxSearch, setSettleTxSearch] = useState('')
+  const [settleTxQuery, setSettleTxQuery] = useState('')
 
   // Accounts of the requesting user — needed only when the optional
   // "create transaction" toggle is enabled.
@@ -315,6 +329,28 @@ export default function GroupDetailPage() {
     queryKey: ['accounts'],
     queryFn: () => accountsApi.list(),
     enabled: settleOpen,
+  })
+
+  // Debounce the transaction search so we don't hit the API on every
+  // keystroke (mirrors the transactions page pattern).
+  useEffect(() => {
+    const id = setTimeout(() => setSettleTxQuery(settleTxSearch), 300)
+    return () => clearTimeout(id)
+  }, [settleTxSearch])
+
+  // The payer's debit transactions, searched server-side and capped —
+  // offered when linking an existing transaction instead of creating one.
+  const { data: settleTxOptions } = useQuery({
+    queryKey: ['settle-tx-options', settleTxQuery],
+    queryFn: () =>
+      transactionsApi.list({
+        type: 'debit',
+        q: settleTxQuery || undefined,
+        limit: 20,
+        sort_by: 'date',
+        sort_dir: 'desc',
+      }),
+    enabled: settleOpen && settleTxMode === 'existing',
   })
 
   const settlementMutation = useMutation({
@@ -359,8 +395,11 @@ export default function GroupDetailPage() {
     // back to the group's default for free-form settlements. This
     // matters when the same group has cross-currency debts.
     setSettleCurrency(currency ?? group?.default_currency ?? 'USD')
-    setSettleAffectAccount(false)
+    setSettleTxMode('none')
     setSettleAccountId('')
+    setSettlePickedTx(null)
+    setSettleTxSearch('')
+    setSettleTxQuery('')
     setSettleOpen(true)
   }
 
@@ -374,8 +413,10 @@ export default function GroupDetailPage() {
       date: settleDate,
       notes: settleNotes.trim() || null,
     }
-    if (settleAffectAccount && settleAccountId) {
+    if (settleTxMode === 'create' && settleAccountId) {
       payload.account_id = settleAccountId
+    } else if (settleTxMode === 'existing' && settlePickedTx) {
+      payload.transaction_id = settlePickedTx.id
     }
     settlementMutation.mutate(payload)
   }
@@ -493,10 +534,10 @@ export default function GroupDetailPage() {
     return Array.from(byMonth.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, total]) => ({
-        month: new Date(month + '-01').toLocaleString(locale, { month: 'short' }),
+        month: new Date(month + '-01').toLocaleString(dateLocale, { month: 'short' }),
         total: Number(total.toFixed(2)),
       }))
-  }, [groupTxs, locale])
+  }, [groupTxs, locale, dateLocale])
 
   // Group spending broken down by category — for the stacked horizontal
   // bar. We sum debits only (income/credits aren't "spending"). When a
@@ -667,7 +708,7 @@ export default function GroupDetailPage() {
         <SectionHeader
           title={t('splitGroups.members')}
           action={
-            isOwner ? (
+            isOwner && canWrite ? (
               <Button size="sm" className="gap-1.5 h-8" onClick={openCreateMember}>
                 <UserPlus size={13} />
                 {t('splitGroups.addMember')}
@@ -711,7 +752,7 @@ export default function GroupDetailPage() {
                     </p>
                   )}
                 </div>
-                {isOwner && (
+                {isOwner && canWrite && (
                   <Button variant="ghost" size="sm" onClick={() => openEditMember(member)}>
                     {t('common.edit')}
                   </Button>
@@ -771,6 +812,7 @@ export default function GroupDetailPage() {
                       //   (positive amount = they owe the owner)
                       const canActLinked = !isOwner && isViewerLine && positive
                       if (!isOwner && !canActLinked) return null
+                      if (!canWrite) return null
                       return (
                         <Button
                           variant="outline"
@@ -849,7 +891,7 @@ export default function GroupDetailPage() {
                     {tx.description}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(tx.date + 'T00:00:00').toLocaleDateString(locale)}
+                    {new Date(tx.date + 'T00:00:00').toLocaleDateString(dateLocale)}
                     {tx.category?.name ? ` · ${tx.category.name}` : ''}
                     {tx.splits && tx.splits.length > 0
                       ? ` · ${t('splitGroups.splitWays', { count: tx.splits.length })}`
@@ -874,7 +916,7 @@ export default function GroupDetailPage() {
         <SectionHeader
           title={t('splitGroups.settlements')}
           action={
-            isOwner ? (
+            isOwner && canWrite ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -897,7 +939,7 @@ export default function GroupDetailPage() {
                     <span className="font-medium">{memberName_(s.to_member_id)}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {new Date(s.date + 'T00:00:00').toLocaleDateString(locale)}
+                    {new Date(s.date + 'T00:00:00').toLocaleDateString(dateLocale)}
                     {s.notes ? ` · ${s.notes}` : ''}
                   </p>
                 </div>
@@ -905,7 +947,7 @@ export default function GroupDetailPage() {
                   <span className="text-sm font-semibold tabular-nums">
                     {formatCurrency(s.amount, s.currency, locale)}
                   </span>
-                  {isOwner && (
+                  {isOwner && canWrite && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1034,7 +1076,7 @@ export default function GroupDetailPage() {
 
       {/* Settle dialog */}
       <Dialog open={settleOpen} onOpenChange={setSettleOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('splitGroups.recordSettlement')}</DialogTitle>
           </DialogHeader>
@@ -1042,7 +1084,7 @@ export default function GroupDetailPage() {
             const myMemberId = viewerMember?.id ?? (isOwner ? ownerMember?.id : null)
             const viewerIsPayer = !!myMemberId && settleFrom === myMemberId
             return (
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             <div className="space-y-2">
               <Label>{t('splitGroups.from')}</Label>
               <select
@@ -1050,10 +1092,12 @@ export default function GroupDetailPage() {
                 value={settleFrom}
                 onChange={(e) => {
                   setSettleFrom(e.target.value)
-                  // Reset the account-side toggle: it's only meaningful
+                  // Reset the ledger-side options: only meaningful
                   // when the viewer is the payer.
-                  setSettleAffectAccount(false)
+                  setSettleTxMode('none')
                   setSettleAccountId('')
+                  setSettlePickedTx(null)
+                  setSettleTxSearch('')
                 }}
               >
                 <option value="">{t('splitGroups.selectMember')}</option>
@@ -1079,61 +1123,29 @@ export default function GroupDetailPage() {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2 col-span-2">
-                <Label>{t('splitGroups.amount')}</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={settleAmount}
-                  onChange={(e) => setSettleAmount(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t('splitGroups.currency')}</Label>
-                <Input
-                  value={settleCurrency}
-                  maxLength={3}
-                  onChange={(e) => setSettleCurrency(e.target.value.toUpperCase())}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>{t('splitGroups.date')}</Label>
-              <DatePickerInput
-                value={settleDate}
-                onChange={setSettleDate}
-                className="w-full justify-start"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t('splitGroups.notes')}</Label>
-              <textarea
-                className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background resize-none"
-                rows={2}
-                value={settleNotes}
-                onChange={(e) => setSettleNotes(e.target.value)}
-              />
-            </div>
-
-            {/* Optional account integration — only relevant when the
-                viewer is the *payer* of this settlement. In that case
-                we can write a real debit to one of their accounts. The
-                receiver's mirror credit is created automatically by the
-                backend when the receiver is a Securo user, so we don't
-                expose that path in the UI here. */}
+            {/* Transaction action — placed right after the members so
+                the payer can decide upfront whether a real transaction
+                will back this settlement. When linking an existing
+                transaction, the amount/currency/date below mirror that
+                transaction and lock so the two records can't disagree. */}
             {viewerIsPayer && (
-                <div className="space-y-2 pt-2 border-t border-border">
-                  <label className="text-sm font-medium inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settleAffectAccount}
-                      onChange={(e) => setSettleAffectAccount(e.target.checked)}
-                      className="h-4 w-4 rounded border-border accent-primary"
-                    />
-                    {t('splitGroups.affectAccount')}
-                  </label>
-                  {settleAffectAccount && (
+                <div className="space-y-2">
+                  <Label>{t('splitGroups.txAction')}</Label>
+                  <select
+                    className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
+                    value={settleTxMode}
+                    onChange={(e) => {
+                      setSettleTxMode(e.target.value as 'none' | 'create' | 'existing')
+                      setSettleAccountId('')
+                      setSettlePickedTx(null)
+                      setSettleTxSearch('')
+                    }}
+                  >
+                    <option value="none">{t('splitGroups.txActionNone')}</option>
+                    <option value="create">{t('splitGroups.txActionCreate')}</option>
+                    <option value="existing">{t('splitGroups.txActionExisting')}</option>
+                  </select>
+                  {settleTxMode === 'create' && (
                     <div className="space-y-1">
                       <select
                         className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background"
@@ -1152,8 +1164,100 @@ export default function GroupDetailPage() {
                       </p>
                     </div>
                   )}
+                  {settleTxMode === 'existing' && (
+                    <div className="space-y-1.5">
+                      <Input
+                        type="text"
+                        value={settleTxSearch}
+                        onChange={(e) => setSettleTxSearch(e.target.value)}
+                        placeholder={t('splitGroups.searchTransaction')}
+                      />
+                      <div className="max-h-44 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                        {(settleTxOptions?.items ?? []).length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-3 py-4 text-center">
+                            {t('splitGroups.noTransactions')}
+                          </p>
+                        ) : (
+                          (settleTxOptions?.items ?? []).map((tx) => {
+                            const picked = settlePickedTx?.id === tx.id
+                            return (
+                              <button
+                                key={tx.id}
+                                type="button"
+                                onClick={() => {
+                                  // Picking an existing transaction *as* the
+                                  // settlement: align amount, currency and
+                                  // date so the two records can't disagree.
+                                  setSettlePickedTx(tx)
+                                  setSettleAmount(Number(tx.amount).toFixed(2))
+                                  setSettleCurrency(tx.currency)
+                                  setSettleDate(tx.date)
+                                }}
+                                className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-3 ${
+                                  picked ? 'bg-primary/10' : 'hover:bg-muted/50'
+                                }`}
+                              >
+                                <span className="min-w-0 truncate">
+                                  <span className="text-muted-foreground">{tx.date}</span> ·{' '}
+                                  {tx.description}
+                                </span>
+                                <span className="shrink-0 tabular-nums text-muted-foreground">
+                                  {tx.amount} {tx.currency}
+                                </span>
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                      {settlePickedTx && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {t('splitGroups.selectedTransaction')}: {settlePickedTx.date} ·{' '}
+                          {settlePickedTx.description}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
             )}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2 col-span-2">
+                <Label>{t('splitGroups.amount')}</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={settleAmount}
+                  onChange={(e) => setSettleAmount(e.target.value)}
+                  disabled={settleTxMode === 'existing'}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t('splitGroups.currency')}</Label>
+                <Input
+                  value={settleCurrency}
+                  maxLength={3}
+                  onChange={(e) => setSettleCurrency(e.target.value.toUpperCase())}
+                  disabled={settleTxMode === 'existing'}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t('splitGroups.date')}</Label>
+              <DatePickerInput
+                value={settleDate}
+                onChange={setSettleDate}
+                className="w-full justify-start"
+                disabled={settleTxMode === 'existing'}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t('splitGroups.notes')}</Label>
+              <textarea
+                className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background resize-none"
+                rows={2}
+                value={settleNotes}
+                onChange={(e) => setSettleNotes(e.target.value)}
+              />
+            </div>
           </div>
             )
           })()}
@@ -1168,7 +1272,8 @@ export default function GroupDetailPage() {
                 !settleTo ||
                 settleFrom === settleTo ||
                 !settleAmount ||
-                (settleAffectAccount && !settleAccountId) ||
+                (settleTxMode === 'create' && !settleAccountId) ||
+                (settleTxMode === 'existing' && !settlePickedTx) ||
                 settlementMutation.isPending
               }
             >

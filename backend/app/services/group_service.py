@@ -19,8 +19,9 @@ from app.schemas.group import (
 def _tag_owner(group: Group, user_id: uuid.UUID) -> Group:
     """Set a transient `is_owner` flag for the response layer.
 
-    Pydantic's from_attributes picks this up — the schema treats
-    `is_owner` as derived per-request, not stored on the model.
+    The "owner" of a group is the human who created it, not the
+    workspace it lives in — `Group.user_id` retains creator semantics
+    even after the workspace migration.
     """
     group.is_owner = group.user_id == user_id  # type: ignore[attr-defined]
     if getattr(group, "members", None):
@@ -36,7 +37,16 @@ def _tag_member_self(
     requesting user rather than the stored flag (which only marks the
     owner's own member). Falls back to the stored flag for an owner
     whose self-member isn't linked to a Securo account.
+
+    Uses `set_committed_value` rather than a plain attribute assignment:
+    a plain assignment dirties the row, and the next session commit
+    would persist this per-request view as if it were the canonical
+    truth. The set_committed_value call updates the in-memory attribute
+    (so Pydantic from_attributes still sees the overridden value) but
+    leaves the row clean.
     """
+    from sqlalchemy.orm.attributes import set_committed_value
+
     is_linked_to_caller = (
         member.linked_user_id is not None and member.linked_user_id == user_id
     )
@@ -45,7 +55,7 @@ def _tag_member_self(
         and member.linked_user_id is None
         and bool(member.is_self)
     )
-    member.is_self = is_linked_to_caller or is_owner_self_unlinked
+    set_committed_value(member, "is_self", is_linked_to_caller or is_owner_self_unlinked)
     return member
 
 
@@ -62,23 +72,38 @@ async def _resolve_member_email(
     return result.scalar_one_or_none()
 
 
-def _visible_predicate(user_id: uuid.UUID):
-    """Group is visible if the user is the owner OR linked as a member.
-    Implemented as a subquery so the filter survives joins/options."""
+def _visible_predicate(workspace_id: uuid.UUID, user_id: uuid.UUID):
+    """Group is visible when EITHER:
+      - it lives in the current workspace (any workspace member sees it), OR
+      - the requesting user is linked as a member from outside the
+        workspace (cross-workspace settlement projection — the Splitwise
+        case where Adam invites Eve from her own workspace).
+
+    `is_self` memberships are EXCLUDED from the cross-workspace
+    projection: those represent the group's owner, who should see the
+    group only in the workspace where it lives — not in every other
+    workspace they belong to.
+    """
     member_groups = (
         select(GroupMember.group_id)
-        .where(GroupMember.linked_user_id == user_id)
+        .where(
+            GroupMember.linked_user_id == user_id,
+            GroupMember.is_self.is_(False),
+        )
         .distinct()
     )
-    return or_(Group.user_id == user_id, Group.id.in_(member_groups))
+    return or_(Group.workspace_id == workspace_id, Group.id.in_(member_groups))
 
 
 async def list_groups(
-    session: AsyncSession, user_id: uuid.UUID, include_archived: bool = False
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    include_archived: bool = False,
 ) -> list[Group]:
     query = (
         select(Group)
-        .where(_visible_predicate(user_id))
+        .where(_visible_predicate(workspace_id, user_id))
         .options(selectinload(Group.members))
         .order_by(Group.created_at.desc())
     )
@@ -89,29 +114,31 @@ async def list_groups(
 
 
 async def get_group(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
 ) -> Optional[Group]:
-    """Returns the group if the user is the owner. Used by edit paths
-    that need to enforce ownership."""
+    """Returns the group if it lives in this workspace. Used by edit
+    paths that need to enforce workspace ownership."""
     result = await session.execute(
         select(Group)
-        .where(Group.id == group_id, Group.user_id == user_id)
+        .where(Group.id == group_id, Group.workspace_id == workspace_id)
         .options(selectinload(Group.members))
     )
-    group = result.scalar_one_or_none()
-    if group is not None:
-        _tag_owner(group, user_id)
-    return group
+    return result.scalar_one_or_none()
 
 
 async def get_group_visible(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
 ) -> Optional[Group]:
-    """Returns the group if the user is the owner OR a linked member.
-    Use for read-only endpoints that should also serve members."""
+    """Returns the group if visible under the read predicate:
+    in-workspace OR the user is a linked cross-workspace member."""
     result = await session.execute(
         select(Group)
-        .where(Group.id == group_id, _visible_predicate(user_id))
+        .where(Group.id == group_id, _visible_predicate(workspace_id, user_id))
         .options(selectinload(Group.members))
     )
     group = result.scalar_one_or_none()
@@ -121,18 +148,24 @@ async def get_group_visible(
 
 
 async def create_group(
-    session: AsyncSession, user_id: uuid.UUID, data: GroupCreate
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: GroupCreate,
 ) -> Group:
+    # Uniqueness is scoped to the workspace, not the creator — a
+    # workspace can't have two "Lunch Club" groups even if different
+    # members created them.
     existing = await session.execute(
         select(Group).where(
-            Group.user_id == user_id,
+            Group.workspace_id == workspace_id,
             func.lower(Group.name) == data.name.strip().lower(),
         )
     )
     if existing.scalar_one_or_none():
         raise ValueError("A group with this name already exists")
 
-    group = Group(user_id=user_id, **data.model_dump())
+    group = Group(workspace_id=workspace_id, user_id=user_id, **data.model_dump())
     session.add(group)
     await session.flush()
     # Eager-load members so the response shape stays stable.
@@ -144,10 +177,11 @@ async def create_group(
 async def update_group(
     session: AsyncSession,
     group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     data: GroupUpdate,
 ) -> Optional[Group]:
-    group = await get_group(session, group_id, user_id)
+    group = await get_group(session, group_id, workspace_id)
     if not group:
         return None
 
@@ -155,7 +189,7 @@ async def update_group(
     if "name" in update_data and update_data["name"]:
         clash = await session.execute(
             select(Group).where(
-                Group.user_id == user_id,
+                Group.workspace_id == workspace_id,
                 func.lower(Group.name) == update_data["name"].strip().lower(),
                 Group.id != group_id,
             )
@@ -172,9 +206,11 @@ async def update_group(
 
 
 async def delete_group(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
 ) -> bool:
-    group = await get_group(session, group_id, user_id)
+    group = await get_group(session, group_id, workspace_id)
     if not group:
         return False
     try:
@@ -192,14 +228,16 @@ async def delete_group(
 
 
 async def list_members(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
 ) -> Optional[list[GroupMember]]:
     # Skip the eager-loaded `Group.members` collection here — within a
     # long-lived session (notably tests) the identity map can hold a
     # stale snapshot after upstream mutations like `_clear_self_flag`.
     # A direct query always reflects the current row state.
-    # Visible to owners AND linked members (read-only context).
-    group = await get_group_visible(session, group_id, user_id)
+    group = await get_group_visible(session, group_id, workspace_id, user_id)
     if not group:
         return None
     result = await session.execute(
@@ -213,10 +251,10 @@ async def list_members(
 async def create_member(
     session: AsyncSession,
     group_id: uuid.UUID,
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     data: GroupMemberCreate,
 ) -> Optional[GroupMember]:
-    group = await get_group(session, group_id, user_id)
+    group = await get_group(session, group_id, workspace_id)
     if not group:
         return None
 
@@ -240,7 +278,9 @@ async def create_member(
     # caller can override by passing linked_user_id explicitly.
     if payload.get("linked_user_id") is None:
         payload["linked_user_id"] = await _resolve_member_email(session, payload.get("email"))
-    member = GroupMember(group_id=group_id, **payload)
+    member = GroupMember(
+        group_id=group_id, workspace_id=workspace_id, **payload
+    )
     session.add(member)
     await session.commit()
     await session.refresh(member)
@@ -251,10 +291,10 @@ async def update_member(
     session: AsyncSession,
     group_id: uuid.UUID,
     member_id: uuid.UUID,
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     data: GroupMemberUpdate,
 ) -> Optional[GroupMember]:
-    group = await get_group(session, group_id, user_id)
+    group = await get_group(session, group_id, workspace_id)
     if not group:
         return None
 
@@ -303,9 +343,9 @@ async def delete_member(
     session: AsyncSession,
     group_id: uuid.UUID,
     member_id: uuid.UUID,
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
 ) -> bool:
-    group = await get_group(session, group_id, user_id)
+    group = await get_group(session, group_id, workspace_id)
     if not group:
         return False
 
@@ -333,17 +373,19 @@ async def delete_member(
 async def list_transactions(
     session: AsyncSession,
     group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     limit: int = 20,
 ) -> Optional[list]:
     """Return the most recent transactions whose splits reference any
-    member of this group. Visible to owner + linked members."""
+    member of this group. Visible to workspace members + linked
+    cross-workspace members."""
     from sqlalchemy.orm import selectinload as _sel
 
     from app.models.transaction import Transaction
     from app.models.transaction_split import TransactionSplit
 
-    if not await get_group_visible(session, group_id, user_id):
+    if not await get_group_visible(session, group_id, workspace_id, user_id):
         return None
 
     member_ids_subq = select(GroupMember.id).where(GroupMember.group_id == group_id)

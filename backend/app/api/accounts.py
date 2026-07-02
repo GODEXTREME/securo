@@ -6,9 +6,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
-from app.models.user import User
+from app.core.workspace_context import (
+    WorkspaceContext,
+    current_workspace,
+    current_writable_workspace,
+)
 from app.schemas.account import (
     AccountCreate,
     AccountRead,
@@ -25,11 +28,11 @@ router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 @router.get("", response_model=list[AccountRead])
 async def list_accounts(
     include_closed: bool = False,
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    accounts = await account_service.get_accounts(session, user.id, include_closed=include_closed)
-    primary_currency = user.primary_currency
+    accounts = await account_service.get_accounts(session, ctx.workspace.id, include_closed=include_closed)
+    primary_currency = ctx.user.primary_currency
     for acc in accounts:
         if acc["currency"] != primary_currency:
             converted, _ = await convert(
@@ -46,20 +49,20 @@ async def get_account_summary(
     date_to: Optional[str] = Query(None, alias="to", description="YYYY-MM-DD"),
     bill_id: Optional[uuid.UUID] = Query(None, description="Aggregate by bill_id (issue #92); takes precedence over from/to"),
     unbilled_only: bool = Query(False, description="Cycle-math fallback only: exclude txs already linked to any bill"),
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     from_date = date.fromisoformat(date_from) if date_from else None
     to_date = date.fromisoformat(date_to) if date_to else None
     summary = await account_service.get_account_summary(
-        session, account_id, user.id, date_from=from_date, date_to=to_date,
+        session, account_id, ctx.workspace.id, date_from=from_date, date_to=to_date,
         bill_id=bill_id, unbilled_only=unbilled_only,
     )
     if not summary:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
-    account = await account_service.get_account(session, account_id, user.id)
-    primary_currency = user.primary_currency
+    account = await account_service.get_account(session, account_id, ctx.workspace.id)
+    primary_currency = ctx.user.primary_currency
     if account and account.currency != primary_currency:
         bal, _ = await convert(session, Decimal(str(summary["current_balance"])), account.currency, primary_currency)
         inc, _ = await convert(session, Decimal(str(summary["monthly_income"])), account.currency, primary_currency)
@@ -76,19 +79,19 @@ async def get_account_balance_history(
     account_id: uuid.UUID,
     date_from: Optional[str] = Query(None, alias="from", description="YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, alias="to", description="YYYY-MM-DD"),
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     from_date = date.fromisoformat(date_from) if date_from else None
     to_date = date.fromisoformat(date_to) if date_to else None
     history = await account_service.get_account_balance_history(
-        session, account_id, user.id, date_from=from_date, date_to=to_date,
+        session, account_id, ctx.workspace.id, date_from=from_date, date_to=to_date,
     )
     if history is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
-    account = await account_service.get_account(session, account_id, user.id)
-    primary_currency = user.primary_currency
+    account = await account_service.get_account(session, account_id, ctx.workspace.id)
+    primary_currency = ctx.user.primary_currency
     if account and account.currency != primary_currency:
         for point in history:
             point_date = date.fromisoformat(point["date"])
@@ -104,8 +107,8 @@ async def get_account_balance_history(
 async def get_account_bills(
     account_id: uuid.UUID,
     limit: int = Query(24, ge=1, le=200, description="Max bills to return, newest due_date first"),
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     """List credit-card bills for an account, newest due_date first.
 
@@ -114,7 +117,7 @@ async def get_account_bills(
     happened). Issue #92.
     """
     bills = await account_service.get_credit_card_bills(
-        session, account_id, user.id, limit=limit,
+        session, account_id, ctx.workspace.id, limit=limit,
     )
     if bills is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
@@ -124,22 +127,22 @@ async def get_account_bills(
 @router.get("/{account_id}", response_model=AccountRead)
 async def get_account(
     account_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    account = await account_service.get_account(session, account_id, user.id)
+    account = await account_service.get_account(session, account_id, ctx.workspace.id)
     if not account:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
-    return account_service.serialize_account(account, None, None)
+    return account_service.serialize_account(account, None, None, account.connection)
 
 
 @router.post("", response_model=AccountRead, status_code=status.HTTP_201_CREATED)
 async def create_account(
     data: AccountCreate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    account = await account_service.create_account(session, user.id, data)
+    account = await account_service.create_account(session, ctx.workspace.id, ctx.user_id, data)
     return account_service.serialize_account(account, None, None)
 
 
@@ -147,11 +150,11 @@ async def create_account(
 async def update_account(
     account_id: uuid.UUID,
     data: AccountUpdate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
-        account = await account_service.update_account(session, account_id, user.id, data)
+        account = await account_service.update_account(session, account_id, ctx.workspace.id, data)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     if not account:
@@ -162,11 +165,11 @@ async def update_account(
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
     account_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
-        deleted = await account_service.delete_account(session, account_id, user.id)
+        deleted = await account_service.delete_account(session, account_id, ctx.workspace.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     if not deleted:
@@ -176,11 +179,11 @@ async def delete_account(
 @router.post("/{account_id}/close", response_model=AccountRead)
 async def close_account(
     account_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
-        account = await account_service.close_account(session, account_id, user.id)
+        account = await account_service.close_account(session, account_id, ctx.workspace.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     if not account:
@@ -191,11 +194,11 @@ async def close_account(
 @router.post("/{account_id}/reopen", response_model=AccountRead)
 async def reopen_account(
     account_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
-        account = await account_service.reopen_account(session, account_id, user.id)
+        account = await account_service.reopen_account(session, account_id, ctx.workspace.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     if not account:

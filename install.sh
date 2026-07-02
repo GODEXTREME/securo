@@ -19,6 +19,10 @@ COMPOSE_FILE="docker-compose.prod.yml"
 HEALTH_URL="http://localhost:8000/api/health"
 HEALTH_TIMEOUT=60
 APP_URL="http://localhost:3000"
+RUNTIME="docker"
+COMPOSE_BACKEND="docker-compose-plugin"
+COMPOSE_CMD=(docker compose)
+COMPOSE_CMD_DISPLAY="docker compose"
 
 # ── OS Detection ─────────────────────────────────────────────────────────────
 detect_os() {
@@ -49,7 +53,7 @@ install_docker_linux() {
   read -r -p "  [y/N] " response
   case "$response" in
     [yY][eE][sS]|[yY]) ;;
-    *) error "Docker is required. Install it manually: https://docs.docker.com/engine/install/" ;;
+    *) error "Docker or Podman is required. Install one manually and re-run this script." ;;
   esac
 
   info "Installing Docker..."
@@ -83,7 +87,7 @@ install_docker_linux() {
       sudo systemctl enable docker
       ;;
     *)
-      error "Automatic Docker install not supported for $DISTRO. Install manually: https://docs.docker.com/engine/install/"
+      error "Automatic Docker install not supported for $DISTRO. Install Docker manually (https://docs.docker.com/engine/install/) or install Podman with podman-compose."
       ;;
   esac
 
@@ -96,28 +100,162 @@ install_docker_linux() {
   success "Docker installed"
 }
 
-check_docker() {
-  if ! command -v docker &> /dev/null; then
+is_docker_compose_v2() {
+  command -v docker-compose > /dev/null 2>&1 && docker-compose version 2>/dev/null | grep -Eq 'Docker Compose version v?2|v2'
+}
+
+version_at_least() {
+  local version="${1%%[-+]*}"
+  local minimum="${2%%[-+]*}"
+  local IFS=.
+  local -a version_parts minimum_parts
+  local version_part minimum_part i
+
+  [ -n "$version" ] || return 1
+
+  read -r -a version_parts <<< "$version"
+  read -r -a minimum_parts <<< "$minimum"
+
+  for i in 0 1 2; do
+    version_part="${version_parts[$i]:-0}"
+    minimum_part="${minimum_parts[$i]:-0}"
+    version_part="${version_part//[^0-9]/}"
+    minimum_part="${minimum_part//[^0-9]/}"
+    version_part="${version_part:-0}"
+    minimum_part="${minimum_part:-0}"
+
+    if ((10#$version_part > 10#$minimum_part)); then
+      return 0
+    fi
+    if ((10#$version_part < 10#$minimum_part)); then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+check_podman_compose_version() {
+  local pc_version
+
+  # podman-compose --version prints both the Podman version and the
+  # podman-compose version; target the compose line explicitly.
+  pc_version=$(podman-compose --version 2>&1 | grep -i 'podman-compose version' | awk '{print $NF}' || true)
+  info "podman-compose ${pc_version:-unknown} found"
+
+  if [ -n "$pc_version" ] && ! version_at_least "$pc_version" "1.0.6"; then
+    warn "podman-compose $pc_version is old. Upgrade to >= 1.0.6 (ideally 1.5+) for reliable healthcheck support."
+  fi
+}
+
+resolve_compose_command() {
+  case "$RUNTIME" in
+    podman)
+      # Prefer Docker Compose v2 if present; otherwise call podman-compose
+      # directly instead of going through the Docker CLI shim.
+      if is_docker_compose_v2; then
+        COMPOSE_BACKEND="docker-compose-v2"
+        COMPOSE_CMD=(docker-compose)
+        COMPOSE_CMD_DISPLAY="docker-compose"
+        success "docker-compose v2 found — best Podman compatibility"
+      elif command -v podman-compose > /dev/null 2>&1; then
+        COMPOSE_BACKEND="podman-compose"
+        COMPOSE_CMD=(podman-compose)
+        COMPOSE_CMD_DISPLAY="podman-compose"
+        check_podman_compose_version
+      elif command -v docker > /dev/null 2>&1 && docker compose version > /dev/null 2>&1; then
+        COMPOSE_BACKEND="docker-compose-plugin"
+        COMPOSE_CMD=(docker compose)
+        COMPOSE_CMD_DISPLAY="docker compose"
+        success "docker compose provider found"
+      else
+        error "No compose provider found. Install podman-compose or Docker Compose v2."
+      fi
+      ;;
+    *)
+      if command -v docker > /dev/null 2>&1 && docker compose version > /dev/null 2>&1; then
+        COMPOSE_BACKEND="docker-compose-plugin"
+        COMPOSE_CMD=(docker compose)
+        COMPOSE_CMD_DISPLAY="docker compose"
+      elif is_docker_compose_v2; then
+        COMPOSE_BACKEND="docker-compose-v2"
+        COMPOSE_CMD=(docker-compose)
+        COMPOSE_CMD_DISPLAY="docker-compose"
+      else
+        error "docker compose plugin not found. Please install docker-compose-plugin."
+      fi
+      ;;
+  esac
+
+  success "Using compose command: $COMPOSE_CMD_DISPLAY"
+}
+
+check_container_runtime() {
+  if command -v docker > /dev/null 2>&1; then
+    if docker version 2>&1 | grep -qi podman; then
+      RUNTIME="podman"
+      PODMAN_VERSION=$(podman --version 2>/dev/null | awk '{print $NF}')
+      success "Podman is installed${PODMAN_VERSION:+ ($PODMAN_VERSION)}"
+      warn "Detected Podman behind the Docker-compatible CLI"
+    else
+      RUNTIME="docker"
+      success "Docker is installed"
+    fi
+  elif command -v podman > /dev/null 2>&1; then
+    RUNTIME="podman"
+    PODMAN_VERSION=$(podman --version 2>/dev/null | awk '{print $NF}')
+    success "Podman is installed${PODMAN_VERSION:+ ($PODMAN_VERSION)}"
+    warn "Docker CLI not found; using Podman directly"
+  else
     case "$DISTRO" in
       macos)
         error "Docker Desktop is not installed. Download it from https://www.docker.com/products/docker-desktop/ and re-run this script."
         ;;
       *)
         install_docker_linux
+        RUNTIME="docker"
         ;;
     esac
-  else
-    success "Docker is installed"
   fi
 
-  # Verify docker compose is available
-  if ! docker compose version &> /dev/null; then
-    error "docker compose plugin not found. Please install docker-compose-plugin."
-  fi
+  resolve_compose_command
 }
 
-# ── Wait for Docker Daemon ───────────────────────────────────────────────────
-wait_for_docker() {
+# ── Wait for Container Runtime ───────────────────────────────────────────────
+ensure_podman_socket() {
+  [ "$COMPOSE_BACKEND" = "docker-compose-v2" ] || return 0
+
+  local socket_path
+  socket_path="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+
+  if [ ! -S "$socket_path" ]; then
+    info "Starting Podman socket for Docker Compose v2..."
+    systemctl --user start podman.socket > /dev/null 2>&1 || true
+    sleep 1
+  fi
+
+  if [ ! -S "$socket_path" ]; then
+    error "Podman socket could not be started. Run: systemctl --user start podman.socket"
+  fi
+
+  if [ -z "${DOCKER_HOST:-}" ]; then
+    export DOCKER_HOST="unix://$socket_path"
+  fi
+
+  success "Podman socket is active"
+}
+
+wait_for_container_runtime() {
+  if [ "$RUNTIME" = "podman" ]; then
+    info "Checking Podman..."
+    if ! podman info > /dev/null 2>&1; then
+      error "Podman is not available. Please check your Podman installation and re-run this script."
+    fi
+    ensure_podman_socket
+    success "Podman is ready"
+    return
+  fi
+
   info "Checking Docker daemon..."
   local retries=0
   local max_retries=15
@@ -174,10 +312,10 @@ EOF
 # ── Start Services ───────────────────────────────────────────────────────────
 start_services() {
   info "Pulling latest images..."
-  docker compose -f "$COMPOSE_FILE" pull
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" pull
 
   info "Starting Securo..."
-  docker compose -f "$COMPOSE_FILE" up -d
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d
 
   success "Containers started"
 }
@@ -199,7 +337,7 @@ wait_for_health() {
 
   echo ""
   warn "Health check timed out after ${HEALTH_TIMEOUT}s."
-  warn "The app may still be starting. Check logs with: docker compose -f $COMPOSE_FILE logs -f"
+  warn "The app may still be starting. Check logs with: $COMPOSE_CMD_DISPLAY -f $COMPOSE_FILE logs -f"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -211,8 +349,8 @@ main() {
   echo ""
 
   detect_os
-  check_docker
-  wait_for_docker
+  check_container_runtime
+  wait_for_container_runtime
   setup_repo
   generate_env
   start_services
@@ -225,9 +363,9 @@ main() {
   echo -e "${GREEN}${BOLD}════════════════════════════════════════${NC}"
   echo ""
   echo -e "  Useful commands:"
-  echo -e "    ${BLUE}docker compose -f $COMPOSE_FILE logs -f${NC}    # View logs"
-  echo -e "    ${BLUE}docker compose -f $COMPOSE_FILE ps${NC}         # Container status"
-  echo -e "    ${BLUE}docker compose -f $COMPOSE_FILE down${NC}       # Stop Securo"
+  echo -e "    ${BLUE}$COMPOSE_CMD_DISPLAY -f $COMPOSE_FILE logs -f${NC}    # View logs"
+  echo -e "    ${BLUE}$COMPOSE_CMD_DISPLAY -f $COMPOSE_FILE ps${NC}         # Container status"
+  echo -e "    ${BLUE}$COMPOSE_CMD_DISPLAY -f $COMPOSE_FILE down${NC}       # Stop Securo"
   echo ""
 }
 

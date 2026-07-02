@@ -20,7 +20,7 @@ pytestmark = pytest.mark.asyncio
 # real MCP server during HTTP tests. Returns an empty tool list.
 @pytest.fixture(autouse=True)
 def _mock_mcp_discover():
-    async def _empty_discover(self, *, user_id, conversation_id=None):
+    async def _empty_discover(self, *, user_id, workspace_id=None, conversation_id=None, agent_id=None):
         return []
     with patch("app.agents.api.agents.MCPRegistry.discover", new=_empty_discover):
         yield
@@ -29,6 +29,8 @@ def _mock_mcp_discover():
 @pytest_asyncio.fixture
 async def other_user(session: AsyncSession) -> User:
     """A second user in the same DB to verify cross-tenant isolation."""
+    from app.services.workspace_service import create_personal_workspace_for_user
+
     hashed = _bcrypt.hashpw(b"otherpass123", _bcrypt.gensalt()).decode()
     user = User(
         id=uuid.uuid4(),
@@ -40,6 +42,8 @@ async def other_user(session: AsyncSession) -> User:
         preferences={"language": "en", "currency_display": "USD"},
     )
     session.add(user)
+    await session.flush()
+    await create_personal_workspace_for_user(session, user)
     await session.commit()
     await session.refresh(user)
     return user
@@ -70,6 +74,53 @@ async def test_agents_info_lists_providers(client: AsyncClient, auth_headers: di
     body = r.json()
     assert body["enabled"] is True
     assert set(body["providers"]) >= {"openai", "anthropic", "ollama", "openai_compatible"}
+
+
+async def test_agents_info_exposes_mcp_external_ttl(client: AsyncClient, auth_headers: dict):
+    """The frontend reads mcp_external_ttl_days to label the token panel."""
+    r = await client.get("/api/agents/info", headers=auth_headers)
+    body = r.json()
+    assert isinstance(body["mcp_external_ttl_days"], int)
+    assert body["mcp_external_ttl_days"] >= 1
+
+
+# --- External MCP tokens ---------------------------------------------------
+
+async def test_mcp_tokens_requires_auth(client: AsyncClient):
+    """The mint endpoint must reject unauthenticated calls — otherwise any
+    anonymous visitor could mint a long-lived token for an arbitrary user."""
+    r = await client.post("/api/agents/mcp-tokens")
+    assert r.status_code == 401
+
+
+async def test_mcp_tokens_mint_returns_external_jwt(
+    client: AsyncClient, auth_headers: dict, test_user
+):
+    """End-to-end: minted token decodes, carries the `ext` claim, scoped
+    to the calling user, and the advertised TTL matches the response."""
+    from app.agents.mcp.auth import JWT_ALGO, JWT_AUDIENCE, JWT_ISSUER
+    from app.agents.config import get_agent_settings
+    from jose import jwt
+
+    r = await client.post("/api/agents/mcp-tokens", headers=auth_headers)
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert "token" in body
+    assert body["expires_in_days"] == get_agent_settings().mcp_external_ttl_days
+    assert body["expires_in_seconds"] == body["expires_in_days"] * 86400
+
+    payload = jwt.decode(
+        body["token"],
+        get_agent_settings().mcp_jwt_secret,
+        algorithms=[JWT_ALGO],
+        audience=JWT_AUDIENCE,
+        issuer=JWT_ISSUER,
+    )
+    assert payload["sub"] == str(test_user.id)
+    assert payload["ext"] is True
+    # External tokens are detached from any conv/agent.
+    assert "conv_id" not in payload
+    assert "agent_id" not in payload
 
 
 # --- Agent CRUD ------------------------------------------------------------

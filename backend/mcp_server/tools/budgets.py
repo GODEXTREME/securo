@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import budget_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
-from mcp_server.tools._helpers import num, parse_date
+from mcp_server.tools._helpers import num, parse_date, resolve_workspace_id
 
 
 @tool(
@@ -33,7 +33,8 @@ async def get_budget_vs_actual(
     month: str | None = None,
 ) -> dict[str, Any]:
     target = parse_date(month) or date.today().replace(day=1)
-    rows = await budget_service.get_budget_vs_actual(session, ctx.user_id, month=target)
+    ws_id = await resolve_workspace_id(session, ctx)
+    rows = await budget_service.get_budget_vs_actual(session, ws_id, ctx.user_id, month=target)
     items = []
     for r in rows:
         # BudgetVsActual is a Pydantic model; serialize defensively.

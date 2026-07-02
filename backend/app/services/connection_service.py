@@ -20,9 +20,18 @@ from app.models.payee import Payee, PayeeMapping
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.providers import get_provider
-from app.providers.base import HoldingData
+from app.providers.base import (
+    HoldingData,
+    ProviderRateLimited,
+    ProviderUserActionRequired,
+    SessionExpiredError,
+)
+from app.services import oauth_state
 from app.services import admin_service
-from app.services.account_service import sync_opening_balance_for_connected_account
+from app.services.account_service import (
+    _simplefin_to_internal_balance,
+    sync_opening_balance_for_connected_account,
+)
 from app.services.asset_group_service import ensure_group_for_connection
 from app.services.credit_card_service import apply_effective_date
 from app.services.rule_service import apply_rules_to_transaction
@@ -33,6 +42,16 @@ from app.services.payee_service import get_or_create_payee
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+
+def _clean_logo_url(value: object) -> Optional[str]:
+    """Normalize a provider-supplied logo to a non-empty string or None.
+
+    Guards the DB column against anything a provider hands back that isn't a
+    usable URL (None, empty string, or a non-string), so a misbehaving
+    integration can never write junk into ``bank_connections.logo_url``.
+    """
+    return value if isinstance(value, str) and value.strip() else None
 
 PLUGGY_CATEGORY_MAP = {
     "Eating out": "Alimentação",
@@ -309,7 +328,7 @@ async def _upsert_asset_value_for_today(
 
 async def _match_pluggy_category(
     session: AsyncSession,
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     pluggy_category: Optional[str],
     enabled: bool = True,
 ) -> Optional[uuid.UUID]:
@@ -325,16 +344,22 @@ async def _match_pluggy_category(
         app_name = PLUGGY_CATEGORY_MAP.get(pluggy_category.split(" - ")[0])
     if not app_name:
         return None
+    # Scope to the connection's workspace: a user in multiple workspaces owns
+    # the same default category names in each, so a user_id-only lookup returns
+    # several rows. `.first()` is belt-and-suspenders — a category match must
+    # never crash the whole sync even if a workspace somehow has name dupes.
     result = await session.execute(
-        select(Category.id).where(Category.user_id == user_id, Category.name == app_name)
+        select(Category.id)
+        .where(Category.workspace_id == workspace_id, Category.name == app_name)
+        .limit(1)
     )
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 
-async def get_connections(session: AsyncSession, user_id: uuid.UUID) -> list[BankConnection]:
+async def get_connections(session: AsyncSession, workspace_id: uuid.UUID) -> list[BankConnection]:
     result = await session.execute(
         select(BankConnection)
-        .where(BankConnection.user_id == user_id)
+        .where(BankConnection.workspace_id == workspace_id)
         .options(selectinload(BankConnection.accounts))
         .order_by(BankConnection.created_at.desc())
     )
@@ -342,20 +367,86 @@ async def get_connections(session: AsyncSession, user_id: uuid.UUID) -> list[Ban
 
 
 async def get_connection(
-    session: AsyncSession, connection_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, connection_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> Optional[BankConnection]:
     result = await session.execute(
         select(BankConnection)
-        .where(BankConnection.id == connection_id, BankConnection.user_id == user_id)
+        .where(BankConnection.id == connection_id, BankConnection.workspace_id == workspace_id)
         .options(selectinload(BankConnection.accounts))
     )
     return result.scalar_one_or_none()
 
 
-def get_oauth_url(provider_name: str, user_id: uuid.UUID) -> str:
+async def get_oauth_url(
+    provider_name: str,
+    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    flow_params: Optional[dict] = None,
+    reconnect_connection_id: Optional[uuid.UUID] = None,
+) -> str:
     provider = get_provider(provider_name)
-    state = str(user_id)
-    return provider.get_oauth_url(settings.pluggy_oauth_redirect_uri, state)
+    state = await oauth_state.store_state(
+        {
+            "user_id": str(user_id),
+            "workspace_id": str(workspace_id),
+            "provider": provider_name,
+            "flow_params": flow_params or {},
+            "reconnect_connection_id": (
+                str(reconnect_connection_id) if reconnect_connection_id else None
+            ),
+        }
+    )
+    return await provider.get_oauth_url(provider.redirect_uri, state, flow_params)
+
+
+async def get_reauth_url(
+    session: AsyncSession,
+    connection_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> str:
+    connection = await get_connection(session, connection_id, workspace_id)
+    if not connection:
+        raise ValueError("Connection not found")
+    provider = get_provider(connection.provider)
+    state = await oauth_state.store_state(
+        {
+            "user_id": str(user_id),
+            "workspace_id": str(workspace_id),
+            "provider": connection.provider,
+            "flow_params": (connection.settings or {}).get("flow_params") or {},
+            "reconnect_connection_id": str(connection.id),
+        }
+    )
+    return await provider.reauth_url(
+        connection.credentials or {},
+        connection.settings or {},
+        provider.redirect_uri,
+        state,
+    )
+
+
+async def list_provider_institutions(
+    provider_name: str, country: Optional[str] = None
+) -> dict:
+    provider = get_provider(provider_name)
+    data = await provider.list_institutions(country)
+    return {
+        "countries": data.countries,
+        "institutions": [
+            {
+                "name": i.name,
+                "display_name": i.display_name,
+                "country": i.country,
+                "logo": i.logo,
+                "bic": i.bic,
+                "psu_types": i.psu_types,
+                "max_consent_days": i.max_consent_days,
+                "max_history_days": i.max_history_days,
+            }
+            for i in data.institutions
+        ],
+    }
 
 
 async def create_connect_token(
@@ -369,12 +460,17 @@ async def create_connect_token(
 async def update_connection_settings(
     session: AsyncSession,
     connection_id: uuid.UUID,
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     settings_update: dict,
 ) -> Optional[BankConnection]:
-    connection = await get_connection(session, connection_id, user_id)
+    connection = await get_connection(session, connection_id, workspace_id)
     if not connection:
         return None
+
+    if "display_name" in settings_update:
+        raw = settings_update.pop("display_name")
+        trimmed = raw.strip() if isinstance(raw, str) else raw
+        connection.display_name = trimmed or None
 
     current = dict(connection.settings or {})
     for key, value in settings_update.items():
@@ -388,17 +484,58 @@ async def update_connection_settings(
 
 
 async def handle_oauth_callback(
-    session: AsyncSession, user_id: uuid.UUID, code: str, provider_name: str
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    code: str,
+    provider_name: Optional[str] = None,
+    state: Optional[str] = None,
 ) -> BankConnection:
+    state_payload: dict = {}
+    if state:
+        consumed = await oauth_state.consume_state(state)
+        if not consumed:
+            raise ValueError("OAuth state is invalid or expired")
+        # The state is authoritative — caller-supplied provider_name is a hint.
+        if consumed.get("user_id") != str(user_id):
+            raise ValueError("OAuth state user does not match authenticated user")
+        if consumed.get("workspace_id") != str(workspace_id):
+            raise ValueError("OAuth state workspace does not match active workspace")
+        state_payload = consumed
+        provider_name = consumed.get("provider") or provider_name
+    if not provider_name:
+        raise ValueError("OAuth callback missing provider")
+
     provider = get_provider(provider_name)
     connection_data = await provider.handle_oauth_callback(code)
 
+    reconnect_id = state_payload.get("reconnect_connection_id")
+    if reconnect_id:
+        existing = await session.get(BankConnection, uuid.UUID(reconnect_id))
+        if not existing or existing.workspace_id != workspace_id:
+            raise ValueError("Reconnect target connection not found")
+        existing.external_id = connection_data.external_id
+        existing.institution_name = (
+            connection_data.institution_name or existing.institution_name
+        )
+        existing.logo_url = _clean_logo_url(connection_data.logo_url) or existing.logo_url
+        existing.credentials = connection_data.credentials
+        existing.status = "active"
+        # Re-sync from current data on next sync cycle.
+        existing.last_sync_at = None
+        await session.commit()
+        await session.refresh(existing)
+        return existing
+
     connection = BankConnection(
+        workspace_id=workspace_id,
         user_id=user_id,
         provider=provider_name,
         external_id=connection_data.external_id,
         institution_name=connection_data.institution_name,
+        logo_url=_clean_logo_url(connection_data.logo_url),
         credentials=connection_data.credentials,
+        settings={"flow_params": state_payload.get("flow_params") or {}},
         status="active",
     )
     session.add(connection)
@@ -414,6 +551,7 @@ async def handle_oauth_callback(
         is_cc = acc_data.type == "credit_card"
         account = Account(
             user_id=user_id,
+            workspace_id=workspace_id,
             connection_id=connection.id,
             external_id=acc_data.external_id,
             name=acc_data.name,
@@ -462,7 +600,7 @@ async def handle_oauth_callback(
                 continue
 
             category_id = await _match_pluggy_category(
-                session, user_id, txn_data.pluggy_category, enabled=use_provider_cats
+                session, workspace_id, txn_data.pluggy_category, enabled=use_provider_cats
             )
             # Resolve payee entity from raw payee text
             payee_id = None
@@ -477,6 +615,7 @@ async def handle_oauth_callback(
             )
             transaction = Transaction(
                 user_id=user_id,
+                workspace_id=workspace_id,
                 account_id=account.id,
                 external_id=txn_data.external_id,
                 description=txn_data.description,
@@ -525,7 +664,7 @@ async def handle_oauth_callback(
         await sync_opening_balance_for_connected_account(session, account)
 
     # Detect transfer pairs among newly synced transactions
-    await detect_transfer_pairs(session, user_id, candidate_ids=new_tx_ids)
+    await detect_transfer_pairs(session, workspace_id, candidate_ids=new_tx_ids)
 
     # Investment holdings live on /investments — separate endpoint from
     # /accounts. Pulled after account setup so holdings are available on
@@ -953,9 +1092,13 @@ async def _sync_credit_card_bills(
 
 
 async def sync_connection(
-    session: AsyncSession, connection_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    connection_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    trigger_provider_refresh: bool = False,
 ) -> tuple[BankConnection, int]:
-    connection = await get_connection(session, connection_id, user_id)
+    connection = await get_connection(session, connection_id, workspace_id)
     if not connection:
         raise ValueError("Connection not found")
 
@@ -970,6 +1113,37 @@ async def sync_connection(
         # Refresh credentials if needed
         credentials = await provider.refresh_credentials(connection.credentials)
         connection.credentials = credentials
+
+        # Backfill the institution logo for connections linked before logo
+        # capture existed. Best-effort: a failure here must never break sync.
+        if not connection.logo_url:
+            try:
+                logo = _clean_logo_url(await provider.get_institution_logo(credentials))
+                if logo:
+                    connection.logo_url = logo
+            except Exception:
+                logger.warning(
+                    "Failed to backfill logo for connection %s", connection.id,
+                    exc_info=True,
+                )
+
+        # When the caller asks for fresh data (typically a user-initiated
+        # manual sync), ask the provider to pull from the bank before we
+        # read. Providers that don't expose an on-demand refresh return
+        # "skipped" via the default implementation and we proceed normally.
+        if trigger_provider_refresh:
+            outcome = await provider.trigger_refresh(credentials)
+            if outcome == "needs_user_action":
+                # Surfacing reconnect immediately is better than silently
+                # reading stale data the user knows is stale.
+                connection.status = "error"
+                await session.commit()
+                raise RuntimeError(
+                    "Provider needs the user to reconnect before fetching fresh data"
+                )
+            # "refreshed", "skipped", or "failed" all fall through to a read.
+            # On "failed" we read whatever cached copy the provider has —
+            # better than aborting the entire sync over a transient hiccup.
 
         # Update accounts
         user = await session.get(User, user_id)
@@ -995,7 +1169,15 @@ async def sync_connection(
                 continue
 
             if account:
-                account.balance = acc_data.balance
+                # Normalize the provider sign using the account's CURRENT type,
+                # which reflects any user override (sync never rewrites `type`).
+                # SimpleFIN reports card debt as negative under a "checking"
+                # label; once the user overrides the type to credit_card the
+                # downstream sites negate it, so store positive-for-debt to keep
+                # them provider-agnostic and avoid double-counting.
+                account.balance = _simplefin_to_internal_balance(
+                    connection.provider, account.type, acc_data.balance
+                )
                 account.name = acc_data.name
                 if acc_data.type == "credit_card":
                     # Preserve existing CC metadata when the provider doesn't
@@ -1070,6 +1252,10 @@ async def sync_connection(
                 )
                 existing_tx = existing.scalar_one_or_none()
                 if existing_tx:
+                    # User-flagged rows are frozen: skip status/bill drift so
+                    # a re-sync can't revive a transaction the user hid.
+                    if existing_tx.is_ignored:
+                        continue
                     if existing_tx.status == "pending" and txn_data.status == "posted":
                         existing_tx.status = "posted"
                     # Self-heal bill linkage: a tx that pre-dates the bills
@@ -1097,6 +1283,8 @@ async def sync_connection(
                 # Pass 2: Fuzzy match against manual transactions
                 fuzzy_match = await _fuzzy_match_manual(session, account.id, txn_data)
                 if fuzzy_match:
+                    if fuzzy_match.is_ignored:
+                        continue
                     fuzzy_match.external_id = txn_data.external_id
                     fuzzy_match.source = "sync"
                     fuzzy_match.raw_data = txn_data.raw_data
@@ -1133,7 +1321,7 @@ async def sync_connection(
                     continue
 
                 category_id = await _match_pluggy_category(
-                    session, user_id, txn_data.pluggy_category, enabled=use_provider_cats
+                    session, workspace_id, txn_data.pluggy_category, enabled=use_provider_cats
                 )
 
                 # Resolve payee entity from raw payee text
@@ -1196,7 +1384,7 @@ async def sync_connection(
 
         # Detect transfer pairs among newly synced transactions
         if new_tx_ids:
-            await detect_transfer_pairs(session, user_id, candidate_ids=new_tx_ids)
+            await detect_transfer_pairs(session, workspace_id, candidate_ids=new_tx_ids)
 
         # Clean up phantom duplicates: providers occasionally double-report the
         # same payment with different ids. Once transfer detection has paired
@@ -1215,6 +1403,33 @@ async def sync_connection(
         await session.refresh(connection)
         return connection, merged_count
 
+    except SessionExpiredError:
+        # Provider consent expired — distinct from a generic error so the UI
+        # can show a clearer "reauthorize" prompt.
+        await session.rollback()
+        async with session.begin():
+            conn = await session.get(BankConnection, connection_id)
+            if conn:
+                conn.status = "expired"
+        raise
+    except ProviderUserActionRequired:
+        # User must act in the provider's portal (e.g. EB restricted-mode
+        # account linking). Don't mark the connection errored — propagate
+        # so the API layer can surface the specific code to the UI.
+        await session.rollback()
+        raise
+    except ProviderRateLimited:
+        # The bank/aggregator is throttling data requests (PSD2 caps unattended
+        # access, commonly ~4/day). The connection is healthy, so don't error
+        # it or 500 the request — skip this run, keep it active, and leave
+        # last_sync_at untouched so the next sync retries the same window.
+        await session.rollback()
+        async with session.begin():
+            conn = await session.get(BankConnection, connection_id)
+            if conn and conn.status != "expired":
+                conn.status = "active"
+        refreshed = await session.get(BankConnection, connection_id)
+        return refreshed, 0
     except Exception:
         # Mark connection as errored so UI shows reconnect banner
         await session.rollback()
@@ -1226,9 +1441,9 @@ async def sync_connection(
 
 
 async def delete_connection(
-    session: AsyncSession, connection_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, connection_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> bool:
-    connection = await get_connection(session, connection_id, user_id)
+    connection = await get_connection(session, connection_id, workspace_id)
     if not connection:
         return False
 
@@ -1272,7 +1487,7 @@ async def delete_connection(
         )
         await session.execute(
             delete(Payee).where(
-                Payee.user_id == user_id,
+                Payee.workspace_id == workspace_id,
                 Payee.id.in_(affected_payee_ids),
                 ~has_transactions,
                 ~has_external_mappings,

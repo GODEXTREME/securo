@@ -19,9 +19,8 @@ from starlette.responses import StreamingResponse
 from app.agents.runtime.executor import AgentExecutor, ExecutorEvent
 from app.agents.schemas.conversation import SendMessageRequest
 from app.agents.services import agent_service, conversation_service
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
-from app.models.user import User
+from app.core.workspace_context import WorkspaceContext, current_workspace
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -35,21 +34,25 @@ def _format_event(event: ExecutorEvent) -> bytes:
 async def chat(
     agent_id: uuid.UUID,
     body: SendMessageRequest,
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    agent = await agent_service.get_agent(session, agent_id, user.id)
+    agent = await agent_service.get_agent(session, agent_id, ctx.workspace.id)
     if agent is None:
         raise HTTPException(status_code=404, detail="agent not found")
 
     conv = None
     if body.conversation_id:
-        conv = await conversation_service.get_conversation(session, body.conversation_id, user.id)
+        conv = await conversation_service.get_conversation(session, body.conversation_id, ctx.workspace.id)
         if conv is None or conv.agent_id != agent_id:
             raise HTTPException(status_code=404, detail="conversation not found")
     if conv is None:
         conv = await conversation_service.create_conversation(
-            session, user_id=user.id, agent_id=agent_id, channel=body.channel,
+            session,
+            workspace_id=ctx.workspace.id,
+            user_id=ctx.user_id,
+            agent_id=agent_id,
+            channel=body.channel,
         )
 
     executor = AgentExecutor()
@@ -61,7 +64,8 @@ async def chat(
             async for ev in executor.run(
                 session=session,
                 agent=agent,
-                user_id=user.id,
+                user_id=ctx.user_id,
+                workspace_id=ctx.workspace.id,
                 conversation_id=conv.id,
                 user_message=body.content,
                 channel=body.channel,

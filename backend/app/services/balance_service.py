@@ -28,13 +28,17 @@ from app.models.transaction_split import TransactionSplit
 
 
 async def compute_balances(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
 ) -> Optional[dict]:
-    # Visible to the owner AND any linked member — they all need to
-    # see the same who-owes-whom view.
+    # Visible to anyone with read access to the group — workspace members
+    # plus cross-workspace linked members. They all see the same
+    # who-owes-whom view.
     from app.services.group_service import get_group_visible
 
-    group = await get_group_visible(session, group_id, user_id)
+    group = await get_group_visible(session, group_id, workspace_id, user_id)
     if not group:
         return None
 

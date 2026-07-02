@@ -31,7 +31,7 @@ from app.services.category_service import create_default_categories
 
 
 @pytest.mark.asyncio
-async def test_create_rule(session: AsyncSession, test_user, test_categories):
+async def test_create_rule(session: AsyncSession, test_user, test_workspace, test_categories):
     data = RuleCreate(
         name="My Rule",
         conditions_op="or",
@@ -39,7 +39,7 @@ async def test_create_rule(session: AsyncSession, test_user, test_categories):
         actions=[RuleAction(op="set_category", value=str(test_categories[1].id))],
         priority=10,
     )
-    rule = await create_rule(session, test_user.id, data)
+    rule = await create_rule(session, test_workspace.id, test_user.id, data)
 
     assert rule.id is not None
     assert rule.name == "My Rule"
@@ -50,11 +50,11 @@ async def test_create_rule(session: AsyncSession, test_user, test_categories):
 
 
 @pytest.mark.asyncio
-async def test_get_rules(session: AsyncSession, test_user, test_categories):
+async def test_get_rules(session: AsyncSession, test_user, test_workspace, test_categories):
     for name in ["Rule A", "Rule B"]:
         await create_rule(
             session,
-            test_user.id,
+            test_workspace.id, test_user.id,
             RuleCreate(
                 name=name,
                 conditions=[RuleCondition(field="description", op="contains", value="X")],
@@ -62,7 +62,7 @@ async def test_get_rules(session: AsyncSession, test_user, test_categories):
             ),
         )
 
-    rules = await get_rules(session, test_user.id)
+    rules = await get_rules(session, test_workspace.id)
     assert len(rules) >= 2
     names = {r.name for r in rules}
     assert "Rule A" in names
@@ -70,32 +70,32 @@ async def test_get_rules(session: AsyncSession, test_user, test_categories):
 
 
 @pytest.mark.asyncio
-async def test_get_rule_by_id(session: AsyncSession, test_user, test_categories):
+async def test_get_rule_by_id(session: AsyncSession, test_user, test_workspace, test_categories):
     created = await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="Lookup Rule",
             conditions=[RuleCondition(field="description", op="contains", value="X")],
             actions=[RuleAction(op="set_category", value=str(test_categories[0].id))],
         ),
     )
-    fetched = await get_rule(session, created.id, test_user.id)
+    fetched = await get_rule(session, created.id, test_workspace.id)
     assert fetched is not None
     assert fetched.id == created.id
 
 
 @pytest.mark.asyncio
-async def test_get_rule_not_found(session: AsyncSession, test_user):
-    result = await get_rule(session, uuid.uuid4(), test_user.id)
+async def test_get_rule_not_found(session: AsyncSession, test_user, test_workspace):
+    result = await get_rule(session, uuid.uuid4(), test_workspace.id)
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_update_rule(session: AsyncSession, test_user, test_categories):
+async def test_update_rule(session: AsyncSession, test_user, test_workspace, test_categories):
     rule = await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="Original",
             conditions=[RuleCondition(field="description", op="contains", value="OLD")],
@@ -106,7 +106,7 @@ async def test_update_rule(session: AsyncSession, test_user, test_categories):
     updated = await update_rule(
         session,
         rule.id,
-        test_user.id,
+        test_workspace.id,
         RuleUpdate(name="Updated", priority=20),
     )
     assert updated is not None
@@ -115,34 +115,34 @@ async def test_update_rule(session: AsyncSession, test_user, test_categories):
 
 
 @pytest.mark.asyncio
-async def test_update_rule_not_found(session: AsyncSession, test_user):
+async def test_update_rule_not_found(session: AsyncSession, test_user, test_workspace):
     result = await update_rule(
         session,
         uuid.uuid4(),
-        test_user.id,
+        test_workspace.id,
         RuleUpdate(name="Nope"),
     )
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_delete_rule(session: AsyncSession, test_user, test_categories):
+async def test_delete_rule(session: AsyncSession, test_user, test_workspace, test_categories):
     rule = await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="ToDelete",
             conditions=[RuleCondition(field="description", op="contains", value="X")],
             actions=[RuleAction(op="set_category", value=str(test_categories[0].id))],
         ),
     )
-    assert await delete_rule(session, rule.id, test_user.id) is True
-    assert await get_rule(session, rule.id, test_user.id) is None
+    assert await delete_rule(session, rule.id, test_workspace.id) is True
+    assert await get_rule(session, rule.id, test_workspace.id) is None
 
 
 @pytest.mark.asyncio
-async def test_delete_rule_not_found(session: AsyncSession, test_user):
-    assert await delete_rule(session, uuid.uuid4(), test_user.id) is False
+async def test_delete_rule_not_found(session: AsyncSession, test_user, test_workspace):
+    assert await delete_rule(session, uuid.uuid4(), test_workspace.id) is False
 
 
 # ---------------------------------------------------------------------------
@@ -151,23 +151,23 @@ async def test_delete_rule_not_found(session: AsyncSession, test_user):
 
 
 @pytest.mark.asyncio
-async def test_create_duplicate_rule_raises(session: AsyncSession, test_user, test_categories):
+async def test_create_duplicate_rule_raises(session: AsyncSession, test_user, test_workspace, test_categories):
     data = RuleCreate(
         name="Unique Name",
         conditions=[RuleCondition(field="description", op="contains", value="X")],
         actions=[RuleAction(op="set_category", value=str(test_categories[0].id))],
     )
-    await create_rule(session, test_user.id, data)
+    await create_rule(session, test_workspace.id, test_user.id, data)
 
     with pytest.raises(DuplicateRuleError):
-        await create_rule(session, test_user.id, data)
+        await create_rule(session, test_workspace.id, test_user.id, data)
 
 
 @pytest.mark.asyncio
-async def test_update_rule_duplicate_name_raises(session: AsyncSession, test_user, test_categories):
+async def test_update_rule_duplicate_name_raises(session: AsyncSession, test_user, test_workspace, test_categories):
     rule_a = await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="Name A",
             conditions=[RuleCondition(field="description", op="contains", value="X")],
@@ -176,7 +176,7 @@ async def test_update_rule_duplicate_name_raises(session: AsyncSession, test_use
     )
     await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="Name B",
             conditions=[RuleCondition(field="description", op="contains", value="Y")],
@@ -188,7 +188,7 @@ async def test_update_rule_duplicate_name_raises(session: AsyncSession, test_use
         await update_rule(
             session,
             rule_a.id,
-            test_user.id,
+            test_workspace.id,
             RuleUpdate(name="Name B"),
         )
 
@@ -199,11 +199,11 @@ async def test_update_rule_duplicate_name_raises(session: AsyncSession, test_use
 
 
 @pytest.mark.asyncio
-async def test_apply_rules_to_transaction(session: AsyncSession, test_user, test_categories):
+async def test_apply_rules_to_transaction(session: AsyncSession, test_user, test_workspace, test_categories):
     # Create a rule matching UBER
     await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="UBER Rule",
             conditions_op="or",
@@ -244,10 +244,10 @@ async def test_apply_rules_to_transaction(session: AsyncSession, test_user, test
 
 
 @pytest.mark.asyncio
-async def test_apply_rules_no_match(session: AsyncSession, test_user, test_categories):
+async def test_apply_rules_no_match(session: AsyncSession, test_user, test_workspace, test_categories):
     await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="IFOOD Only",
             conditions_op="or",
@@ -291,7 +291,7 @@ async def test_apply_rules_no_match(session: AsyncSession, test_user, test_categ
 
 
 @pytest.mark.asyncio
-async def test_apply_all_rules(session: AsyncSession, test_user, test_categories):
+async def test_apply_all_rules(session: AsyncSession, test_user, test_workspace, test_categories):
     account = Account(
         id=uuid.uuid4(),
         user_id=test_user.id,
@@ -332,7 +332,7 @@ async def test_apply_all_rules(session: AsyncSession, test_user, test_categories
     # Create rules
     await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="UBER apply-all",
             conditions_op="or",
@@ -343,7 +343,7 @@ async def test_apply_all_rules(session: AsyncSession, test_user, test_categories
     )
     await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="IFOOD apply-all",
             conditions_op="or",
@@ -353,7 +353,7 @@ async def test_apply_all_rules(session: AsyncSession, test_user, test_categories
         ),
     )
 
-    count = await apply_all_rules(session, test_user.id)
+    count = await apply_all_rules(session, test_workspace.id)
     assert count >= 2
 
     await session.refresh(txn1)
@@ -364,7 +364,7 @@ async def test_apply_all_rules(session: AsyncSession, test_user, test_categories
 
 @pytest.mark.asyncio
 async def test_apply_all_rules_preserves_manual_categories(
-    session: AsyncSession, test_user, test_categories
+    session: AsyncSession, test_user, test_workspace, test_categories
 ):
     """Manually categorized transactions that don't match any rule must keep their category."""
     account = Account(
@@ -425,7 +425,7 @@ async def test_apply_all_rules_preserves_manual_categories(
     # Only one rule: matches UBER
     await create_rule(
         session,
-        test_user.id,
+        test_workspace.id, test_user.id,
         RuleCreate(
             name="UBER preserve-test",
             conditions_op="or",
@@ -435,7 +435,7 @@ async def test_apply_all_rules_preserves_manual_categories(
         ),
     )
 
-    count = await apply_all_rules(session, test_user.id)
+    count = await apply_all_rules(session, test_workspace.id)
 
     await session.refresh(txn_manual)
     await session.refresh(txn_rule)
@@ -461,7 +461,7 @@ async def test_apply_all_rules_preserves_manual_categories(
 
 
 @pytest.mark.asyncio
-async def test_create_default_rules(session: AsyncSession, test_user):
+async def test_create_default_rules(session: AsyncSession, test_user, test_workspace):
     # Need default categories first so rule templates can resolve
     await create_default_categories(session, test_user.id, lang="pt-BR")
 
@@ -474,7 +474,7 @@ async def test_create_default_rules(session: AsyncSession, test_user):
 
 
 @pytest.mark.asyncio
-async def test_install_rule_pack_br(session: AsyncSession, test_user):
+async def test_install_rule_pack_br(session: AsyncSession, test_user, test_workspace):
     await create_default_categories(session, test_user.id, lang="pt-BR")
 
     result = await install_rule_pack(session, test_user.id, "BR", lang="pt-BR")
@@ -486,7 +486,7 @@ async def test_install_rule_pack_br(session: AsyncSession, test_user):
 
 
 @pytest.mark.asyncio
-async def test_install_rule_pack_skips_duplicates(session: AsyncSession, test_user):
+async def test_install_rule_pack_skips_duplicates(session: AsyncSession, test_user, test_workspace):
     await create_default_categories(session, test_user.id, lang="pt-BR")
 
     first = await install_rule_pack(session, test_user.id, "BR", lang="pt-BR")
@@ -500,7 +500,7 @@ async def test_install_rule_pack_skips_duplicates(session: AsyncSession, test_us
 
 
 @pytest.mark.asyncio
-async def test_install_rule_pack_works_across_languages(session: AsyncSession, test_user):
+async def test_install_rule_pack_works_across_languages(session: AsyncSession, test_user, test_workspace):
     # Regression for #154: user registers in English, switches UI to pt-BR,
     # then installs the BR pack. Categories ("Transport") and template
     # language ("pt-BR" → "Transporte") would mismatch — install should
@@ -517,7 +517,7 @@ async def test_install_rule_pack_works_across_languages(session: AsyncSession, t
 
 @pytest.mark.asyncio
 async def test_install_rule_pack_reports_unresolved_when_categories_missing(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     # User in a degenerate state with no default categories — every pack
     # rule's set_category target is missing, so the install can't actually
@@ -532,7 +532,7 @@ async def test_install_rule_pack_reports_unresolved_when_categories_missing(
 
 @pytest.mark.asyncio
 async def test_install_rule_pack_creates_missing_categories_when_opted_in(
-    session: AsyncSession, test_user
+    session: AsyncSession, test_user, test_workspace
 ):
     # Same degenerate user, but they tick the "create missing categories"
     # checkbox in the modal. Pack must seed the categories it needs and
@@ -551,14 +551,14 @@ async def test_install_rule_pack_creates_missing_categories_when_opted_in(
 
 
 @pytest.mark.asyncio
-async def test_install_rule_pack_unknown_returns_empty(session: AsyncSession, test_user):
+async def test_install_rule_pack_unknown_returns_empty(session: AsyncSession, test_user, test_workspace):
     result = await install_rule_pack(session, test_user.id, "ZZ")
     assert result.rules == []
     assert result.unresolved == 0
 
 
 @pytest.mark.asyncio
-async def test_get_installed_packs(session: AsyncSession, test_user):
+async def test_get_installed_packs(session: AsyncSession, test_user, test_workspace):
     await create_default_categories(session, test_user.id, lang="pt-BR")
 
     packs_before = await get_installed_packs(session, test_user.id)

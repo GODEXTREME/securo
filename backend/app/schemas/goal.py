@@ -15,6 +15,7 @@ class GoalCreate(BaseModel):
     tracking_type: str = "manual"
     account_id: Optional[uuid.UUID] = None
     asset_id: Optional[uuid.UUID] = None
+    asset_group_id: Optional[uuid.UUID] = None
     icon: Optional[str] = None
     color: Optional[str] = None
     metadata_json: Optional[Any] = None
@@ -22,8 +23,8 @@ class GoalCreate(BaseModel):
     @field_validator("tracking_type")
     @classmethod
     def validate_tracking_type(cls, v: str) -> str:
-        if v not in ("manual", "account", "asset", "net_worth"):
-            raise ValueError("tracking_type must be manual, account, asset, or net_worth")
+        if v not in ("manual", "account", "asset", "asset_group", "net_worth"):
+            raise ValueError("tracking_type must be manual, account, asset, asset_group, or net_worth")
         return v
 
 
@@ -36,6 +37,7 @@ class GoalUpdate(BaseModel):
     tracking_type: Optional[str] = None
     account_id: Optional[uuid.UUID] = None
     asset_id: Optional[uuid.UUID] = None
+    asset_group_id: Optional[uuid.UUID] = None
     status: Optional[str] = None
     icon: Optional[str] = None
     color: Optional[str] = None
@@ -52,8 +54,8 @@ class GoalUpdate(BaseModel):
     @field_validator("tracking_type")
     @classmethod
     def validate_tracking_type(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in ("manual", "account", "net_worth"):
-            raise ValueError("tracking_type must be manual, account, or net_worth")
+        if v is not None and v not in ("manual", "account", "asset", "asset_group", "net_worth"):
+            raise ValueError("tracking_type must be manual, account, asset, asset_group, or net_worth")
         return v
 
 
@@ -70,6 +72,7 @@ class GoalRead(BaseModel):
     tracking_type: str
     account_id: Optional[uuid.UUID] = None
     asset_id: Optional[uuid.UUID] = None
+    asset_group_id: Optional[uuid.UUID] = None
     status: str
     icon: Optional[str] = None
     color: Optional[str] = None
@@ -86,6 +89,7 @@ class GoalRead(BaseModel):
     # Linked account/asset info
     account_name: Optional[str] = None
     asset_name: Optional[str] = None
+    asset_group_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

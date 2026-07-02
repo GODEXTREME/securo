@@ -716,6 +716,256 @@ async def test_transfer_candidates_returns_404_for_unknown_anchor(
 
 
 @pytest.mark.asyncio
+async def test_create_counterpart_from_debit(
+    client: AsyncClient, auth_headers, test_account: Account, second_account: Account
+):
+    """Auto-create the credit counterpart for a debit anchor."""
+    anchor = await _create_manual_tx(
+        client, auth_headers, test_account.id,
+        type="debit", amount=200.00, description="Sent from checking",
+    )
+
+    response = await client.post(
+        f"/api/transactions/{anchor['id']}/create-counterpart",
+        json={"to_account_id": str(second_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    # Anchor stays the debit side; counterpart is the new credit.
+    assert data["debit"]["id"] == anchor["id"]
+    assert data["debit"]["account_id"] == str(test_account.id)
+    assert data["credit"]["id"] != anchor["id"]
+    assert data["credit"]["account_id"] == str(second_account.id)
+    assert data["credit"]["type"] == "credit"
+    assert data["credit"]["source"] == "transfer"
+    assert float(data["credit"]["amount"]) == 200.00
+    assert data["credit"]["description"] == "Sent from checking"
+
+    # Both sides share the transfer pair id.
+    assert data["debit"]["transfer_pair_id"] == data["transfer_pair_id"]
+    assert data["credit"]["transfer_pair_id"] == data["transfer_pair_id"]
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_from_credit(
+    client: AsyncClient, auth_headers, test_account: Account, second_account: Account
+):
+    """Auto-create the debit counterpart for a credit anchor."""
+    anchor = await _create_manual_tx(
+        client, auth_headers, test_account.id,
+        type="credit", amount=150.00, description="Money in",
+    )
+
+    response = await client.post(
+        f"/api/transactions/{anchor['id']}/create-counterpart",
+        json={"to_account_id": str(second_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    assert data["credit"]["id"] == anchor["id"]
+    assert data["debit"]["id"] != anchor["id"]
+    assert data["debit"]["account_id"] == str(second_account.id)
+    assert data["debit"]["type"] == "debit"
+    assert data["debit"]["source"] == "transfer"
+    assert float(data["debit"]["amount"]) == 150.00
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_cross_currency(
+    client: AsyncClient, auth_headers, test_account: Account, usd_account: Account
+):
+    """Counterpart in another currency takes the destination account's currency."""
+    anchor = await _create_manual_tx(
+        client, auth_headers, test_account.id,
+        type="debit", amount=1000.00, description="BRL to USD",
+    )
+
+    response = await client.post(
+        f"/api/transactions/{anchor['id']}/create-counterpart",
+        json={"to_account_id": str(usd_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    assert data["debit"]["currency"] == "BRL"
+    assert data["credit"]["currency"] == "USD"
+    # Amount may differ from the anchor's after FX conversion.
+    assert float(data["credit"]["amount"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_rejects_same_account(
+    client: AsyncClient, auth_headers, test_account: Account
+):
+    anchor = await _create_manual_tx(
+        client, auth_headers, test_account.id,
+        type="debit", amount=50.00, description="Anchor",
+    )
+
+    response = await client.post(
+        f"/api/transactions/{anchor['id']}/create-counterpart",
+        json={"to_account_id": str(test_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert "different account" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_rejects_unknown_account(
+    client: AsyncClient, auth_headers, test_account: Account
+):
+    anchor = await _create_manual_tx(
+        client, auth_headers, test_account.id,
+        type="debit", amount=50.00, description="Anchor",
+    )
+
+    response = await client.post(
+        f"/api/transactions/{anchor['id']}/create-counterpart",
+        json={"to_account_id": str(uuid.uuid4())},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert "not found" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_rejects_unknown_transaction(
+    client: AsyncClient, auth_headers, second_account: Account
+):
+    response = await client.post(
+        f"/api/transactions/{uuid.uuid4()}/create-counterpart",
+        json={"to_account_id": str(second_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert "not found" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_rejects_already_linked(
+    client: AsyncClient, auth_headers, test_account: Account, second_account: Account
+):
+    """A transaction that is already part of a transfer cannot get another counterpart."""
+    pair = await client.post(
+        "/api/transactions/transfer",
+        json={
+            "from_account_id": str(test_account.id),
+            "to_account_id": str(second_account.id),
+            "amount": 75.00,
+            "date": date.today().isoformat(),
+            "description": "Already linked",
+        },
+        headers=auth_headers,
+    )
+    debit_id = pair.json()["debit"]["id"]
+
+    response = await client.post(
+        f"/api/transactions/{debit_id}/create-counterpart",
+        json={"to_account_id": str(test_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert "already part of a transfer" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_preserves_anchor_category(
+    client: AsyncClient,
+    auth_headers,
+    test_account: Account,
+    second_account: Account,
+    test_categories,
+):
+    """Marking a categorized transaction as a transfer keeps its category."""
+    create_response = await client.post(
+        "/api/transactions",
+        json={
+            "account_id": str(test_account.id),
+            "description": "Categorized anchor",
+            "amount": 120.00,
+            "type": "debit",
+            "date": date.today().isoformat(),
+            "category_id": str(test_categories[0].id),
+        },
+        headers=auth_headers,
+    )
+    assert create_response.status_code == 201
+    anchor = create_response.json()
+    assert anchor["category_id"] == str(test_categories[0].id)
+
+    response = await client.post(
+        f"/api/transactions/{anchor['id']}/create-counterpart",
+        json={"to_account_id": str(second_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+
+    refreshed = await client.get(
+        f"/api/transactions/{anchor['id']}", headers=auth_headers
+    )
+    assert refreshed.status_code == 200
+    assert refreshed.json()["category_id"] == str(test_categories[0].id)
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_excludes_pair_from_reports(
+    client: AsyncClient, auth_headers, test_account: Account, second_account: Account
+):
+    """Both sides drop out of the list when exclude_transfers=true."""
+    anchor = await _create_manual_tx(
+        client, auth_headers, test_account.id,
+        type="debit", amount=300.00, description="To exclude",
+    )
+
+    response = await client.post(
+        f"/api/transactions/{anchor['id']}/create-counterpart",
+        json={"to_account_id": str(second_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    counterpart_id = response.json()["credit"]["id"]
+
+    list_response = await client.get(
+        "/api/transactions", params={"exclude_transfers": True}, headers=auth_headers
+    )
+    assert list_response.status_code == 200
+    ids = {tx["id"] for tx in list_response.json()["items"]}
+    assert anchor["id"] not in ids
+    assert counterpart_id not in ids
+
+
+@pytest.mark.asyncio
+async def test_create_counterpart_cascades_on_delete(
+    client: AsyncClient, auth_headers, test_account: Account, second_account: Account
+):
+    """Deleting the anchor removes the auto-created counterpart too."""
+    anchor = await _create_manual_tx(
+        client, auth_headers, test_account.id,
+        type="debit", amount=90.00, description="Cascade delete",
+    )
+    response = await client.post(
+        f"/api/transactions/{anchor['id']}/create-counterpart",
+        json={"to_account_id": str(second_account.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    counterpart_id = response.json()["credit"]["id"]
+
+    del_response = await client.delete(
+        f"/api/transactions/{anchor['id']}", headers=auth_headers
+    )
+    assert del_response.status_code == 204
+    assert (await client.get(f"/api/transactions/{anchor['id']}", headers=auth_headers)).status_code == 404
+    assert (await client.get(f"/api/transactions/{counterpart_id}", headers=auth_headers)).status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_transfers_appear_in_transaction_list(
     client: AsyncClient, auth_headers, test_account: Account, second_account: Account
 ):

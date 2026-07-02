@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -15,12 +16,15 @@ from app.api.connections import router as connections_router
 from app.api.custom_auth import router as custom_auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.import_logs import router as import_logs_router
+from app.api.oidc_auth import router as oidc_auth_router
+from app.api.passkeys import router as passkeys_router
 from app.api.import_transactions import router as import_router
 from app.api.info import router as info_router
 from app.api.recurring_transactions import router as recurring_router
 from app.api.rules import router as rules_router
 from app.api.assets import router as assets_router
 from app.api.asset_groups import router as asset_groups_router
+from app.api.collections import router as collections_router
 from app.api.reports import router as reports_router
 from app.api.search import router as search_router
 from app.api.setup import router as setup_router
@@ -33,6 +37,7 @@ from app.api.settings import router as settings_router
 from app.api.transactions import router as transactions_router
 from app.api.two_factor import router as two_factor_router
 from app.api.user_lookup import router as user_lookup_router
+from app.api.workspaces import router as workspaces_router
 from app.api.admin import router as admin_router, check_registration_enabled
 from app.core.auth import fastapi_users
 from app.core.config import get_settings
@@ -42,6 +47,37 @@ from app.schemas.user import UserCreate, UserRead, UserUpdate
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+async def _warm_tesouro_cache() -> None:
+    """Pre-load the Tesouro Direto price cache so the first bond search is
+    instant instead of waiting on the cold ~25s CSV download.
+
+    Gated to instances that actually serve Brazilian users (a workspace with
+    BRL as its default currency) so a non-Brazilian deployment never calls the
+    Brazilian government endpoint just because the feature ships on by default.
+    """
+    try:
+        if not get_settings().tesouro_direto_enabled:
+            return
+        from sqlalchemy import select
+
+        from app.core.database import async_session_maker
+        from app.models.workspace import Workspace
+
+        async with async_session_maker() as session:
+            has_brl = await session.scalar(
+                select(Workspace.id).where(Workspace.default_currency == "BRL").limit(1)
+            )
+        if not has_brl:
+            return
+
+        from app.providers.tesouro_direto import get_tesouro_direto_provider
+
+        await get_tesouro_direto_provider().get_available_bonds()
+        logger.info("Startup: warmed Tesouro Direto price cache")
+    except Exception:
+        logger.exception("Startup: Tesouro Direto cache warm failed")
 
 
 @asynccontextmanager
@@ -54,6 +90,9 @@ async def lifespan(app: FastAPI):
         logger.info("Startup: dispatched sync_all_connections task to Celery")
     except Exception:
         logger.exception("Startup: failed to dispatch sync task")
+    # Background pre-warm of the Tesouro cache (non-blocking; gated to BRL
+    # instances inside the helper). Kept on app.state so it isn't GC'd.
+    app.state.tesouro_warm_task = asyncio.create_task(_warm_tesouro_cache())
     yield
     # Shutdown
     await close_redis()
@@ -86,6 +125,12 @@ app.include_router(
     prefix="/api/auth",
     tags=["auth"],
 )
+app.include_router(
+    passkeys_router,
+    prefix="/api/auth",
+    tags=["auth"],
+)
+app.include_router(oidc_auth_router)
 app.include_router(
     fastapi_users.get_register_router(UserRead, UserCreate),
     prefix="/api/auth",
@@ -123,6 +168,7 @@ app.include_router(goals_router)
 app.include_router(groups_router)
 app.include_router(assets_router)
 app.include_router(asset_groups_router)
+app.include_router(collections_router)
 app.include_router(dashboard_router)
 app.include_router(reports_router)
 app.include_router(search_router)
@@ -133,6 +179,7 @@ app.include_router(export_router)
 app.include_router(attachments_router)
 app.include_router(payees_router)
 app.include_router(settings_router)
+app.include_router(workspaces_router)
 app.include_router(admin_router)
 app.include_router(info_router)
 
@@ -148,13 +195,15 @@ if os.getenv("AGENTS_ENABLED", "false").strip().lower() in ("1", "true", "yes", 
         from app.agents.api.conversations import router as agents_conversations_router
         from app.agents.api.chat import router as agents_chat_router
         from app.agents.api.knowledge import router as agents_knowledge_router
+        from app.agents.api.mcp_tokens import router as agents_mcp_tokens_router
 
-        # Mount literal-prefix routers (conversations, connections) BEFORE
-        # the generic agents router so paths like /api/agents/connections
-        # don't get captured by /api/agents/{agent_id}.
+        # Mount literal-prefix routers (conversations, connections,
+        # mcp-tokens) BEFORE the generic agents router so paths like
+        # /api/agents/connections don't get captured by /api/agents/{agent_id}.
         app.include_router(agents_info_router)
         app.include_router(agents_connections_router)
         app.include_router(agents_conversations_router)
+        app.include_router(agents_mcp_tokens_router)
         app.include_router(agents_router)
         app.include_router(agents_chat_router)
         app.include_router(agents_knowledge_router)

@@ -10,9 +10,12 @@ from app.agents.models.conversation import Conversation, Message
 
 
 async def list_conversations(
-    session: AsyncSession, user_id: uuid.UUID, agent_id: Optional[uuid.UUID] = None, limit: int = 50
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    agent_id: Optional[uuid.UUID] = None,
+    limit: int = 50,
 ) -> list[Conversation]:
-    q = select(Conversation).where(Conversation.user_id == user_id)
+    q = select(Conversation).where(Conversation.workspace_id == workspace_id)
     if agent_id:
         q = q.where(Conversation.agent_id == agent_id)
     q = q.order_by(Conversation.updated_at.desc()).limit(limit)
@@ -20,22 +23,32 @@ async def list_conversations(
 
 
 async def get_conversation(
-    session: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, conversation_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> Optional[Conversation]:
     return (await session.execute(
-        select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id)
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
     )).scalar_one_or_none()
 
 
 async def create_conversation(
     session: AsyncSession,
     *,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     agent_id: uuid.UUID,
     channel: str = "web",
     title: Optional[str] = None,
 ) -> Conversation:
-    conv = Conversation(user_id=user_id, agent_id=agent_id, channel=channel, title=title)
+    conv = Conversation(
+        workspace_id=workspace_id,
+        user_id=user_id,
+        agent_id=agent_id,
+        channel=channel,
+        title=title,
+    )
     session.add(conv)
     await session.commit()
     await session.refresh(conv)
@@ -43,9 +56,9 @@ async def create_conversation(
 
 
 async def delete_conversation(
-    session: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, conversation_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> bool:
-    conv = await get_conversation(session, conversation_id, user_id)
+    conv = await get_conversation(session, conversation_id, workspace_id)
     if conv is None:
         return False
     await session.delete(conv)
@@ -112,12 +125,12 @@ async def update_title_if_empty(
 
 
 async def update_title(
-    session: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID, title: str
+    session: AsyncSession, conversation_id: uuid.UUID, workspace_id: uuid.UUID, title: str
 ) -> Optional[Conversation]:
     """Always overwrites the title (used by the rename UI and by the
     LLM-generated title endpoint). Returns the updated row, or None if
-    not found / not owned by this user."""
-    conv = await get_conversation(session, conversation_id, user_id)
+    not found / not in this workspace."""
+    conv = await get_conversation(session, conversation_id, workspace_id)
     if conv is None:
         return None
     conv.title = (title or "").strip()[:200] or None

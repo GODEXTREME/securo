@@ -41,6 +41,8 @@ pytestmark = pytest.mark.asyncio
 
 async def _make_user(session: AsyncSession, email: str, is_superuser: bool = False) -> User:
     import bcrypt as _bcrypt
+    from app.services.workspace_service import create_personal_workspace_for_user
+
     hashed = _bcrypt.hashpw(b"password123", _bcrypt.gensalt()).decode()
     user = User(
         id=uuid.uuid4(),
@@ -52,6 +54,11 @@ async def _make_user(session: AsyncSession, email: str, is_superuser: bool = Fal
         preferences={"language": "en", "currency_display": "USD"},
     )
     session.add(user)
+    await session.commit()
+    # Every user needs a workspace so the autostamp listener can resolve
+    # workspace_id when downstream rows (accounts, connections, etc.) are
+    # inserted without it — the cascade test relies on this.
+    await create_personal_workspace_for_user(session, user)
     await session.commit()
     await session.refresh(user)
     return user

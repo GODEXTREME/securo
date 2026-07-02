@@ -12,8 +12,13 @@ from app.agents.models.knowledge import KnowledgeDoc
 from app.agents.schemas.agent import AgentCreate, AgentUpdate
 
 
-async def list_agents(session: AsyncSession, user_id: uuid.UUID, *, include_archived: bool = False) -> list[Agent]:
-    q = select(Agent).where(Agent.user_id == user_id).order_by(Agent.created_at.desc())
+async def list_agents(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    *,
+    include_archived: bool = False,
+) -> list[Agent]:
+    q = select(Agent).where(Agent.workspace_id == workspace_id).order_by(Agent.created_at.desc())
     if not include_archived:
         q = q.where(Agent.is_archived.is_(False))
     rows = list((await session.execute(q)).scalars().all())
@@ -43,15 +48,25 @@ async def list_agents(session: AsyncSession, user_id: uuid.UUID, *, include_arch
     return rows
 
 
-async def get_agent(session: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Agent]:
+async def get_agent(
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+) -> Optional[Agent]:
     return (await session.execute(
-        select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id)
+        select(Agent).where(Agent.id == agent_id, Agent.workspace_id == workspace_id)
     )).scalar_one_or_none()
 
 
-async def create_agent(session: AsyncSession, user_id: uuid.UUID, data: AgentCreate) -> Agent:
+async def create_agent(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: AgentCreate,
+) -> Agent:
     agent = Agent(
         user_id=user_id,
+        workspace_id=workspace_id,
         name=data.name,
         description=data.description,
         system_prompt=data.system_prompt,
@@ -74,19 +89,26 @@ async def create_agent(session: AsyncSession, user_id: uuid.UUID, data: AgentCre
 
 
 async def update_agent(
-    session: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID, data: AgentUpdate
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    data: AgentUpdate,
 ) -> Optional[Agent]:
-    agent = await get_agent(session, agent_id, user_id)
+    agent = await get_agent(session, agent_id, workspace_id)
     if agent is None:
         return None
     payload = data.model_dump(exclude_unset=True)
     # If turning this agent into the default, clear the flag on every
-    # other agent of the same user first — the partial unique index
-    # would otherwise reject the commit.
+    # other agent in the same workspace first — the partial unique
+    # index would otherwise reject the commit.
     if payload.get("is_default") is True:
         await session.execute(
             update(Agent)
-            .where(Agent.user_id == user_id, Agent.id != agent_id, Agent.is_default.is_(True))
+            .where(
+                Agent.workspace_id == workspace_id,
+                Agent.id != agent_id,
+                Agent.is_default.is_(True),
+            )
             .values(is_default=False)
         )
     for field, value in payload.items():
@@ -96,13 +118,15 @@ async def update_agent(
     return agent
 
 
-async def get_default_agent(session: AsyncSession, user_id: uuid.UUID) -> Optional[Agent]:
+async def get_default_agent(
+    session: AsyncSession, workspace_id: uuid.UUID
+) -> Optional[Agent]:
     """The default agent is what the global slide-over chat panel uses.
     Falls back to the most-recently-created non-archived agent so the
-    panel still works for users who haven't picked one yet."""
+    panel still works for workspaces that haven't picked one yet."""
     explicit = (await session.execute(
         select(Agent).where(
-            Agent.user_id == user_id,
+            Agent.workspace_id == workspace_id,
             Agent.is_default.is_(True),
             Agent.is_archived.is_(False),
         )
@@ -111,14 +135,16 @@ async def get_default_agent(session: AsyncSession, user_id: uuid.UUID) -> Option
         return explicit
     return (await session.execute(
         select(Agent)
-        .where(Agent.user_id == user_id, Agent.is_archived.is_(False))
+        .where(Agent.workspace_id == workspace_id, Agent.is_archived.is_(False))
         .order_by(Agent.created_at.desc())
         .limit(1)
     )).scalar_one_or_none()
 
 
-async def delete_agent(session: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-    agent = await get_agent(session, agent_id, user_id)
+async def delete_agent(
+    session: AsyncSession, agent_id: uuid.UUID, workspace_id: uuid.UUID
+) -> bool:
+    agent = await get_agent(session, agent_id, workspace_id)
     if agent is None:
         return False
     await session.delete(agent)

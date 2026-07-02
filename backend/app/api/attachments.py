@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
-from app.models.user import User
+from app.core.workspace_context import (
+    WorkspaceContext,
+    current_workspace,
+    current_writable_workspace,
+)
 from app.schemas.attachment import AttachmentRead, AttachmentRename
 from app.services import attachment_service
 
@@ -20,14 +23,15 @@ router = APIRouter(
 async def upload_attachment(
     transaction_id: uuid.UUID,
     file: UploadFile,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     data = await file.read()
     try:
         attachment = await attachment_service.upload_attachment(
             session=session,
-            user_id=user.id,
+            workspace_id=ctx.workspace.id,
+            user_id=ctx.user_id,
             transaction_id=transaction_id,
             filename=file.filename or "unnamed",
             content_type=file.content_type or "application/octet-stream",
@@ -43,11 +47,11 @@ async def upload_attachment(
 @router.get("", response_model=list[AttachmentRead])
 async def list_attachments(
     transaction_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
-        return await attachment_service.list_attachments(session, user.id, transaction_id)
+        return await attachment_service.list_attachments(session, ctx.workspace.id, transaction_id)
     except LookupError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
@@ -56,12 +60,12 @@ async def list_attachments(
 async def download_attachment(
     transaction_id: uuid.UUID,
     attachment_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
         attachment, data = await attachment_service.download_attachment(
-            session, attachment_id, user.id
+            session, attachment_id, ctx.workspace.id
         )
     except LookupError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
@@ -77,12 +81,12 @@ async def rename_attachment(
     transaction_id: uuid.UUID,
     attachment_id: uuid.UUID,
     body: AttachmentRename,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
         return await attachment_service.rename_attachment(
-            session, attachment_id, user.id, body.filename
+            session, attachment_id, ctx.workspace.id, body.filename
         )
     except LookupError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
@@ -94,10 +98,10 @@ async def rename_attachment(
 async def delete_attachment(
     transaction_id: uuid.UUID,
     attachment_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     try:
-        await attachment_service.delete_attachment(session, attachment_id, user.id)
+        await attachment_service.delete_attachment(session, attachment_id, ctx.workspace.id)
     except LookupError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")

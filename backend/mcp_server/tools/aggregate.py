@@ -9,7 +9,7 @@ from app.models.transaction import Transaction
 from app.models.category import Category
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
-from mcp_server.tools._helpers import num, parse_date, parse_uuid_list
+from mcp_server.tools._helpers import num, parse_date, parse_uuid_list, resolve_workspace_id
 
 
 @tool(
@@ -64,12 +64,13 @@ async def aggregate(
     # Hard cap regardless of LLM input — keeps payload small enough for
     # token-tight providers.
     limit = max(1, min(int(limit), 50))
+    ws_id = await resolve_workspace_id(session, ctx)
     amount_col = func.coalesce(Transaction.amount_primary, Transaction.amount)
 
     # Group expression + label expression.
     if group_by == "category":
         bucket_id = Transaction.category_id
-        label_q = select(Category.id, Category.name).where(Category.user_id == ctx.user_id)
+        label_q = select(Category.id, Category.name).where(Category.workspace_id == ws_id)
     elif group_by == "account":
         bucket_id = Transaction.account_id
         label_q = None
@@ -94,7 +95,7 @@ async def aggregate(
 
     q = (
         select(bucket_id.label("bucket"), value_expr.label("value"), func.count(Transaction.id).label("count"))
-        .where(Transaction.user_id == ctx.user_id)
+        .where(Transaction.workspace_id == ws_id)
     )
 
     fd = parse_date(from_date)

@@ -3,6 +3,7 @@ import { Command } from 'cmdk'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { useQuery } from '@tanstack/react-query'
 import {
   Search,
@@ -32,7 +33,7 @@ import {
 } from 'lucide-react'
 
 import { search as searchApi, type SearchHit, type SearchHitType } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, normalizeText } from '@/lib/utils'
 
 // ---------------------------------------------------------------------------
 // Static actions & navigation registry
@@ -236,11 +237,6 @@ function formatHitDate(iso: string | null, locale: string): string | null {
   }
 }
 
-// Accent- and case-insensitive substring match so that typing "regras"
-// matches "Regras", "orcamento" matches "Orçamentos", etc.
-function normalizeText(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-}
 
 function matchesQuery(query: string, haystacks: Array<string | undefined>): boolean {
   const q = normalizeText(query.trim())
@@ -258,13 +254,13 @@ export interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const recents = useSyncExternalStore(subscribeRecents, getRecentSnapshot, getRecentSnapshot)
   const inputRef = useRef<HTMLInputElement>(null)
-  const locale = i18n.language === 'en' ? 'en-US' : i18n.language
+  const locale = useDisplayLocale()
 
   // Focus the input whenever the palette opens. The cmdk Command is re-keyed
   // on `open` so results and selection reset automatically. We reset our own

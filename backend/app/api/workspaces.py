@@ -1,0 +1,330 @@
+"""Workspace + member management endpoints.
+
+Note: there's intentionally NO `POST /api/workspaces` endpoint here.
+Workspaces are auto-created at user registration; additional workspaces
+(Freelancer / Small Business / Accountant Firm) ship as part of the
+templates feature in a later phase.
+"""
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi_users import schemas as fu_schemas
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.auth import current_active_user, get_user_manager, UserManager
+from app.core.database import get_async_session
+from app.core.workspace_context import WorkspaceContext, current_workspace
+from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
+from app.schemas.workspace import (
+    MemberInvite,
+    MemberRead,
+    MemberRoleUpdate,
+    WorkspaceCreate,
+    WorkspaceRead,
+    WorkspaceUpdate,
+)
+from app.services import workspace_service
+
+router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
+
+
+def _user_display_name(user: User) -> str | None:
+    prefs = user.preferences or {}
+    return prefs.get("display_name") or None
+
+
+@router.get("", response_model=list[WorkspaceRead])
+async def list_my_workspaces(
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    """Return every workspace the current user can access.
+
+    Unions two sets:
+      - workspaces where the user has a `workspace_members` row (role
+        comes from that row)
+      - workspaces where `workspaces.managed_by_user_id` matches the
+        user but they have no membership (role = 'manager')
+
+    A user who is both a member AND the external manager is reported
+    with their concrete membership role (not the virtual manager one)
+    since their explicit role is the more specific signal.
+    """
+    member_rows = await session.execute(
+        select(Workspace, WorkspaceMember.role)
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .where(
+            WorkspaceMember.user_id == user.id,
+            Workspace.is_archived.is_(False),
+        )
+        .order_by(Workspace.created_at.asc())
+    )
+    out: list[WorkspaceRead] = []
+    seen_ids: set[uuid.UUID] = set()
+    for ws, role in member_rows.all():
+        item = WorkspaceRead.model_validate(ws)
+        item.role = role
+        out.append(item)
+        seen_ids.add(ws.id)
+
+    managed_rows = await session.execute(
+        select(Workspace)
+        .where(
+            Workspace.managed_by_user_id == user.id,
+            Workspace.is_archived.is_(False),
+        )
+        .order_by(Workspace.created_at.asc())
+    )
+    for ws in managed_rows.scalars().all():
+        if ws.id in seen_ids:
+            continue
+        item = WorkspaceRead.model_validate(ws)
+        item.role = "manager"
+        out.append(item)
+    return out
+
+
+@router.post("", response_model=WorkspaceRead, status_code=status.HTTP_201_CREATED)
+async def create_workspace_endpoint(
+    body: WorkspaceCreate,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    """Create a new workspace; the caller becomes its manager.
+
+    Use case: a user provisioning a workspace they'll operate (either
+    for themselves as a second container, or on behalf of someone else
+    who'll be invited later as the day-to-day owner).
+    """
+    workspace = await workspace_service.create_workspace(
+        session,
+        name=body.name,
+        creator=user,
+        kind=body.kind,
+        default_currency=body.default_currency,
+        locale=body.locale,
+        icon=body.icon,
+        color=body.color,
+        self_membership=body.self_membership,
+    )
+    await session.commit()
+    item = WorkspaceRead.model_validate(workspace)
+    item.role = "owner" if body.self_membership else "manager"
+    return item
+
+
+@router.get("/current", response_model=WorkspaceRead)
+async def get_current_workspace(ctx: WorkspaceContext = Depends(current_workspace)):
+    """Return the workspace resolved from X-Workspace-Id (or the default)."""
+    item = WorkspaceRead.model_validate(ctx.workspace)
+    item.role = ctx.role
+    return item
+
+
+@router.patch("/{workspace_id}", response_model=WorkspaceRead)
+async def update_workspace(
+    workspace_id: uuid.UUID,
+    body: WorkspaceUpdate,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    member = await workspace_service.require_membership(
+        session, workspace_id, user.id, min_role="owner"
+    )
+    workspace = await session.get(Workspace, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    updates = body.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(workspace, key, value)
+    # Changing the workspace currency follows through to the acting
+    # owner's display currency, so the whole app re-renders in the new
+    # currency (display is driven by user.currency_display, not the
+    # workspace). Other members keep their own currency_display override.
+    new_currency = updates.get("default_currency")
+    if new_currency and (user.preferences or {}).get("currency_display") != new_currency:
+        prefs = dict(user.preferences or {})
+        prefs["currency_display"] = new_currency
+        user.preferences = prefs
+        session.add(user)
+    await session.commit()
+    await session.refresh(workspace)
+    item = WorkspaceRead.model_validate(workspace)
+    item.role = member.role
+    return item
+
+
+@router.get("/{workspace_id}/members", response_model=list[MemberRead])
+async def list_workspace_members(
+    workspace_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    # Any member can list members of their own workspace.
+    await workspace_service.require_membership(session, workspace_id, user.id)
+    rows = await workspace_service.list_members(session, workspace_id)
+    return [
+        MemberRead(
+            id=m.id,
+            user_id=u.id,
+            email=u.email,
+            display_name=_user_display_name(u),
+            role=m.role,
+            joined_at=m.joined_at,
+        )
+        for m, u in rows
+    ]
+
+
+@router.post(
+    "/{workspace_id}/members",
+    response_model=MemberRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def invite_member(
+    workspace_id: uuid.UUID,
+    body: MemberInvite,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+    user_manager: UserManager = Depends(get_user_manager),
+):
+    await workspace_service.require_membership(
+        session, workspace_id, user.id, min_role="owner"
+    )
+
+    # Find existing user by email (case-insensitive — fastapi-users
+    # stores email lowercased on register, but be safe).
+    existing = await session.execute(
+        select(User).where(User.email == body.email.lower())
+    )
+    target = existing.scalar_one_or_none()
+
+    if target is None:
+        # Brand-new user — only allowed if a password was provided.
+        if not body.password:
+            raise HTTPException(
+                status_code=400,
+                detail="User not found. Provide a password to create them.",
+            )
+        try:
+            create_payload = fu_schemas.BaseUserCreate(
+                email=body.email,
+                password=body.password,
+            )
+            target = await user_manager.create(create_payload)
+            # A user created to join this workspace inherits its currency
+            # as their display currency, so the app comes up in the
+            # workspace's currency rather than the USD default. Set this
+            # before bootstrapping their Personal workspace below, which
+            # reads currency_display for its own default_currency.
+            ws = await session.get(Workspace, workspace_id)
+            if ws is not None:
+                target.preferences = {
+                    **(target.preferences or {}),
+                    "currency_display": ws.default_currency,
+                }
+                session.add(target)
+                await session.flush()
+            # The fresh user gets their own Personal workspace by virtue
+            # of the registration hook (called below via on_after_register
+            # when request is non-None; programmatic call leaves it empty,
+            # so we bootstrap explicitly).
+            await workspace_service.create_personal_workspace_for_user(session, target)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not create user: {e}")
+
+    member = await workspace_service.add_member(
+        session,
+        workspace_id=workspace_id,
+        user_id=target.id,
+        role=body.role,
+        invited_by_user_id=user.id,
+    )
+    await session.commit()
+    return MemberRead(
+        id=member.id,
+        user_id=target.id,
+        email=target.email,
+        display_name=_user_display_name(target),
+        role=member.role,
+        joined_at=member.joined_at,
+    )
+
+
+@router.patch(
+    "/{workspace_id}/members/{member_user_id}",
+    response_model=MemberRead,
+)
+async def change_member_role(
+    workspace_id: uuid.UUID,
+    member_user_id: uuid.UUID,
+    body: MemberRoleUpdate,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    await workspace_service.require_membership(
+        session, workspace_id, user.id, min_role="owner"
+    )
+    member = await workspace_service.update_member_role(
+        session, workspace_id, member_user_id, body.role
+    )
+    await session.commit()
+    target = await session.get(User, member_user_id)
+    return MemberRead(
+        id=member.id,
+        user_id=target.id,
+        email=target.email,
+        display_name=_user_display_name(target),
+        role=member.role,
+        joined_at=member.joined_at,
+    )
+
+
+@router.get("/{workspace_id}/stats")
+async def workspace_stats(
+    workspace_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    """KPIs surfaced on the settings page (members / accounts / transactions)."""
+    await workspace_service.require_membership(session, workspace_id, user.id)
+    return await workspace_service.get_workspace_stats(session, workspace_id)
+
+
+@router.post("/{workspace_id}/archive", response_model=WorkspaceRead)
+async def archive_workspace_endpoint(
+    workspace_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    """Soft-delete: flips is_archived. Requires owner role. Refuses to
+    archive the requester's last accessible workspace."""
+    await workspace_service.require_membership(
+        session, workspace_id, user.id, min_role="owner"
+    )
+    workspace = await workspace_service.archive_workspace(session, workspace_id, user.id)
+    await session.commit()
+    item = WorkspaceRead.model_validate(workspace)
+    item.role = "owner"
+    return item
+
+
+@router.delete(
+    "/{workspace_id}/members/{member_user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_workspace_member(
+    workspace_id: uuid.UUID,
+    member_user_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    # Owner can remove anyone; a non-owner can remove themselves only.
+    requester = await workspace_service.require_membership(session, workspace_id, user.id)
+    if requester.role != "owner" and member_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Only the owner can remove other members")
+    await workspace_service.remove_member(session, workspace_id, member_user_id)
+    await session.commit()
+    return None

@@ -7,9 +7,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.services import agent_service, knowledge_service
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
-from app.models.user import User
+from app.core.workspace_context import (
+    WorkspaceContext,
+    current_workspace,
+    current_writable_workspace,
+)
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -34,10 +37,10 @@ def _serialize(doc) -> dict[str, Any]:
 @router.get("/{agent_id}/knowledge")
 async def list_knowledge(
     agent_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    agent = await agent_service.get_agent(session, agent_id, user.id)
+    agent = await agent_service.get_agent(session, agent_id, ctx.workspace.id)
     if agent is None:
         raise HTTPException(status_code=404, detail="agent not found")
     docs = await knowledge_service.list_docs(session, agent_id)
@@ -49,10 +52,10 @@ async def upload_knowledge(
     agent_id: uuid.UUID,
     file: UploadFile = File(...),
     pinned: bool = Form(False),
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    agent = await agent_service.get_agent(session, agent_id, user.id)
+    agent = await agent_service.get_agent(session, agent_id, ctx.workspace.id)
     if agent is None:
         raise HTTPException(status_code=404, detail="agent not found")
     payload = await file.read()
@@ -60,7 +63,7 @@ async def upload_knowledge(
         doc = await knowledge_service.upload_doc(
             session,
             agent_id=agent_id,
-            user_id=user.id,
+            user_id=ctx.user_id,
             filename=file.filename or "document",
             mime=file.content_type or "application/octet-stream",
             payload=payload,
@@ -84,10 +87,10 @@ async def toggle_pin(
     agent_id: uuid.UUID,
     doc_id: uuid.UUID,
     pinned: bool,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    doc = await knowledge_service.set_pinned(session, doc_id, user.id, pinned)
+    doc = await knowledge_service.set_pinned(session, doc_id, ctx.user_id, pinned)
     if doc is None:
         raise HTTPException(status_code=404, detail="doc not found")
     return _serialize(doc)
@@ -97,9 +100,9 @@ async def toggle_pin(
 async def delete_knowledge(
     agent_id: uuid.UUID,
     doc_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    ok = await knowledge_service.delete_doc(session, doc_id, user.id)
+    ok = await knowledge_service.delete_doc(session, doc_id, ctx.user_id)
     if not ok:
         raise HTTPException(status_code=404, detail="doc not found")

@@ -132,10 +132,16 @@ class MCPRegistry:
         self,
         *,
         user_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
         conversation_id: Optional[uuid.UUID] = None,
         agent_id: Optional[uuid.UUID] = None,
     ) -> list[ToolHandle]:
-        token = mint_token(user_id=user_id, conversation_id=conversation_id, agent_id=agent_id)
+        token = mint_token(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            conversation_id=conversation_id,
+            agent_id=agent_id,
+        )
         out: list[ToolHandle] = []
         for client in self._servers.values():
             try:
@@ -170,13 +176,19 @@ class MCPRegistry:
         wire_name: str,
         arguments: dict[str, Any],
         user_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
         conversation_id: Optional[uuid.UUID] = None,
         agent_id: Optional[uuid.UUID] = None,
     ) -> dict[str, Any]:
         # Pass agent_id so per-agent tools (search_knowledge_base) can
         # scope their results. Without this, MCP-side ctx.agent_id is
         # None and the knowledge tool refuses.
-        token = mint_token(user_id=user_id, conversation_id=conversation_id, agent_id=agent_id)
+        token = mint_token(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            conversation_id=conversation_id,
+            agent_id=agent_id,
+        )
 
         # Happy path: namespaced name (server__tool).
         if "__" in wire_name:

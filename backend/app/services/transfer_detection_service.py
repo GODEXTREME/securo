@@ -10,7 +10,7 @@ from app.models.transaction import Transaction
 
 async def detect_transfer_pairs(
     session: AsyncSession,
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     candidate_ids: Optional[list[uuid.UUID]] = None,
     date_tolerance_days: int = 2,
 ) -> int:
@@ -27,7 +27,7 @@ async def detect_transfer_pairs(
     """
     # Load candidate debits — filtered to candidate_ids when provided
     debit_query = select(Transaction).where(
-        Transaction.user_id == user_id,
+        Transaction.workspace_id == workspace_id,
         Transaction.type == "debit",
         Transaction.transfer_pair_id.is_(None),
         Transaction.source != "opening_balance",
@@ -42,7 +42,7 @@ async def detect_transfer_pairs(
     # match new credits (the reverse direction).
     if candidate_ids:
         reverse_debit_query = select(Transaction).where(
-            Transaction.user_id == user_id,
+            Transaction.workspace_id == workspace_id,
             Transaction.type == "debit",
             Transaction.transfer_pair_id.is_(None),
             Transaction.source != "opening_balance",
@@ -60,7 +60,7 @@ async def detect_transfer_pairs(
 
     # Load all unpaired credits for the user (potential partners)
     credit_query = select(Transaction).where(
-        Transaction.user_id == user_id,
+        Transaction.workspace_id == workspace_id,
         Transaction.type == "credit",
         Transaction.transfer_pair_id.is_(None),
         Transaction.source != "opening_balance",
@@ -124,13 +124,13 @@ async def detect_transfer_pairs(
 
 async def unlink_transfer_pair(
     session: AsyncSession,
-    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
     pair_id: uuid.UUID,
 ) -> int:
     """Remove a transfer pair link. Returns number of transactions unlinked."""
     result = await session.execute(
         select(Transaction).where(
-            Transaction.user_id == user_id,
+            Transaction.workspace_id == workspace_id,
             Transaction.transfer_pair_id == pair_id,
         )
     )

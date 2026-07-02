@@ -9,18 +9,19 @@ import {
 } from '@/components/ui/dialog'
 import { Building2 } from 'lucide-react'
 
-interface Provider {
+export interface Provider {
   name: string
   display_name: string
   description: string
   flow_type: string
   configured: boolean
+  requires_institution_select?: boolean
 }
 
 interface ConnectorSelectDialogProps {
   open: boolean
   onClose: () => void
-  onSelect: (providerName: string) => void
+  onSelect: (provider: Provider) => void
 }
 
 export function ConnectorSelectDialog({ open, onClose, onSelect }: ConnectorSelectDialogProps) {
@@ -62,7 +63,7 @@ export function ConnectorSelectDialog({ open, onClose, onSelect }: ConnectorSele
                 key={p.name}
                 disabled={!p.configured}
                 onClick={() => {
-                  onSelect(p.name)
+                  onSelect(p)
                   onClose()
                 }}
                 className={`w-full flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${

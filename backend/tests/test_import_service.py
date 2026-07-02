@@ -547,6 +547,22 @@ class TestParseQif:
         assert len(transactions) == 1
         assert transactions[0].description == "Valid"
 
+    def test_parse_qif_windows_1252_encoding(self):
+        """QIF with accented characters encoded in Windows-1252 (Microsoft Money)."""
+        qif_text = (
+            "D01/10/2026\n"
+            "T-300.00\n"
+            "PPagamento cartão\n"
+            "MCompra em São Paulo\n"
+            "^\n"
+        )
+        transactions = parse_qif(qif_text.encode("cp1252"))
+
+        assert len(transactions) == 1
+        assert transactions[0].description == "Pagamento cartão"
+        assert transactions[0].amount == Decimal("300.00")
+        assert transactions[0].type == "debit"
+
     def test_parse_qif_comma_in_amount(self):
         """QIF amounts with comma thousands separator."""
         qif_content = (
@@ -1012,7 +1028,7 @@ class TestImportTransactionsFx:
 
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
-    async def test_import_with_fx_rate_from_csv(self, mock_provider, session: AsyncSession, test_user: User, test_account: Account):
+    async def test_import_with_fx_rate_from_csv(self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account):
         """When CSV provides fx_rate, it should be used directly without calling FX service."""
         from app.schemas.transaction import TransactionImport
         from app.models.transaction import Transaction
@@ -1030,7 +1046,7 @@ class TestImportTransactionsFx:
         ]
 
         imported, skipped, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, txns, "csv",
+            session, test_workspace.id, test_user.id, test_account.id, txns, "csv",
         )
 
         assert imported == 1
@@ -1052,7 +1068,7 @@ class TestImportTransactionsFx:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_import_foreign_currency_without_fx_rate_auto_converts(
-        self, mock_provider, session: AsyncSession, test_user: User, test_account: Account,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """When no fx_rate is provided, stamp_primary_amount should auto-convert using DB rates."""
         from app.schemas.transaction import TransactionImport
@@ -1078,7 +1094,7 @@ class TestImportTransactionsFx:
         ]
 
         imported, _, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, txns, "csv",
+            session, test_workspace.id, test_user.id, test_account.id, txns, "csv",
         )
 
         assert imported == 1
@@ -1096,7 +1112,7 @@ class TestImportTransactionsFx:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_import_uses_account_currency_as_default(
-        self, mock_provider, session: AsyncSession, test_user: User,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace,
     ):
         """When transaction has no currency, the account's currency should be used."""
         from app.schemas.transaction import TransactionImport
@@ -1133,7 +1149,7 @@ class TestImportTransactionsFx:
         ]
 
         imported, _, _, _ = await import_transactions(
-            session, test_user.id, usd_account.id, txns, "csv",
+            session, test_workspace.id, test_user.id, usd_account.id, txns, "csv",
         )
 
         assert imported == 1
@@ -1148,7 +1164,7 @@ class TestImportTransactionsFx:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_import_brl_into_brl_account_no_fx(
-        self, mock_provider, session: AsyncSession, test_user: User, test_account: Account,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """Importing BRL transactions into a BRL account should not trigger FX conversion."""
         from app.schemas.transaction import TransactionImport
@@ -1166,7 +1182,7 @@ class TestImportTransactionsFx:
         ]
 
         imported, _, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, txns, "csv",
+            session, test_workspace.id, test_user.id, test_account.id, txns, "csv",
         )
 
         assert imported == 1
@@ -1186,7 +1202,7 @@ class TestImportTransactionsFx:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_import_csv_currency_overrides_account_currency(
-        self, mock_provider, session: AsyncSession, test_user: User, test_account: Account,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """CSV-provided currency should take priority over account currency."""
         from app.schemas.transaction import TransactionImport
@@ -1210,7 +1226,7 @@ class TestImportTransactionsFx:
         ]
 
         imported, _, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, txns, "csv",
+            session, test_workspace.id, test_user.id, test_account.id, txns, "csv",
         )
 
         assert imported == 1
@@ -1356,7 +1372,7 @@ class TestImportTransactionsWithCategory:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_known_category_name_resolved_to_id(
-        self, mock_provider, session: AsyncSession, test_user: User, test_account: Account,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """When category_name matches a user category, category_id should be set."""
         from app.models.category import Category
@@ -1380,7 +1396,7 @@ class TestImportTransactionsWithCategory:
         )]
 
         imported, skipped, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, txns, "import",
+            session, test_workspace.id, test_user.id, test_account.id, txns, "import",
         )
 
         assert imported == 1
@@ -1394,7 +1410,7 @@ class TestImportTransactionsWithCategory:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_unknown_category_name_leaves_uncategorized(
-        self, mock_provider, session: AsyncSession, test_user: User, test_account: Account,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """When category_name has no match, category_id should be None."""
         from app.schemas.transaction import TransactionImport
@@ -1410,7 +1426,7 @@ class TestImportTransactionsWithCategory:
         )]
 
         imported, _, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, txns, "import",
+            session, test_workspace.id, test_user.id, test_account.id, txns, "import",
         )
 
         assert imported == 1
@@ -1423,7 +1439,7 @@ class TestImportTransactionsWithCategory:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_no_category_name_leaves_uncategorized(
-        self, mock_provider, session: AsyncSession, test_user: User, test_account: Account,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """When category_name is None, category_id should be None."""
         from app.schemas.transaction import TransactionImport
@@ -1438,7 +1454,7 @@ class TestImportTransactionsWithCategory:
         )]
 
         imported, _, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, txns, "import",
+            session, test_workspace.id, test_user.id, test_account.id, txns, "import",
         )
 
         assert imported == 1
@@ -1451,7 +1467,7 @@ class TestImportTransactionsWithCategory:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_multiple_categories_resolved_correctly(
-        self, mock_provider, session: AsyncSession, test_user: User, test_account: Account,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """Multiple transactions with different categories should each resolve correctly."""
         from app.models.category import Category
@@ -1496,7 +1512,7 @@ class TestImportTransactionsWithCategory:
         ]
 
         imported, skipped, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, txns, "import",
+            session, test_workspace.id, test_user.id, test_account.id, txns, "import",
         )
 
         assert imported == 3
@@ -1519,7 +1535,7 @@ class TestImportTransactionsWithCategory:
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_end_to_end_parse_and_import_with_type_and_category(
-        self, mock_provider, session: AsyncSession, test_user: User, test_account: Account,
+        self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """Full flow: parse_csv reads type+category columns, import_transactions resolves them."""
         from app.models.category import Category
@@ -1551,7 +1567,7 @@ class TestImportTransactionsWithCategory:
         assert transactions[1].category_name == "Moradia"
 
         imported, skipped, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, transactions, "import",
+            session, test_workspace.id, test_user.id, test_account.id, transactions, "import",
         )
 
         assert imported == 2
@@ -1577,7 +1593,7 @@ class TestOfxInstallmentDedup:
 
     @pytest.mark.asyncio
     async def test_same_external_id_different_dates_both_imported(
-        self, session: AsyncSession, test_user: User, test_account: Account,
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         from app.schemas.transaction import TransactionImport
         from app.models.transaction import Transaction
@@ -1593,7 +1609,7 @@ class TestOfxInstallmentDedup:
             ),
         ]
         imported, skipped, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, first, "ofx",
+            session, test_workspace.id, test_user.id, test_account.id, first, "ofx",
         )
         assert imported == 1
         assert skipped == 0
@@ -1608,7 +1624,7 @@ class TestOfxInstallmentDedup:
             ),
         ]
         imported2, skipped2, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, second, "ofx",
+            session, test_workspace.id, test_user.id, test_account.id, second, "ofx",
         )
         assert imported2 == 1
         assert skipped2 == 0
@@ -1621,7 +1637,7 @@ class TestOfxInstallmentDedup:
 
     @pytest.mark.asyncio
     async def test_same_external_id_same_date_dedups(
-        self, session: AsyncSession, test_user: User, test_account: Account,
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         """Re-importing the same OFX file must still dedup — same FITID + same
         date is the strict duplicate case."""
@@ -1634,9 +1650,9 @@ class TestOfxInstallmentDedup:
             type="debit",
             external_id="DEDUP_ME",
         )
-        await import_transactions(session, test_user.id, test_account.id, [txn], "ofx")
+        await import_transactions(session, test_workspace.id, test_user.id, test_account.id, [txn], "ofx")
         imported, skipped, _, _ = await import_transactions(
-            session, test_user.id, test_account.id, [txn], "ofx",
+            session, test_workspace.id, test_user.id, test_account.id, [txn], "ofx",
         )
         assert imported == 0
         assert skipped == 1
@@ -1645,7 +1661,7 @@ class TestOfxInstallmentDedup:
 class TestCsvDuplicateDetectionToggle:
     @pytest.mark.asyncio
     async def test_csv_detect_duplicates_false_allows_duplicates(
-        self, session: AsyncSession, test_user: User, test_account: Account,
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         from app.schemas.transaction import TransactionImport
 
@@ -1658,6 +1674,7 @@ class TestCsvDuplicateDetectionToggle:
 
         await import_transactions(
             session,
+            test_workspace.id,
             test_user.id,
             test_account.id,
             [txn],
@@ -1667,6 +1684,7 @@ class TestCsvDuplicateDetectionToggle:
         )
         imported, skipped, _, _ = await import_transactions(
             session,
+            test_workspace.id,
             test_user.id,
             test_account.id,
             [txn],
@@ -1679,7 +1697,7 @@ class TestCsvDuplicateDetectionToggle:
 
     @pytest.mark.asyncio
     async def test_non_csv_ignores_toggle_and_still_dedups(
-        self, session: AsyncSession, test_user: User, test_account: Account,
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
     ):
         from app.schemas.transaction import TransactionImport
 
@@ -1693,6 +1711,7 @@ class TestCsvDuplicateDetectionToggle:
 
         await import_transactions(
             session,
+            test_workspace.id,
             test_user.id,
             test_account.id,
             [txn],
@@ -1702,6 +1721,7 @@ class TestCsvDuplicateDetectionToggle:
         )
         imported, skipped, _, _ = await import_transactions(
             session,
+            test_workspace.id,
             test_user.id,
             test_account.id,
             [txn],
@@ -1716,7 +1736,7 @@ class TestCsvDuplicateDetectionToggle:
 class TestApplyRuleEngineCorrectly:
     @pytest.mark.asyncio
     async def test_should_not_override_category(
-        self, session: AsyncSession, test_user: User, test_account: Account
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account
     ):
         from app.schemas.transaction import TransactionImport
         from app.schemas.rule import RuleCreate, RuleCondition, RuleAction
@@ -1734,7 +1754,7 @@ class TestApplyRuleEngineCorrectly:
             actions=[RuleAction(op="set_category", value=str(test_categories[2].id))],
             priority=10,
         )
-        await create_rule(session, test_user.id, data)
+        await create_rule(session, test_workspace.id, test_user.id, data)
 
         txn = TransactionImport(
             description="NOOVERRIDE",
@@ -1746,6 +1766,7 @@ class TestApplyRuleEngineCorrectly:
 
         imported, _, _, import_log_id = await import_transactions(
             session,
+            test_workspace.id,
             test_user.id,
             test_account.id,
             [txn],
@@ -1763,7 +1784,7 @@ class TestApplyRuleEngineCorrectly:
     
     @pytest.mark.asyncio
     async def test_should_set_category_from_rule_when_no_suggested(
-        self, session: AsyncSession, test_user: User, test_account: Account
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account
     ):
         from app.schemas.transaction import TransactionImport
         from app.schemas.rule import RuleCreate, RuleCondition, RuleAction
@@ -1781,7 +1802,7 @@ class TestApplyRuleEngineCorrectly:
             priority=10,
         )
 
-        await create_rule(session, test_user.id, data)
+        await create_rule(session, test_workspace.id, test_user.id, data)
 
         txn = TransactionImport(
             description="SETCAT",
@@ -1793,6 +1814,7 @@ class TestApplyRuleEngineCorrectly:
 
         imported, _, _, import_log_id = await import_transactions(
             session,
+            test_workspace.id,
             test_user.id,
             test_account.id,
             [txn],
@@ -1811,7 +1833,7 @@ class TestApplyRuleEngineCorrectly:
     
     @pytest.mark.asyncio
     async def test_should_set_payee_but_not_override_category(
-        self, session: AsyncSession, test_user: User, test_account: Account
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account
     ):
         from app.models.payee import Payee
         from app.schemas.transaction import TransactionImport
@@ -1847,8 +1869,8 @@ class TestApplyRuleEngineCorrectly:
             actions=[RuleAction(op="set_payee", value=str(payee.id))],
             priority=10,
         )
-        await create_rule(session, test_user.id, data)
-        await create_rule(session, test_user.id, cat_rule)
+        await create_rule(session, test_workspace.id, test_user.id, data)
+        await create_rule(session, test_workspace.id, test_user.id, cat_rule)
 
 
         txn = TransactionImport(
@@ -1860,6 +1882,7 @@ class TestApplyRuleEngineCorrectly:
         )
         imported, _, _, import_log_id = await import_transactions(
             session,
+            test_workspace.id,
             test_user.id,
             test_account.id,
             [txn],
@@ -1883,7 +1906,7 @@ class TestForceUncategorized:
 
     @pytest.mark.asyncio
     async def test_force_uncategorized_ignores_suggestion(
-        self, session: AsyncSession, test_user: User, test_account: Account
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account
     ):
         from app.schemas.transaction import TransactionImport
         from app.models.transaction import Transaction
@@ -1907,7 +1930,7 @@ class TestForceUncategorized:
         )
 
         imported, _, _, import_log_id = await import_transactions(
-            session, test_user.id, test_account.id, [txn], "import",
+            session, test_workspace.id, test_user.id, test_account.id, [txn], "import",
         )
 
         assert imported == 1
@@ -1919,7 +1942,7 @@ class TestForceUncategorized:
 
     @pytest.mark.asyncio
     async def test_force_uncategorized_prevents_rule_override(
-        self, session: AsyncSession, test_user: User, test_account: Account
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account
     ):
         from app.schemas.transaction import TransactionImport
         from app.models.transaction import Transaction
@@ -1937,7 +1960,7 @@ class TestForceUncategorized:
             actions=[RuleAction(op="set_category", value=str(test_categories[1].id))],
             priority=10,
         )
-        await create_rule(session, test_user.id, data)
+        await create_rule(session, test_workspace.id, test_user.id, data)
 
         txn = TransactionImport(
             description="FORCED NO CAT",
@@ -1949,7 +1972,7 @@ class TestForceUncategorized:
         )
 
         imported, _, _, import_log_id = await import_transactions(
-            session, test_user.id, test_account.id, [txn], "import",
+            session, test_workspace.id, test_user.id, test_account.id, [txn], "import",
         )
 
         assert imported == 1
@@ -1961,7 +1984,7 @@ class TestForceUncategorized:
 
     @pytest.mark.asyncio
     async def test_force_uncategorized_still_applies_payee_rules(
-        self, session: AsyncSession, test_user: User, test_account: Account
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account
     ):
         from app.models.payee import Payee
         from app.schemas.transaction import TransactionImport
@@ -1993,7 +2016,7 @@ class TestForceUncategorized:
             ],
             priority=10,
         )
-        await create_rule(session, test_user.id, data)
+        await create_rule(session, test_workspace.id, test_user.id, data)
 
         txn = TransactionImport(
             description="PAYEEFORCE TXN",
@@ -2005,7 +2028,7 @@ class TestForceUncategorized:
         )
 
         imported, _, _, import_log_id = await import_transactions(
-            session, test_user.id, test_account.id, [txn], "import",
+            session, test_workspace.id, test_user.id, test_account.id, [txn], "import",
         )
 
         assert imported == 1
@@ -2018,7 +2041,7 @@ class TestForceUncategorized:
 
     @pytest.mark.asyncio
     async def test_without_force_uncategorized_suggestion_is_used(
-        self, session: AsyncSession, test_user: User, test_account: Account
+        self, session: AsyncSession, test_user: User, test_workspace, test_account: Account
     ):
         from app.schemas.transaction import TransactionImport
         from app.models.transaction import Transaction
@@ -2041,7 +2064,7 @@ class TestForceUncategorized:
         )
 
         imported, _, _, import_log_id = await import_transactions(
-            session, test_user.id, test_account.id, [txn], "import",
+            session, test_workspace.id, test_user.id, test_account.id, [txn], "import",
         )
 
         assert imported == 1

@@ -39,12 +39,13 @@ def _validate_file(filename: str, content_type: str, size: int) -> None:
         raise ValueError(f"File type '.{ext}' is not allowed. Allowed: {', '.join(sorted(allowed))}")
 
 
-async def _verify_transaction_ownership(
-    session: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID
+async def _verify_transaction_in_workspace(
+    session: AsyncSession, transaction_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> Transaction:
     result = await session.execute(
         select(Transaction).where(
-            Transaction.id == transaction_id, Transaction.user_id == user_id
+            Transaction.id == transaction_id,
+            Transaction.workspace_id == workspace_id,
         )
     )
     transaction = result.scalar_one_or_none()
@@ -55,6 +56,7 @@ async def _verify_transaction_ownership(
 
 async def upload_attachment(
     session: AsyncSession,
+    workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     transaction_id: uuid.UUID,
     filename: str,
@@ -63,13 +65,13 @@ async def upload_attachment(
 ) -> TransactionAttachment:
     filename = sanitize_filename(filename)
     _validate_file(filename, content_type, len(data))
-    await _verify_transaction_ownership(session, transaction_id, user_id)
+    await _verify_transaction_in_workspace(session, transaction_id, workspace_id)
 
     settings = get_settings()
     count_result = await session.execute(
         select(func.count()).where(
             TransactionAttachment.transaction_id == transaction_id,
-            TransactionAttachment.user_id == user_id,
+            TransactionAttachment.workspace_id == workspace_id,
         )
     )
     current_count = count_result.scalar_one()
@@ -79,12 +81,13 @@ async def upload_attachment(
         )
 
     prefix = uuid.uuid4().hex[:8]
-    storage_key = f"{user_id}/{transaction_id}/{prefix}_{filename}"
+    storage_key = f"{workspace_id}/{transaction_id}/{prefix}_{filename}"
 
     storage = get_storage_provider()
     stored = await storage.upload(storage_key, data, content_type)
 
     attachment = TransactionAttachment(
+        workspace_id=workspace_id,
         user_id=user_id,
         transaction_id=transaction_id,
         filename=filename,
@@ -99,14 +102,14 @@ async def upload_attachment(
 
 
 async def list_attachments(
-    session: AsyncSession, user_id: uuid.UUID, transaction_id: uuid.UUID
+    session: AsyncSession, workspace_id: uuid.UUID, transaction_id: uuid.UUID
 ) -> list[TransactionAttachment]:
-    await _verify_transaction_ownership(session, transaction_id, user_id)
+    await _verify_transaction_in_workspace(session, transaction_id, workspace_id)
     result = await session.execute(
         select(TransactionAttachment)
         .where(
             TransactionAttachment.transaction_id == transaction_id,
-            TransactionAttachment.user_id == user_id,
+            TransactionAttachment.workspace_id == workspace_id,
         )
         .order_by(TransactionAttachment.created_at)
     )
@@ -114,11 +117,12 @@ async def list_attachments(
 
 
 async def download_attachment(
-    session: AsyncSession, attachment_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, attachment_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> tuple[TransactionAttachment, bytes]:
     result = await session.execute(
         select(TransactionAttachment).where(
-            TransactionAttachment.id == attachment_id, TransactionAttachment.user_id == user_id
+            TransactionAttachment.id == attachment_id,
+            TransactionAttachment.workspace_id == workspace_id,
         )
     )
     attachment = result.scalar_one_or_none()
@@ -131,7 +135,10 @@ async def download_attachment(
 
 
 async def rename_attachment(
-    session: AsyncSession, attachment_id: uuid.UUID, user_id: uuid.UUID, new_filename: str
+    session: AsyncSession,
+    attachment_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    new_filename: str,
 ) -> TransactionAttachment:
     new_filename = sanitize_filename(new_filename)
     if not new_filename:
@@ -139,7 +146,8 @@ async def rename_attachment(
 
     result = await session.execute(
         select(TransactionAttachment).where(
-            TransactionAttachment.id == attachment_id, TransactionAttachment.user_id == user_id
+            TransactionAttachment.id == attachment_id,
+            TransactionAttachment.workspace_id == workspace_id,
         )
     )
     attachment = result.scalar_one_or_none()
@@ -184,11 +192,12 @@ async def cleanup_attachment_files(
 
 
 async def delete_attachment(
-    session: AsyncSession, attachment_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, attachment_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> None:
     result = await session.execute(
         select(TransactionAttachment).where(
-            TransactionAttachment.id == attachment_id, TransactionAttachment.user_id == user_id
+            TransactionAttachment.id == attachment_id,
+            TransactionAttachment.workspace_id == workspace_id,
         )
     )
     attachment = result.scalar_one_or_none()

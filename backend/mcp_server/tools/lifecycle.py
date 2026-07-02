@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import asset_service, budget_service, goal_service, recurring_transaction_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
-from mcp_server.tools._helpers import num, parse_date
+from mcp_server.tools._helpers import num, parse_date, resolve_workspace_id
 
 
 @tool(
@@ -31,7 +31,8 @@ from mcp_server.tools._helpers import num, parse_date
 async def list_recurring_transactions(
     *, session: AsyncSession, ctx: CallContext
 ) -> dict[str, Any]:
-    rows = await recurring_transaction_service.get_recurring_transactions(session, ctx.user_id)
+    ws_id = await resolve_workspace_id(session, ctx)
+    rows = await recurring_transaction_service.get_recurring_transactions(session, ws_id)
     items = [
         {
             "id": str(r.id),
@@ -72,7 +73,8 @@ async def list_recurring_transactions(
 async def list_assets(
     *, session: AsyncSession, ctx: CallContext, include_archived: bool = False
 ) -> dict[str, Any]:
-    rows = await asset_service.get_assets(session, ctx.user_id, include_archived=include_archived)
+    ws_id = await resolve_workspace_id(session, ctx)
+    rows = await asset_service.get_assets(session, ws_id, include_archived=include_archived)
     items: list[dict[str, Any]] = []
     for r in rows:
         d = r.model_dump(mode="json") if hasattr(r, "model_dump") else dict(r.__dict__)
@@ -110,7 +112,8 @@ async def list_assets(
 async def list_goals(
     *, session: AsyncSession, ctx: CallContext, status: str | None = None
 ) -> dict[str, Any]:
-    rows = await goal_service.get_goals(session, ctx.user_id, status=status)
+    ws_id = await resolve_workspace_id(session, ctx)
+    rows = await goal_service.get_goals(session, ws_id, ctx.user_id, status=status)
     items: list[dict[str, Any]] = []
     for r in rows:
         d = r.model_dump(mode="json") if hasattr(r, "model_dump") else dict(r.__dict__)
@@ -147,7 +150,8 @@ async def list_budgets(
     *, session: AsyncSession, ctx: CallContext, month: str | None = None
 ) -> dict[str, Any]:
     target = parse_date(month)
-    rows = await budget_service.get_budgets(session, ctx.user_id, month=target)
+    ws_id = await resolve_workspace_id(session, ctx)
+    rows = await budget_service.get_budgets(session, ws_id, month=target)
     items = [
         {
             "id": str(b.id),

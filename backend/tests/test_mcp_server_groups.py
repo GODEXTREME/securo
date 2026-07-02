@@ -39,7 +39,7 @@ async def test_list_groups_serializes_group_with_members(session, test_user, mon
         ],
     )
 
-    async def fake_list_groups(s, uid, *, include_archived):
+    async def fake_list_groups(s, ws_id, uid, *, include_archived):
         assert uid == test_user.id
         assert include_archived is True
         return [fake_group]
@@ -73,7 +73,7 @@ async def test_list_groups_handles_missing_members(session, test_user, monkeypat
         members=None,
     )
 
-    async def fake(s, uid, *, include_archived):
+    async def fake(s, ws_id, uid, *, include_archived):
         return [fake_group]
 
     monkeypatch.setattr(groups_tool.group_service, "list_groups", fake)
@@ -85,7 +85,7 @@ async def test_list_groups_handles_missing_members(session, test_user, monkeypat
 async def test_list_groups_defaults_include_archived_false(session, test_user, monkeypatch):
     captured = {}
 
-    async def fake(s, uid, *, include_archived):
+    async def fake(s, ws_id, uid, *, include_archived):
         captured["include_archived"] = include_archived
         return []
 
@@ -98,7 +98,7 @@ async def test_list_groups_defaults_include_archived_false(session, test_user, m
 
 @pytest.mark.asyncio
 async def test_get_group_balances_returns_error_when_group_missing(session, test_user, monkeypatch):
-    async def fake_compute(s, gid, uid):
+    async def fake_compute(s, gid, ws_id, uid):
         return None  # service signals not-visible/not-found via None
     monkeypatch.setattr(groups_tool.balance_service, "compute_balances", fake_compute)
 
@@ -123,7 +123,7 @@ async def test_get_group_balances_resolves_member_names(session, test_user, monk
     session.add_all([g, me, them])
     await session.commit()
 
-    async def fake_compute(s, gid, uid):
+    async def fake_compute(s, gid, ws_id, uid):
         assert gid == g.id
         return {
             "group_id": g.id,
@@ -158,7 +158,7 @@ async def test_get_group_balances_handles_none_self_member(session, test_user, m
     must serialize that as null, not crash."""
     gid = uuid.uuid4()
 
-    async def fake_compute(s, g, u):
+    async def fake_compute(s, g, ws_id, u):
         return {
             "group_id": gid, "self_member_id": None, "default_currency": "BRL",
             "lines": [],
@@ -174,7 +174,7 @@ async def test_get_group_balances_handles_none_self_member(session, test_user, m
 
 @pytest.mark.asyncio
 async def test_list_group_settlements_returns_error_when_group_missing(session, test_user, monkeypatch):
-    async def fake_list(s, gid, uid):
+    async def fake_list(s, gid, ws_id, uid):
         return None
     monkeypatch.setattr(groups_tool.settlement_service, "list_settlements", fake_list)
 
@@ -209,7 +209,7 @@ async def test_list_group_settlements_serializes_rows(session, test_user, monkey
         transaction_id=None,  # exercise the None-txn branch
     )
 
-    async def fake(s, gid, uid):
+    async def fake(s, gid, ws_id, uid):
         return [s1, s2]
     monkeypatch.setattr(groups_tool.settlement_service, "list_settlements", fake)
 

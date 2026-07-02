@@ -20,6 +20,12 @@ class AgentSettings(BaseSettings):
     mcp_jwt_secret: str = "change-me-in-production"
     mcp_jwt_ttl_seconds: int = 600
 
+    # TTL for long-lived tokens minted via the UI for external agents
+    # (Claude Desktop, n8n, custom clients). The feature itself follows
+    # `enabled` — if agents are on, the mint endpoint is mounted and the
+    # mcp-server container publishes port 8765.
+    mcp_external_ttl_days: int = 90
+
     # Embedding dimension for the knowledge_chunks vector column. Locked at
     # migration time. 1536 covers OpenAI text-embedding-3-small (default) and
     # nomic-embed-text via Matryoshka padding/truncation.

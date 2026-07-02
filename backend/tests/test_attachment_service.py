@@ -117,21 +117,21 @@ async def txn_for_attach(session: AsyncSession, test_user, txn_account):
 # ---------------------------------------------------------------------------
 
 
-async def test_upload_attachment(session: AsyncSession, test_user, txn_for_attach):
+async def test_upload_attachment(session: AsyncSession, test_user, test_workspace, txn_for_attach):
     mock_storage = AsyncMock()
     mock_storage.upload = AsyncMock(return_value=StoredFile(
         storage_key="test/key", size=100, content_type="application/pdf",
     ))
     with patch("app.services.attachment_service.get_storage_provider", return_value=mock_storage):
         att = await upload_attachment(
-            session, test_user.id, txn_for_attach.id,
+            session, test_workspace.id, test_user.id, txn_for_attach.id,
             "receipt.pdf", "application/pdf", b"fake-data",
         )
     assert att.filename == "receipt.pdf"
     assert att.transaction_id == txn_for_attach.id
 
 
-async def test_upload_attachment_max_limit(session: AsyncSession, test_user, txn_for_attach):
+async def test_upload_attachment_max_limit(session: AsyncSession, test_user, test_workspace, txn_for_attach):
     """Exceeding max attachments per transaction raises ValueError."""
     # Pre-seed attachments up to the limit
     from app.core.config import get_settings
@@ -151,18 +151,18 @@ async def test_upload_attachment_max_limit(session: AsyncSession, test_user, txn
     with patch("app.services.attachment_service.get_storage_provider", return_value=mock_storage):
         with pytest.raises(ValueError, match="Maximum"):
             await upload_attachment(
-                session, test_user.id, txn_for_attach.id,
+                session, test_workspace.id, test_user.id, txn_for_attach.id,
                 "extra.pdf", "application/pdf", b"data",
             )
 
 
-async def test_upload_wrong_transaction(session: AsyncSession, test_user, txn_for_attach):
+async def test_upload_wrong_transaction(session: AsyncSession, test_user, test_workspace, txn_for_attach):
     """Uploading to a non-existent transaction raises LookupError."""
     mock_storage = AsyncMock()
     with patch("app.services.attachment_service.get_storage_provider", return_value=mock_storage):
         with pytest.raises(LookupError, match="not found"):
             await upload_attachment(
-                session, test_user.id, uuid.uuid4(),
+                session, test_workspace.id, test_user.id, uuid.uuid4(),
                 "file.pdf", "application/pdf", b"data",
             )
 
@@ -172,8 +172,8 @@ async def test_upload_wrong_transaction(session: AsyncSession, test_user, txn_fo
 # ---------------------------------------------------------------------------
 
 
-async def test_list_attachments_empty(session: AsyncSession, test_user, txn_for_attach):
-    result = await list_attachments(session, test_user.id, txn_for_attach.id)
+async def test_list_attachments_empty(session: AsyncSession, test_user, test_workspace, txn_for_attach):
+    result = await list_attachments(session, test_workspace.id, txn_for_attach.id)
     assert result == []
 
 
@@ -182,7 +182,7 @@ async def test_list_attachments_empty(session: AsyncSession, test_user, txn_for_
 # ---------------------------------------------------------------------------
 
 
-async def test_download_attachment(session: AsyncSession, test_user, txn_for_attach):
+async def test_download_attachment(session: AsyncSession, test_user, test_workspace, txn_for_attach):
     att = TransactionAttachment(
         id=uuid.uuid4(), user_id=test_user.id, transaction_id=txn_for_attach.id,
         filename="dl.pdf", storage_key="dl/key", content_type="application/pdf", size=5,
@@ -193,14 +193,14 @@ async def test_download_attachment(session: AsyncSession, test_user, txn_for_att
     mock_storage = AsyncMock()
     mock_storage.download = AsyncMock(return_value=b"pdf-bytes")
     with patch("app.services.attachment_service.get_storage_provider", return_value=mock_storage):
-        result_att, data = await download_attachment(session, att.id, test_user.id)
+        result_att, data = await download_attachment(session, att.id, test_workspace.id)
     assert data == b"pdf-bytes"
     assert result_att.filename == "dl.pdf"
 
 
-async def test_download_attachment_not_found(session: AsyncSession, test_user):
+async def test_download_attachment_not_found(session: AsyncSession, test_user, test_workspace):
     with pytest.raises(LookupError, match="not found"):
-        await download_attachment(session, uuid.uuid4(), test_user.id)
+        await download_attachment(session, uuid.uuid4(), test_workspace.id)
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +208,7 @@ async def test_download_attachment_not_found(session: AsyncSession, test_user):
 # ---------------------------------------------------------------------------
 
 
-async def test_rename_preserves_extension(session: AsyncSession, test_user, txn_for_attach):
+async def test_rename_preserves_extension(session: AsyncSession, test_user, test_workspace, txn_for_attach):
     att = TransactionAttachment(
         id=uuid.uuid4(), user_id=test_user.id, transaction_id=txn_for_attach.id,
         filename="original.pdf", storage_key="ren/key", content_type="application/pdf", size=5,
@@ -216,12 +216,12 @@ async def test_rename_preserves_extension(session: AsyncSession, test_user, txn_
     session.add(att)
     await session.commit()
 
-    result = await rename_attachment(session, att.id, test_user.id, "newname.txt")
+    result = await rename_attachment(session, att.id, test_workspace.id, "newname.txt")
     # Original extension .pdf should be preserved
     assert result.filename == "newname.pdf"
 
 
-async def test_rename_same_extension(session: AsyncSession, test_user, txn_for_attach):
+async def test_rename_same_extension(session: AsyncSession, test_user, test_workspace, txn_for_attach):
     att = TransactionAttachment(
         id=uuid.uuid4(), user_id=test_user.id, transaction_id=txn_for_attach.id,
         filename="doc.pdf", storage_key="ren2/key", content_type="application/pdf", size=5,
@@ -229,13 +229,13 @@ async def test_rename_same_extension(session: AsyncSession, test_user, txn_for_a
     session.add(att)
     await session.commit()
 
-    result = await rename_attachment(session, att.id, test_user.id, "renamed.pdf")
+    result = await rename_attachment(session, att.id, test_workspace.id, "renamed.pdf")
     assert result.filename == "renamed.pdf"
 
 
-async def test_rename_not_found(session: AsyncSession, test_user):
+async def test_rename_not_found(session: AsyncSession, test_user, test_workspace):
     with pytest.raises(LookupError, match="not found"):
-        await rename_attachment(session, uuid.uuid4(), test_user.id, "x.pdf")
+        await rename_attachment(session, uuid.uuid4(), test_workspace.id, "x.pdf")
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +243,7 @@ async def test_rename_not_found(session: AsyncSession, test_user):
 # ---------------------------------------------------------------------------
 
 
-async def test_delete_attachment(session: AsyncSession, test_user, txn_for_attach):
+async def test_delete_attachment(session: AsyncSession, test_user, test_workspace, txn_for_attach):
     att = TransactionAttachment(
         id=uuid.uuid4(), user_id=test_user.id, transaction_id=txn_for_attach.id,
         filename="del.pdf", storage_key="del/key", content_type="application/pdf", size=5,
@@ -253,15 +253,15 @@ async def test_delete_attachment(session: AsyncSession, test_user, txn_for_attac
 
     mock_storage = AsyncMock()
     with patch("app.services.attachment_service.get_storage_provider", return_value=mock_storage):
-        await delete_attachment(session, att.id, test_user.id)
+        await delete_attachment(session, att.id, test_workspace.id)
     mock_storage.delete.assert_called_once_with("del/key")
 
 
-async def test_delete_attachment_not_found(session: AsyncSession, test_user):
+async def test_delete_attachment_not_found(session: AsyncSession, test_user, test_workspace):
     mock_storage = AsyncMock()
     with patch("app.services.attachment_service.get_storage_provider", return_value=mock_storage):
         with pytest.raises(LookupError, match="not found"):
-            await delete_attachment(session, uuid.uuid4(), test_user.id)
+            await delete_attachment(session, uuid.uuid4(), test_workspace.id)
 
 
 # ---------------------------------------------------------------------------

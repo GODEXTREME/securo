@@ -13,12 +13,12 @@ from app.schemas.category_group import CategoryGroupCreate, CategoryGroupUpdate
 # Language-keyed translations for default groups
 # Keys are internal identifiers, values are {lang: display_name}
 DEFAULT_GROUPS_I18N = {
-    "housing":   {"en": "Housing",       "pt-BR": "Moradia",         "icon": "house",            "color": "#8B5CF6", "position": 0},
-    "food":      {"en": "Food & Dining", "pt-BR": "Alimentação",     "icon": "utensils-crossed", "color": "#F59E0B", "position": 1},
-    "transport":  {"en": "Transport",     "pt-BR": "Transporte",      "icon": "car",              "color": "#3B82F6", "position": 2},
-    "lifestyle": {"en": "Lifestyle",     "pt-BR": "Estilo de Vida",  "icon": "sparkles",         "color": "#EC4899", "position": 3},
-    "income":    {"en": "Income",        "pt-BR": "Renda",           "icon": "trending-up",      "color": "#16A34A", "position": 5},
-    "other":     {"en": "Other",         "pt-BR": "Outros",          "icon": "circle-help",      "color": "#64748B", "position": 4},
+    "housing":   {"ru": "Жильё", "uk": "Житло", "de": "Wohnen", "it": "Casa", "pl": "Mieszkanie", "es": "Alojamiento", "en": "Housing",       "pt-BR": "Moradia",         "icon": "house",            "color": "#8B5CF6", "position": 0},
+    "food":      {"ru": "Еда и рестораны", "uk": "Їжа та ресторани", "de": "Essen & Trinken", "it": "Cibo e Ristoranti", "pl": "Jedzenie", "es": "Comida y Cena", "en": "Food & Dining", "pt-BR": "Alimentação",     "icon": "utensils-crossed", "color": "#F59E0B", "position": 1},
+    "transport":  {"ru": "Транспорт", "uk": "Транспорт", "de": "Transport", "it": "Trasporti", "pl": "Transport", "es": "Transporte",     "en": "Transport",     "pt-BR": "Transporte",      "icon": "car",              "color": "#3B82F6", "position": 2},
+    "lifestyle": {"ru": "Образ жизни", "uk": "Спосіб життя", "de": "Lifestyle", "it": "Stile di Vita", "pl": "Styl życia", "es": "Estilo de Vida", "en": "Lifestyle",     "pt-BR": "Estilo de Vida",  "icon": "sparkles",         "color": "#EC4899", "position": 3},
+    "income":    {"ru": "Доходы", "uk": "Доходи", "de": "Einkommen", "it": "Entrate", "pl": "Przychody", "es": "Ingresos",        "en": "Income",        "pt-BR": "Renda",           "icon": "trending-up",      "color": "#16A34A", "position": 5},
+    "other":     {"ru": "Другое", "uk": "Інше", "de": "Sonstiges", "it": "Altro", "pl": "Inne", "es": "Otros",            "en": "Other",         "pt-BR": "Outros",          "icon": "circle-help",      "color": "#64748B", "position": 4},
 }
 
 # Maps category internal key -> group internal key
@@ -47,13 +47,19 @@ def _resolve_group_name(key: str, lang: str) -> str:
     return entry.get(lang, entry.get("en", key))
 
 
-async def create_default_groups(session: AsyncSession, user_id: uuid.UUID, lang: str = "pt-BR") -> dict[str, CategoryGroup]:
+async def create_default_groups(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    lang: str = "pt-BR",
+    workspace_id: Optional[uuid.UUID] = None,
+) -> dict[str, CategoryGroup]:
     """Create default category groups for a user. Returns dict of internal_key -> group. Uses flush (not commit)."""
     groups = {}
     for key, data in DEFAULT_GROUPS_I18N.items():
         name = data.get(lang, data.get("en", key))
         group = CategoryGroup(
             user_id=user_id,
+            workspace_id=workspace_id,
             name=name,
             icon=data["icon"],
             color=data["color"],
@@ -66,36 +72,41 @@ async def create_default_groups(session: AsyncSession, user_id: uuid.UUID, lang:
     return groups
 
 
-async def get_groups(session: AsyncSession, user_id: uuid.UUID) -> list[CategoryGroup]:
+async def get_groups(session: AsyncSession, workspace_id: uuid.UUID) -> list[CategoryGroup]:
     result = await session.execute(
         select(CategoryGroup)
-        .where(CategoryGroup.user_id == user_id)
+        .where(CategoryGroup.workspace_id == workspace_id)
         .options(selectinload(CategoryGroup.categories))
         .order_by(CategoryGroup.position)
     )
     return list(result.scalars().all())
 
 
-async def get_group(session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID) -> Optional[CategoryGroup]:
+async def get_group(session: AsyncSession, group_id: uuid.UUID, workspace_id: uuid.UUID) -> Optional[CategoryGroup]:
     result = await session.execute(
         select(CategoryGroup)
-        .where(CategoryGroup.id == group_id, CategoryGroup.user_id == user_id)
+        .where(CategoryGroup.id == group_id, CategoryGroup.workspace_id == workspace_id)
         .options(selectinload(CategoryGroup.categories))
     )
     return result.scalar_one_or_none()
 
 
-async def create_group(session: AsyncSession, user_id: uuid.UUID, data: CategoryGroupCreate) -> CategoryGroup:
-    group = CategoryGroup(user_id=user_id, **data.model_dump())
+async def create_group(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: CategoryGroupCreate,
+) -> CategoryGroup:
+    group = CategoryGroup(user_id=user_id, workspace_id=workspace_id, **data.model_dump())
     session.add(group)
     await session.commit()
-    return await get_group(session, group.id, user_id)
+    return await get_group(session, group.id, workspace_id)
 
 
 async def update_group(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID, data: CategoryGroupUpdate
+    session: AsyncSession, group_id: uuid.UUID, workspace_id: uuid.UUID, data: CategoryGroupUpdate
 ) -> Optional[CategoryGroup]:
-    group = await get_group(session, group_id, user_id)
+    group = await get_group(session, group_id, workspace_id)
     if not group:
         return None
 
@@ -103,11 +114,11 @@ async def update_group(
         setattr(group, key, value)
 
     await session.commit()
-    return await get_group(session, group_id, user_id)
+    return await get_group(session, group_id, workspace_id)
 
 
-async def delete_group(session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-    group = await get_group(session, group_id, user_id)
+async def delete_group(session: AsyncSession, group_id: uuid.UUID, workspace_id: uuid.UUID) -> bool:
+    group = await get_group(session, group_id, workspace_id)
     if not group or group.is_system:
         return False
 

@@ -10,8 +10,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
+from app.core.workspace_context import WorkspaceContext, current_workspace
 from app.models.account import Account
 from app.models.asset import Asset
 from app.models.asset_value import AssetValue
@@ -22,7 +22,6 @@ from app.models.import_log import ImportLog
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.rule import Rule
 from app.models.transaction import Transaction
-from app.models.user import User
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -44,23 +43,27 @@ def _serialize(obj) -> dict:
 
 @router.get("/backup")
 async def backup(
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
-    user_id = user.id
+    """Export every entity in the current workspace as a JSON zip.
 
-    # Query all entities for the current user
-    accounts = (await session.execute(select(Account).where(Account.user_id == user_id))).scalars().all()
-    transactions = (await session.execute(select(Transaction).where(Transaction.user_id == user_id))).scalars().all()
-    categories = (await session.execute(select(Category).where(Category.user_id == user_id))).scalars().all()
-    category_groups = (await session.execute(select(CategoryGroup).where(CategoryGroup.user_id == user_id))).scalars().all()
-    rules = (await session.execute(select(Rule).where(Rule.user_id == user_id))).scalars().all()
-    recurring_transactions = (await session.execute(select(RecurringTransaction).where(RecurringTransaction.user_id == user_id))).scalars().all()
-    budgets = (await session.execute(select(Budget).where(Budget.user_id == user_id))).scalars().all()
-    assets = (await session.execute(select(Asset).where(Asset.user_id == user_id))).scalars().all()
-    import_logs = (await session.execute(select(ImportLog).where(ImportLog.user_id == user_id))).scalars().all()
+    Backup is scoped to one workspace at a time — users with multiple
+    workspaces back each one up separately. AssetValue inherits its
+    workspace from its Asset and is filtered transitively.
+    """
+    ws_id = ctx.workspace.id
 
-    # AssetValue lacks user_id — filter via asset_ids
+    accounts = (await session.execute(select(Account).where(Account.workspace_id == ws_id))).scalars().all()
+    transactions = (await session.execute(select(Transaction).where(Transaction.workspace_id == ws_id))).scalars().all()
+    categories = (await session.execute(select(Category).where(Category.workspace_id == ws_id))).scalars().all()
+    category_groups = (await session.execute(select(CategoryGroup).where(CategoryGroup.workspace_id == ws_id))).scalars().all()
+    rules = (await session.execute(select(Rule).where(Rule.workspace_id == ws_id))).scalars().all()
+    recurring_transactions = (await session.execute(select(RecurringTransaction).where(RecurringTransaction.workspace_id == ws_id))).scalars().all()
+    budgets = (await session.execute(select(Budget).where(Budget.workspace_id == ws_id))).scalars().all()
+    assets = (await session.execute(select(Asset).where(Asset.workspace_id == ws_id))).scalars().all()
+    import_logs = (await session.execute(select(ImportLog).where(ImportLog.workspace_id == ws_id))).scalars().all()
+
     asset_ids = [a.id for a in assets]
     if asset_ids:
         asset_values = (await session.execute(select(AssetValue).where(AssetValue.asset_id.in_(asset_ids)))).scalars().all()
@@ -80,7 +83,6 @@ async def backup(
         "import_logs": import_logs,
     }
 
-    # Build in-memory ZIP
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         entity_counts = {}
@@ -92,6 +94,8 @@ async def backup(
         metadata = {
             "export_date": datetime.utcnow().isoformat(),
             "format_version": "1.0",
+            "workspace_id": str(ws_id),
+            "workspace_name": ctx.workspace.name,
             "entity_counts": entity_counts,
         }
         zf.writestr("metadata.json", json.dumps(metadata, indent=2, ensure_ascii=False))

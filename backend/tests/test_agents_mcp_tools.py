@@ -584,3 +584,437 @@ async def test_search_knowledge_base_requires_agent_id(
     result = await handler(session=session, ctx=bare_ctx, query="anything")
     assert "error" in result
     assert "agent_id" in result["error"]
+
+
+# --- _can_apply gate -------------------------------------------------------
+# Authorization-critical: writes must only happen when the caller is external
+# AND set apply=True. Internal callers never write through propose_* tools.
+
+def test_can_apply_truth_table(test_user):
+    from mcp_server.tools.proposals import _can_apply
+
+    internal = CallContext(user_id=test_user.id, external=False)
+    external = CallContext(user_id=test_user.id, external=True)
+
+    assert _can_apply(internal, apply=False) is False
+    assert _can_apply(internal, apply=True) is False  # internal+apply still blocked
+    assert _can_apply(external, apply=False) is False
+    assert _can_apply(external, apply=True) is True
+
+
+async def test_propose_categorize_internal_apply_does_not_write(
+    session: AsyncSession, test_user, test_transactions, test_categories
+):
+    """Internal callers (Securo's own runtime) must never mutate, even if
+    apply=True is somehow passed through."""
+    from sqlalchemy import select
+    from app.models.transaction import Transaction
+
+    handler = REGISTRY["propose_categorize"].handler
+    internal_ctx = CallContext(user_id=test_user.id, external=False)
+    tx = test_transactions[3]  # uncategorized PIX RECEBIDO
+    target = test_categories[0]
+    assert tx.category_id is None
+
+    result = await handler(
+        session=session, ctx=internal_ctx,
+        transaction_ids=[str(tx.id)],
+        category_id=str(target.id),
+        apply=True,
+    )
+    assert "applied" not in result  # preview only
+
+    refreshed = (await session.execute(
+        select(Transaction).where(Transaction.id == tx.id)
+    )).scalar_one()
+    assert refreshed.category_id is None
+
+
+async def test_propose_categorize_external_no_apply_returns_preview(
+    session: AsyncSession, test_user, test_transactions, test_categories
+):
+    """External caller without apply=True still gets a preview, no write."""
+    from sqlalchemy import select
+    from app.models.transaction import Transaction
+
+    handler = REGISTRY["propose_categorize"].handler
+    external_ctx = CallContext(user_id=test_user.id, external=True)
+    tx = test_transactions[3]
+    target = test_categories[0]
+
+    result = await handler(
+        session=session, ctx=external_ctx,
+        transaction_ids=[str(tx.id)],
+        category_id=str(target.id),
+        apply=False,
+    )
+    assert "applied" not in result
+
+    refreshed = (await session.execute(
+        select(Transaction).where(Transaction.id == tx.id)
+    )).scalar_one()
+    assert refreshed.category_id is None
+
+
+async def test_propose_categorize_external_apply_writes(
+    session: AsyncSession, test_user, test_transactions, test_categories
+):
+    """External caller with apply=True commits the change."""
+    from sqlalchemy import select
+    from app.models.transaction import Transaction
+
+    handler = REGISTRY["propose_categorize"].handler
+    external_ctx = CallContext(user_id=test_user.id, external=True)
+    tx = test_transactions[3]
+    target = test_categories[0]
+
+    result = await handler(
+        session=session, ctx=external_ctx,
+        transaction_ids=[str(tx.id)],
+        category_id=str(target.id),
+        apply=True,
+    )
+    assert result.get("applied") is True
+    assert result.get("updated_count") == 1
+
+    refreshed = (await session.execute(
+        select(Transaction).where(Transaction.id == tx.id)
+    )).scalar_one()
+    assert refreshed.category_id == target.id
+
+
+# --- Apply mode for the remaining propose_* tools --------------------------
+# One happy-path test per tool to catch regressions in the per-service write
+# wiring. The _can_apply gate is shared across all of them and is already
+# exercised by test_can_apply_truth_table + the propose_categorize trio.
+
+def test_every_propose_tool_advertises_apply_parameter():
+    """Schema contract: every propose_* tool must expose `apply` in its
+    JSON Schema so external clients can opt into write mode."""
+    for name, spec in REGISTRY.items():
+        if not name.startswith("propose_"):
+            continue
+        assert "apply" in spec.parameters["properties"], (
+            f"{name} is missing the `apply` parameter"
+        )
+        assert spec.parameters["properties"]["apply"]["type"] == "boolean"
+        assert spec.parameters["properties"]["apply"].get("default") is False
+
+
+async def test_propose_create_category_external_apply_writes(
+    session: AsyncSession, test_user
+):
+    from sqlalchemy import select
+    from app.models.category import Category
+
+    handler = REGISTRY["propose_create_category"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+
+    result = await handler(
+        session=session, ctx=ctx,
+        name="Doações", icon="heart", color="#EF4444",
+        apply=True,
+    )
+    assert result.get("applied") is True
+    new_id = uuid.UUID(result["id"])
+
+    row = (await session.execute(
+        select(Category).where(Category.id == new_id, Category.user_id == test_user.id)
+    )).scalar_one()
+    assert row.name == "Doações"
+    assert row.icon == "heart"
+
+
+async def test_propose_create_category_external_apply_blocks_collision(
+    session: AsyncSession, test_user, test_categories
+):
+    """When the name collides with an existing category, apply must NOT
+    create a duplicate — the preview already flagged it."""
+    from sqlalchemy import select, func
+    from app.models.category import Category
+
+    handler = REGISTRY["propose_create_category"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+    existing = test_categories[0]
+
+    before = (await session.execute(
+        select(func.count()).select_from(Category).where(Category.user_id == test_user.id)
+    )).scalar_one()
+
+    result = await handler(
+        session=session, ctx=ctx,
+        name=existing.name,
+        apply=True,
+    )
+    assert "applied" not in result
+    assert "error" in result
+
+    after = (await session.execute(
+        select(func.count()).select_from(Category).where(Category.user_id == test_user.id)
+    )).scalar_one()
+    assert after == before
+
+
+async def test_propose_create_budget_external_apply_writes(
+    session: AsyncSession, test_user, test_categories
+):
+    from datetime import date
+    from sqlalchemy import select
+    from app.models.budget import Budget
+
+    handler = REGISTRY["propose_create_budget"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+    cat = test_categories[0]
+
+    result = await handler(
+        session=session, ctx=ctx,
+        category_id=str(cat.id),
+        month=date.today().replace(day=1).isoformat(),
+        amount=500.0,
+        apply=True,
+    )
+    assert result.get("applied") is True
+
+    row = (await session.execute(
+        select(Budget).where(Budget.id == uuid.UUID(result["id"]))
+    )).scalar_one()
+    assert row.category_id == cat.id
+    assert float(row.amount) == 500.0
+
+
+async def test_propose_create_transaction_external_apply_writes(
+    session: AsyncSession, test_user, test_account, test_categories
+):
+    from sqlalchemy import select
+    from app.models.transaction import Transaction
+
+    handler = REGISTRY["propose_create_transaction"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+
+    result = await handler(
+        session=session, ctx=ctx,
+        description="Sushi delivery",
+        amount=78.50,
+        type="debit",
+        account_id=str(test_account.id),
+        category_id=str(test_categories[0].id),
+        apply=True,
+    )
+    assert result.get("applied") is True
+
+    row = (await session.execute(
+        select(Transaction).where(Transaction.id == uuid.UUID(result["id"]))
+    )).scalar_one()
+    assert row.description == "Sushi delivery"
+    assert float(row.amount) == 78.50
+    assert row.account_id == test_account.id
+
+
+async def test_propose_create_recurring_transaction_external_apply_writes(
+    session: AsyncSession, test_user, test_account
+):
+    from sqlalchemy import select
+    from app.models.recurring_transaction import RecurringTransaction
+
+    handler = REGISTRY["propose_create_recurring_transaction"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+
+    result = await handler(
+        session=session, ctx=ctx,
+        description="Netflix",
+        amount=55.90,
+        type="debit",
+        frequency="monthly",
+        day_of_month=10,
+        account_id=str(test_account.id),
+        apply=True,
+    )
+    assert result.get("applied") is True
+
+    row = (await session.execute(
+        select(RecurringTransaction).where(
+            RecurringTransaction.id == uuid.UUID(result["id"])
+        )
+    )).scalar_one()
+    assert row.description == "Netflix"
+    assert row.frequency == "monthly"
+    assert row.day_of_month == 10
+
+
+async def test_propose_update_recurring_transaction_external_apply_writes(
+    session: AsyncSession, test_user, test_account
+):
+    """Seed a recurring tx directly, then drive an update via apply=True."""
+    from datetime import date
+    from decimal import Decimal
+    from app.models.recurring_transaction import RecurringTransaction
+
+    rt = RecurringTransaction(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        account_id=test_account.id,
+        description="Spotify",
+        amount=Decimal("21.90"),
+        currency="BRL",
+        type="debit",
+        frequency="monthly",
+        day_of_month=15,
+        start_date=date.today(),
+        next_occurrence=date.today(),
+        is_active=True,
+    )
+    session.add(rt)
+    await session.commit()
+
+    handler = REGISTRY["propose_update_recurring_transaction"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+
+    result = await handler(
+        session=session, ctx=ctx,
+        recurring_id=str(rt.id),
+        amount=27.90,
+        apply=True,
+    )
+    assert result.get("applied") is True
+
+    await session.refresh(rt)
+    assert float(rt.amount) == 27.90
+
+
+async def test_propose_cancel_recurring_transaction_deactivate_apply(
+    session: AsyncSession, test_user, test_account
+):
+    """The default (and recommended) cancel mode flips is_active to False
+    rather than deleting the row."""
+    from datetime import date
+    from decimal import Decimal
+    from app.models.recurring_transaction import RecurringTransaction
+
+    rt = RecurringTransaction(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        account_id=test_account.id,
+        description="Old subscription",
+        amount=Decimal("10.00"),
+        currency="BRL",
+        type="debit",
+        frequency="monthly",
+        day_of_month=1,
+        start_date=date.today(),
+        next_occurrence=date.today(),
+        is_active=True,
+    )
+    session.add(rt)
+    await session.commit()
+
+    handler = REGISTRY["propose_cancel_recurring_transaction"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+
+    result = await handler(
+        session=session, ctx=ctx,
+        recurring_id=str(rt.id),
+        mode="deactivate",
+        apply=True,
+    )
+    assert result.get("applied") is True
+    assert result.get("is_active") is False
+
+    await session.refresh(rt)
+    assert rt.is_active is False
+
+
+async def test_propose_cancel_recurring_transaction_delete_apply(
+    session: AsyncSession, test_user, test_account
+):
+    """The 'delete' mode removes the row entirely."""
+    from datetime import date
+    from decimal import Decimal
+    from sqlalchemy import select
+    from app.models.recurring_transaction import RecurringTransaction
+
+    rt = RecurringTransaction(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        account_id=test_account.id,
+        description="Throwaway",
+        amount=Decimal("5.00"),
+        currency="BRL",
+        type="debit",
+        frequency="monthly",
+        day_of_month=1,
+        start_date=date.today(),
+        next_occurrence=date.today(),
+        is_active=True,
+    )
+    session.add(rt)
+    await session.commit()
+    rt_id = rt.id
+
+    handler = REGISTRY["propose_cancel_recurring_transaction"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+
+    result = await handler(
+        session=session, ctx=ctx,
+        recurring_id=str(rt_id),
+        mode="delete",
+        apply=True,
+    )
+    assert result.get("applied") is True
+    assert result.get("deleted") is True
+
+    gone = (await session.execute(
+        select(RecurringTransaction).where(RecurringTransaction.id == rt_id)
+    )).scalar_one_or_none()
+    assert gone is None
+
+
+async def test_propose_create_goal_external_apply_writes(
+    session: AsyncSession, test_user
+):
+    from sqlalchemy import select
+    from app.models.goal import Goal
+
+    handler = REGISTRY["propose_create_goal"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+
+    result = await handler(
+        session=session, ctx=ctx,
+        name="Travel fund",
+        target_amount=10000.0,
+        currency="BRL",
+        apply=True,
+    )
+    assert result.get("applied") is True
+
+    row = (await session.execute(
+        select(Goal).where(Goal.id == uuid.UUID(result["id"]))
+    )).scalar_one()
+    assert row.name == "Travel fund"
+    assert float(row.target_amount) == 10000.0
+
+
+async def test_propose_create_payee_rule_external_apply_writes(
+    session: AsyncSession, test_user, test_categories
+):
+    """The rule wrapper translates (match_pattern, category_id) into the
+    conditions/actions shape RuleCreate expects."""
+    from sqlalchemy import select
+    from app.models.rule import Rule
+
+    handler = REGISTRY["propose_create_payee_rule"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+    cat = test_categories[0]
+
+    result = await handler(
+        session=session, ctx=ctx,
+        match_pattern="UBER",
+        category_id=str(cat.id),
+        apply=True,
+    )
+    assert result.get("applied") is True
+
+    row = (await session.execute(
+        select(Rule).where(Rule.id == uuid.UUID(result["id"]))
+    )).scalar_one()
+    assert any(c.get("value") == "UBER" for c in row.conditions)
+    assert any(a.get("value") == str(cat.id) for a in row.actions)

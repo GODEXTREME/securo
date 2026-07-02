@@ -24,8 +24,17 @@ JWT_ALGO = "HS256"
 @dataclass
 class CallContext:
     user_id: uuid.UUID
+    # Workspace the tool call operates in. Populated from the JWT's
+    # `ws_id` claim when present; otherwise resolved lazily by tools to
+    # the user's default workspace (backwards-compat for tokens minted
+    # before the workspace migration).
+    workspace_id: Optional[uuid.UUID] = None
     conversation_id: Optional[uuid.UUID] = None
     agent_id: Optional[uuid.UUID] = None
+    # True when the JWT was minted for an external agent (Claude Desktop,
+    # n8n, etc.) rather than Securo's own runtime. Used for log tagging;
+    # tool authorization is identical (same user scope).
+    external: bool = False
 
 
 def _settings():
@@ -58,8 +67,11 @@ def verify_request(request: Request) -> CallContext:
 
     conv_raw = payload.get("conv_id")
     agent_raw = payload.get("agent_id")
+    ws_raw = payload.get("ws_id")
     return CallContext(
         user_id=user_id,
+        workspace_id=uuid.UUID(ws_raw) if ws_raw else None,
         conversation_id=uuid.UUID(conv_raw) if conv_raw else None,
         agent_id=uuid.UUID(agent_raw) if agent_raw else None,
+        external=bool(payload.get("ext")),
     )

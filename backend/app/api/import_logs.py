@@ -3,11 +3,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.auth import current_active_user
 from app.core.database import get_async_session
+from app.core.workspace_context import (
+    WorkspaceContext,
+    current_workspace,
+    current_writable_workspace,
+)
 from app.models.import_log import ImportLog
 from app.models.transaction import Transaction
-from app.models.user import User
 from app.schemas.import_log import ImportLogRead
 
 router = APIRouter(prefix="/api/import-logs", tags=["import-logs"])
@@ -15,13 +18,13 @@ router = APIRouter(prefix="/api/import-logs", tags=["import-logs"])
 
 @router.get("", response_model=list[ImportLogRead])
 async def list_import_logs(
+    ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     result = await session.execute(
         select(ImportLog)
         .options(joinedload(ImportLog.account))
-        .where(ImportLog.user_id == user.id)
+        .where(ImportLog.workspace_id == ctx.workspace.id)
         .order_by(ImportLog.created_at.desc())
     )
     logs = result.scalars().unique().all()
@@ -45,14 +48,16 @@ async def list_import_logs(
 @router.delete("/{import_log_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_import_log(
     import_log_id: str,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
 ):
     import uuid as _uuid
     log_id = _uuid.UUID(import_log_id)
 
     result = await session.execute(
-        select(ImportLog).where(ImportLog.id == log_id, ImportLog.user_id == user.id)
+        select(ImportLog).where(
+            ImportLog.id == log_id, ImportLog.workspace_id == ctx.workspace.id
+        )
     )
     log = result.scalar_one_or_none()
     if not log:

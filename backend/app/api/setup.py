@@ -64,10 +64,19 @@ async def create_admin(
         sql_update(User).where(User.id == user.id).values(preferences=prefs)
     )
 
+    # Personal workspace gets auto-created here too (setup endpoint runs
+    # programmatically, so the registration hook's `request is None` early
+    # exit fires; we have to set up the workspace ourselves).
+    from app.services.workspace_service import create_personal_workspace_for_user
+
+    await db_session.refresh(user)
+    workspace = await create_personal_workspace_for_user(db_session, user)
+
     # Create default wallet with the chosen currency
     wallet_name = "Carteira" if body.language.startswith("pt") else "Wallet"
     wallet = Account(
         user_id=user.id,
+        workspace_id=workspace.id,
         name=wallet_name,
         type="checking",
         balance=Decimal("0.00"),
@@ -80,8 +89,8 @@ async def create_admin(
     from app.services.category_service import create_default_categories
     from app.services.rule_service import create_default_rules
 
-    await create_default_categories(db_session, user.id, body.language)
-    await create_default_rules(db_session, user.id, body.language)
+    await create_default_categories(db_session, user.id, body.language, workspace_id=workspace.id)
+    await create_default_rules(db_session, user.id, body.language, workspace_id=workspace.id)
 
     # Refresh user to get updated preferences for token generation
     await db_session.refresh(user)

@@ -4,6 +4,11 @@ from app.providers.base import (
     ConnectTokenData,
     ConnectionData,
     HoldingData,
+    InstitutionData,
+    InstitutionListData,
+    ProviderUserActionRequired,
+    RefreshOutcome,
+    SessionExpiredError,
     TransactionData,
 )
 
@@ -17,6 +22,21 @@ KNOWN_PROVIDERS = [
         "display_name": "Pluggy",
         "description": "Open finance provider for Brazilian banks",
         "flow_type": "widget",
+        "requires_institution_select": False,
+    },
+    {
+        "name": "enable_banking",
+        "display_name": "Enable Banking",
+        "description": "European banks via PSD2 open banking",
+        "flow_type": "oauth",
+        "requires_institution_select": True,
+    },
+    {
+        "name": "simplefin",
+        "display_name": "SimpleFIN",
+        "description": "US and international banks via SimpleFIN Bridge",
+        "flow_type": "token",
+        "requires_institution_select": False,
     },
 ]
 
@@ -60,6 +80,17 @@ def _auto_register_providers() -> None:
         from app.providers.pluggy import PluggyProvider
         register_provider("pluggy", PluggyProvider)
 
+    eb_has_key = bool(
+        settings.enable_banking_private_key or settings.enable_banking_private_key_file
+    )
+    if settings.enable_banking_app_id and eb_has_key:
+        from app.providers.enable_banking import EnableBankingProvider
+        register_provider("enable_banking", EnableBankingProvider)
+
+    if settings.simplefin_enabled:
+        from app.providers.simplefin import SimpleFinProvider
+        register_provider("simplefin", SimpleFinProvider)
+
 
 _auto_register_providers()
 
@@ -93,6 +124,11 @@ __all__ = [
     "ConnectionData",
     "ConnectTokenData",
     "HoldingData",
+    "InstitutionData",
+    "InstitutionListData",
+    "ProviderUserActionRequired",
+    "RefreshOutcome",
+    "SessionExpiredError",
     "register_provider",
     "get_provider",
     "list_providers",

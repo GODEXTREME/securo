@@ -15,6 +15,7 @@ from app.schemas.budget import BudgetCreate, BudgetUpdate, BudgetVsActual
 from app.services._query_filters import (
     counts_as_user_pnl,
     owner_split_offset_by_category,
+    reporting_date_col,
 )
 from app.services.admin_service import get_credit_card_accounting_mode
 from app.services.dashboard_service import _get_recurring_projections
@@ -28,7 +29,7 @@ def _primary_amount_expr():
 
 
 async def _build_budget_map(
-    session: AsyncSession, user_id: uuid.UUID, month_start: date
+    session: AsyncSession, workspace_id: uuid.UUID, month_start: date
 ) -> dict[str, tuple[Decimal, bool]]:
     """Build a map of category_id -> (amount, is_recurring) for the given month.
 
@@ -46,7 +47,7 @@ async def _build_budget_map(
             func.max(Budget.month).label("max_month"),
         )
         .where(
-            Budget.user_id == user_id,
+            Budget.workspace_id == workspace_id,
             Budget.is_recurring == True,  # noqa: E712
             Budget.month <= month_start,
         )
@@ -64,7 +65,7 @@ async def _build_budget_map(
             ),
         )
         .where(
-            Budget.user_id == user_id,
+            Budget.workspace_id == workspace_id,
             Budget.is_recurring == True,  # noqa: E712
         )
     )
@@ -74,7 +75,7 @@ async def _build_budget_map(
     # Query 2: Month-specific overrides (take priority over recurring)
     overrides_result = await session.execute(
         select(Budget).where(
-            Budget.user_id == user_id,
+            Budget.workspace_id == workspace_id,
             Budget.is_recurring == False,  # noqa: E712
             Budget.month == month_start,
         )
@@ -86,10 +87,10 @@ async def _build_budget_map(
 
 
 async def get_budgets(
-    session: AsyncSession, user_id: uuid.UUID, month: Optional[date] = None
+    session: AsyncSession, workspace_id: uuid.UUID, month: Optional[date] = None
 ) -> list[Budget]:
     if not month:
-        query = select(Budget).where(Budget.user_id == user_id)
+        query = select(Budget).where(Budget.workspace_id == workspace_id)
         result = await session.execute(query.order_by(Budget.month.desc()))
         return list(result.scalars().all())
 
@@ -98,7 +99,7 @@ async def get_budgets(
     # Get month-specific overrides
     overrides_result = await session.execute(
         select(Budget).where(
-            Budget.user_id == user_id,
+            Budget.workspace_id == workspace_id,
             Budget.is_recurring == False,  # noqa: E712
             Budget.month == month_start,
         )
@@ -113,7 +114,7 @@ async def get_budgets(
             func.max(Budget.month).label("max_month"),
         )
         .where(
-            Budget.user_id == user_id,
+            Budget.workspace_id == workspace_id,
             Budget.is_recurring == True,  # noqa: E712
             Budget.month <= month_start,
         )
@@ -131,7 +132,7 @@ async def get_budgets(
             ),
         )
         .where(
-            Budget.user_id == user_id,
+            Budget.workspace_id == workspace_id,
             Budget.is_recurring == True,  # noqa: E712
         )
     )
@@ -144,19 +145,23 @@ async def get_budgets(
 
 
 async def get_budget(
-    session: AsyncSession, budget_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, budget_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> Optional[Budget]:
     result = await session.execute(
-        select(Budget).where(Budget.id == budget_id, Budget.user_id == user_id)
+        select(Budget).where(Budget.id == budget_id, Budget.workspace_id == workspace_id)
     )
     return result.scalar_one_or_none()
 
 
 async def create_budget(
-    session: AsyncSession, user_id: uuid.UUID, data: BudgetCreate
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: BudgetCreate,
 ) -> Budget:
     budget = Budget(
         user_id=user_id,
+        workspace_id=workspace_id,
         category_id=data.category_id,
         amount=data.amount,
         month=data.month.replace(day=1),
@@ -169,9 +174,9 @@ async def create_budget(
 
 
 async def update_budget(
-    session: AsyncSession, budget_id: uuid.UUID, user_id: uuid.UUID, data: BudgetUpdate
+    session: AsyncSession, budget_id: uuid.UUID, workspace_id: uuid.UUID, data: BudgetUpdate
 ) -> Optional[Budget]:
-    budget = await get_budget(session, budget_id, user_id)
+    budget = await get_budget(session, budget_id, workspace_id)
     if not budget:
         return None
 
@@ -181,6 +186,7 @@ async def update_budget(
             # Create a new recurring record with new effective-from month
             new_budget = Budget(
                 user_id=budget.user_id,
+                workspace_id=budget.workspace_id,
                 category_id=budget.category_id,
                 amount=data.amount if data.amount is not None else budget.amount,
                 month=effective,
@@ -201,9 +207,9 @@ async def update_budget(
 
 
 async def delete_budget(
-    session: AsyncSession, budget_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, budget_id: uuid.UUID, workspace_id: uuid.UUID
 ) -> bool:
-    budget = await get_budget(session, budget_id, user_id)
+    budget = await get_budget(session, budget_id, workspace_id)
     if not budget:
         return False
 
@@ -213,7 +219,10 @@ async def delete_budget(
 
 
 async def get_budget_vs_actual(
-    session: AsyncSession, user_id: uuid.UUID, month: Optional[date] = None
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    month: Optional[date] = None,
 ) -> list[BudgetVsActual]:
     if not month:
         month = date.today().replace(day=1)
@@ -231,11 +240,11 @@ async def get_budget_vs_actual(
         prev_month_start = month_start.replace(month=month_start.month - 1)
     prev_month_end = month_start
 
-    # Get all categories for this user with their groups
+    # Get all categories for this workspace with their groups
     cats_result = await session.execute(
         select(Category, CategoryGroup)
         .outerjoin(CategoryGroup, Category.group_id == CategoryGroup.id)
-        .where(Category.user_id == user_id)
+        .where(Category.workspace_id == workspace_id)
     )
     all_categories = cats_result.all()
 
@@ -243,15 +252,13 @@ async def get_budget_vs_actual(
         return []
 
     # Get budgets for this month (with recurring resolution)
-    budget_map = await _build_budget_map(session, user_id, month_start)
+    budget_map = await _build_budget_map(session, workspace_id, month_start)
 
     # Get user's primary currency for FX conversion + reporting mode
     user = await session.get(User, user_id)
     primary_currency = user.primary_currency if user else get_settings().default_currency
     accounting_mode = await get_credit_card_accounting_mode(session)
-    report_date = (
-        Transaction.effective_date if accounting_mode == "accrual" else Transaction.date
-    )
+    report_date = reporting_date_col(accounting_mode)
 
     # Get actual spending by category for this month (exclude transfer pairs)
     # Use amount_primary for multi-currency support
@@ -261,7 +268,7 @@ async def get_budget_vs_actual(
             func.sum(_primary_amount_expr()),
         )
         .where(
-            Transaction.user_id == user_id,
+            Transaction.workspace_id == workspace_id,
             Transaction.type == "debit",
             report_date >= month_start,
             report_date < month_end,
@@ -279,6 +286,7 @@ async def get_budget_vs_actual(
         session, user_id, month_start, month_end,
         use_effective_date=accounting_mode == "accrual",
         primary_currency=primary_currency,
+        workspace_id=workspace_id,
     )
     for cat_uuid, total in own_offset.items():
         if cat_uuid is None:
@@ -307,7 +315,7 @@ async def get_budget_vs_actual(
         spending_map[cat_id] = spending_map.get(cat_id, Decimal("0")) + Decimal(str(total))
 
     # Add projected recurring transactions for this month (converted to primary currency)
-    projections = await _get_recurring_projections(session, user_id, month_start, month_end)
+    projections = await _get_recurring_projections(session, workspace_id, month_start, month_end)
     for proj in projections:
         if proj["type"] != "debit" or not proj["category_id"]:
             continue
@@ -325,7 +333,7 @@ async def get_budget_vs_actual(
             func.sum(_primary_amount_expr()),
         )
         .where(
-            Transaction.user_id == user_id,
+            Transaction.workspace_id == workspace_id,
             Transaction.type == "debit",
             report_date >= prev_month_start,
             report_date < prev_month_end,
@@ -342,6 +350,7 @@ async def get_budget_vs_actual(
         session, user_id, prev_month_start, prev_month_end,
         use_effective_date=accounting_mode == "accrual",
         primary_currency=primary_currency,
+        workspace_id=workspace_id,
     )
     for cat_uuid, total in prev_own_offset.items():
         if cat_uuid is None:
@@ -366,7 +375,7 @@ async def get_budget_vs_actual(
         prev_spending_map[cat_id] = prev_spending_map.get(cat_id, Decimal("0")) + Decimal(str(total))
 
     # Add projected recurring transactions for previous month (converted to primary currency)
-    prev_projections = await _get_recurring_projections(session, user_id, prev_month_start, prev_month_end)
+    prev_projections = await _get_recurring_projections(session, workspace_id, prev_month_start, prev_month_end)
     for proj in prev_projections:
         if proj["type"] != "debit" or not proj["category_id"]:
             continue

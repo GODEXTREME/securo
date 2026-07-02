@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { admin as adminApi } from '@/lib/api'
+import { admin as adminApi, currencies as currenciesApi } from '@/lib/api'
+import { resolveDisplayLocale, resolveDateLocale, type NumberFormat, type DateFormat } from '@/lib/format'
+import { resolveSupportedLang } from '@/lib/i18n'
 import { useAuth } from '@/contexts/auth-context'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -18,14 +21,23 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { PageHeader } from '@/components/page-header'
-import { Search, Plus, Trash2, Shield, ShieldOff, UserCog, Users, Scale, Tag, LayoutList } from 'lucide-react'
+import { setThemeBasedOnSystem } from '@/lib/theme-utils'
+import { Search, Plus, Trash2, Shield, ShieldOff, UserCog, Users, Scale, Tag, LayoutList, Palette, Save, Hash, CalendarDays } from 'lucide-react'
 import type { AdminUser } from '@/types'
 
 export default function AdminSettingsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { user: currentUser } = useAuth()
   const queryClient = useQueryClient()
+  const { resolvedTheme } = useTheme()
 
   const [search, setSearch] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -43,6 +55,11 @@ export default function AdminSettingsPage() {
   const [editIsAdmin, setEditIsAdmin] = useState(false)
   const [editPassword, setEditPassword] = useState('')
   const [showPasswordField, setShowPasswordField] = useState(false)
+
+  const [lastSyncedLight, setLastSyncedLight] = useState<string | undefined>()
+  const [lastSyncedDark, setLastSyncedDark] = useState<string | undefined>()
+  const [localLight, setLocalLight] = useState<string>('#6366F1')
+  const [localDark, setLocalDark] = useState<string>('#818CF8')
 
   const { data: usersData, isLoading: usersLoading } = useQuery({
     queryKey: ['admin', 'users', search],
@@ -104,6 +121,19 @@ export default function AdminSettingsPage() {
     },
   })
 
+  // Theme color settings
+  const { data: themeColorLightSetting } = useQuery({
+    queryKey: ['admin', 'settings', 'theme_color_light'],
+    queryFn: () => adminApi.getSetting('theme_color_light').catch(() => null),
+    retry: false,
+  })
+
+  const { data: themeColorDarkSetting } = useQuery({
+    queryKey: ['admin', 'settings', 'theme_color_dark'],
+    queryFn: () => adminApi.getSetting('theme_color_dark').catch(() => null),
+    retry: false,
+  })
+
   // Credit card accounting mode: returns 404 when unset → defaults to "cash".
   const { data: ccModeSetting } = useQuery({
     queryKey: ['admin', 'settings', 'credit_card_accounting_mode'],
@@ -130,6 +160,12 @@ export default function AdminSettingsPage() {
     queryKey: ['admin', 'settings', 'use_provider_categories'],
     queryFn: () => adminApi.getSetting('use_provider_categories').catch(() => null),
     retry: false,
+  })
+
+  const { data: supportedCurrencies } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: currenciesApi.list,
+    staleTime: Infinity,
   })
 
   const updateProviderCatsMutation = useMutation({
@@ -163,14 +199,86 @@ export default function AdminSettingsPage() {
     },
   })
 
+  // Number/date display format: 404 when unset → defaults to "auto" (derive
+  // separators from each user's display currency).
+  const { data: numberFormatSetting } = useQuery({
+    queryKey: ['admin', 'settings', 'number_format'],
+    queryFn: () => adminApi.getSetting('number_format').catch(() => null),
+    retry: false,
+  })
+
+  const numberFormat = numberFormatSetting?.value ?? 'auto'
+
+  const updateNumberFormatMutation = useMutation({
+    mutationFn: (value: string) => adminApi.updateSetting('number_format', value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'settings', 'number_format'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'number-format'] })
+      toast.success(t('admin.settings.updated'))
+    },
+    onError: () => {
+      toast.error(t('common.error'))
+    },
+  })
+
   const accountsViewMode = (accountsViewSetting?.value === 'compact' ? 'compact' : 'grouped') as 'grouped' | 'compact'
+
+  // Date format: 404 when unset → defaults to "auto" (order follows the
+  // number format / currency).
+  const { data: dateFormatSetting } = useQuery({
+    queryKey: ['admin', 'settings', 'date_format'],
+    queryFn: () => adminApi.getSetting('date_format').catch(() => null),
+    retry: false,
+  })
+
+  const dateFormat = dateFormatSetting?.value ?? 'auto'
+
+  const updateDateFormatMutation = useMutation({
+    mutationFn: (value: string) => adminApi.updateSetting('date_format', value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'settings', 'date_format'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'date-format'] })
+      toast.success(t('admin.settings.updated'))
+    },
+    onError: () => {
+      toast.error(t('common.error'))
+    },
+  })
+
+  if (themeColorLightSetting?.value && themeColorLightSetting.value !== lastSyncedLight) {
+    setLastSyncedLight(themeColorLightSetting.value)
+    setLocalLight(themeColorLightSetting.value)
+  }
+  if (themeColorDarkSetting?.value && themeColorDarkSetting.value !== lastSyncedDark) {
+    setLastSyncedDark(themeColorDarkSetting.value)
+    setLocalDark(themeColorDarkSetting.value)
+  }
+
+  const saveColorsMutation = useMutation({
+    mutationFn: async () => {
+      await Promise.all([
+        adminApi.updateSetting('theme_color_light', localLight),
+        adminApi.updateSetting('theme_color_dark', localDark),
+      ])
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] })
+      setThemeBasedOnSystem(localLight, localDark, resolvedTheme)
+      toast.success(t('admin.settings.updated'))
+    },
+    onError: () => {
+      toast.error(t('common.error'))
+    },
+  })
 
   function resetCreateForm() {
     setFormEmail('')
     setFormPassword('')
     setFormIsAdmin(false)
     setFormLanguage('en')
-    setFormCurrency('USD')
+    // New users default to the admin's current display currency so they
+    // follow the currency the workspace is running in.
+    setFormCurrency(currentUser?.preferences?.currency_display ?? 'USD')
   }
 
   function openEdit(u: AdminUser) {
@@ -274,6 +382,64 @@ export default function AdminSettingsPage() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Theme and Customization Section */}
+      <div className="grid grid-cols-1 gap-6 mb-8">
+        <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-border/40 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Palette size={15} className="text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-foreground">{t('settings.customization')}</h3>
+            </div>
+            <Button
+              onClick={() => saveColorsMutation.mutate()}
+              disabled={saveColorsMutation.isPending}
+            >
+              <Save size={13} />
+              {saveColorsMutation.isPending ? t('common.loading') : t('common.save')}
+            </Button>
+          </div>
+          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Light Mode Colors */}
+            <div className="space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                {t('settings.lightMode')}
+              </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs">{t('settings.themeColor')}</Label>
+                <div className="flex items-center gap-2">
+                  <Input 
+                    type="color" 
+                    className="w-12 h-9 p-1 cursor-pointer" 
+                    value={localLight}
+                    onChange={(e) => setLocalLight(e.target.value)}
+                  />
+                  <span className="text-xs font-mono text-muted-foreground">{localLight}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Dark Mode Colors */}
+            <div className="space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                {t('settings.darkMode')}
+              </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs">{t('settings.themeColor')}</Label>
+                <div className="flex items-center gap-2">
+                  <Input 
+                    type="color" 
+                    className="w-12 h-9 p-1 cursor-pointer" 
+                    value={localDark}
+                    onChange={(e) => setLocalDark(e.target.value)}
+                  />
+                  <span className="text-xs font-mono text-muted-foreground">{localDark}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Accounting section */}
@@ -383,6 +549,103 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
+      {/* Number / date format */}
+      <div className="rounded-xl border border-border/60 bg-card overflow-hidden mb-8">
+        <div className="px-5 py-4 border-b border-border/40">
+          <div className="flex items-center gap-2 mb-0.5">
+            <Hash size={15} className="text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">{t('admin.settings.numberFormatTitle')}</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('admin.settings.numberFormatDesc')}</p>
+        </div>
+        <div className="divide-y divide-border/40">
+          {([
+            { value: 'auto', label: t('admin.settings.numberFormatAuto'), desc: t('admin.settings.numberFormatAutoDesc') },
+            { value: 'comma_dot', label: t('admin.settings.numberFormatCommaDot'), desc: t('admin.settings.numberFormatCommaDotDesc') },
+            { value: 'dot_comma', label: t('admin.settings.numberFormatDotComma'), desc: t('admin.settings.numberFormatDotCommaDesc') },
+            { value: 'space_comma', label: t('admin.settings.numberFormatSpaceComma'), desc: t('admin.settings.numberFormatSpaceCommaDesc') },
+          ] as const).map((opt) => {
+            // Live preview of how this option renders a sample amount, resolved
+            // against the admin's currency + UI language.
+            const adminCurrency = currentUser?.preferences?.currency_display ?? 'USD'
+            const numLocale = resolveDisplayLocale(opt.value as NumberFormat, adminCurrency, i18n.language === 'en' ? 'en-US' : i18n.language)
+            const numExample = new Intl.NumberFormat(numLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(1234.56)
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => updateNumberFormatMutation.mutate(opt.value)}
+                disabled={updateNumberFormatMutation.isPending}
+                className="flex items-start gap-3 w-full px-5 py-4 text-left hover:bg-muted/40 transition-colors"
+              >
+                <div className={`mt-0.5 h-4 w-4 rounded-full border-2 shrink-0 ${numberFormat === opt.value ? 'border-primary bg-primary' : 'border-muted-foreground/40'}`}>
+                  {numberFormat === opt.value && <div className="h-full w-full rounded-full bg-primary ring-2 ring-background ring-inset" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-foreground tabular-nums">{opt.label}</p>
+                    <span className="text-xs tabular-nums text-muted-foreground">{numExample}</span>
+                  </div>
+                  {opt.desc && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Date format */}
+      <div className="rounded-xl border border-border/60 bg-card overflow-hidden mb-8">
+        <div className="px-5 py-4 border-b border-border/40">
+          <div className="flex items-center gap-2 mb-0.5">
+            <CalendarDays size={15} className="text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">{t('admin.settings.dateFormatTitle')}</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('admin.settings.dateFormatDesc')}</p>
+        </div>
+        <div className="divide-y divide-border/40">
+          {([
+            { value: 'auto', label: t('admin.settings.dateFormatAuto'), desc: t('admin.settings.dateFormatAutoDesc') },
+            { value: 'dmy', label: t('admin.settings.dateFormatDmy'), desc: t('admin.settings.dateFormatDmyDesc') },
+            { value: 'mdy', label: t('admin.settings.dateFormatMdy'), desc: t('admin.settings.dateFormatMdyDesc') },
+            { value: 'ymd', label: t('admin.settings.dateFormatYmd'), desc: t('admin.settings.dateFormatYmdDesc') },
+          ] as const).map((opt) => {
+            // Live preview, resolved against the current number format + UI
+            // language. Sample 4 June makes the day/month order unambiguous.
+            const adminCurrency = currentUser?.preferences?.currency_display ?? 'USD'
+            const dateLocale = resolveDateLocale(opt.value as DateFormat, numberFormat as NumberFormat, adminCurrency, resolveSupportedLang(i18n.resolvedLanguage ?? i18n.language))
+            const numericExample = new Date(2026, 5, 4).toLocaleDateString(dateLocale)
+            const wordedExample = new Date(2026, 5, 4).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => updateDateFormatMutation.mutate(opt.value)}
+                disabled={updateDateFormatMutation.isPending}
+                className="flex items-start gap-3 w-full px-5 py-4 text-left hover:bg-muted/40 transition-colors"
+              >
+                <div className={`mt-0.5 h-4 w-4 rounded-full border-2 shrink-0 ${dateFormat === opt.value ? 'border-primary bg-primary' : 'border-muted-foreground/40'}`}>
+                  {dateFormat === opt.value && <div className="h-full w-full rounded-full bg-primary ring-2 ring-background ring-inset" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-foreground tabular-nums">{opt.label}</p>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {numericExample} <span className="opacity-50">·</span> {wordedExample}
+                    </span>
+                  </div>
+                  {opt.desc && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Settings section */}
       <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border/40">
@@ -449,12 +712,29 @@ export default function AdminSettingsPage() {
                     className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
                   >
                     <option value="en">English</option>
+                    <option value="de">Deutsch</option>
+                    <option value="ru">Русский</option>
+                    <option value="uk">Українська</option>
                     <option value="pt-BR">Português (BR)</option>
+                    <option value="es">Español</option>
+                    <option value="pl">Polski</option>
+                    <option value="it">Italiano</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-[13px]">{t('setup.currency')}</Label>
-                  <Input value={formCurrency} onChange={(e) => setFormCurrency(e.target.value)} className="h-10 rounded-lg" />
+                  <Select value={formCurrency} onValueChange={setFormCurrency}>
+                    <SelectTrigger className="h-10 rounded-lg w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(supportedCurrencies ?? []).map((c) => (
+                        <SelectItem key={c.code} value={c.code}>
+                          {c.flag} {c.code} — {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <button
