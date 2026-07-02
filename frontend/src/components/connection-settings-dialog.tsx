@@ -78,7 +78,7 @@ export function ConnectionSettingsDialog({
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {t('accounts.confirmDisconnectDesc', { connection: connection?.institution_name })}
+              {t('accounts.confirmDisconnectConnectionDesc', { connection: connection?.institution_name })}
             </p>
           </div>
           <DialogFooter>
