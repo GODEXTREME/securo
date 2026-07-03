@@ -1161,7 +1161,8 @@
     "categories": "Categorias",
     "categoriesSubtitle": "Gastos por categoria principal",
     "group": "grupo",
-    "range1m": "1M"
+    "range1m": "1M",
+    "total": "Total"
   },
   "payees": {
     "title": "Beneficiários",

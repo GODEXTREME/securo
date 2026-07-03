@@ -46,14 +46,20 @@ async def test_category_breakdown_rolls_up_to_groups(
         session, test_workspace.id, test_user.id, months=1
     )
     assert result["total"] == 200.0
-    by_name = {s["name"]: s for s in result["slices"]}
-    # The child rolled up into its group "Food".
+    by_name = {s["name"]: s for s in result["groups"]}
+    # Inner ring: the child rolled up into its group "Food".
     assert "Food" in by_name and by_name["Food"]["total"] == 100.0 and by_name["Food"]["is_group"] is True
-    # Uncategorized slice present.
-    unc = next(s for s in result["slices"] if s["uncategorized"])
+    # Uncategorized inner slice present.
+    unc = next(s for s in result["groups"] if s["uncategorized"])
     assert unc["total"] == 40.0
-    # Percentages sum to ~100.
-    assert abs(sum(s["percentage"] for s in result["slices"]) - 100.0) < 0.5
+    # Outer ring: the leaf category "Groceries" points at the Food group.
+    child_by_name = {c["name"]: c for c in result["children"]}
+    assert "Groceries" in child_by_name
+    assert child_by_name["Groceries"]["total"] == 100.0
+    assert child_by_name["Groceries"]["parent"] == by_name["Food"]["id"]
+    # Percentages sum to ~100 on each ring.
+    assert abs(sum(s["percentage"] for s in result["groups"]) - 100.0) < 0.5
+    assert abs(sum(c["percentage"] for c in result["children"]) - 100.0) < 0.5
 
 
 @pytest.mark.asyncio

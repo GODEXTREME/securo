@@ -1253,7 +1253,8 @@
     "categories": "Categories",
     "categoriesSubtitle": "Spending by main category",
     "group": "group",
-    "range1m": "1M"
+    "range1m": "1M",
+    "total": "Razem"
   },
   "payees": {
     "title": "Odbiorcy",
