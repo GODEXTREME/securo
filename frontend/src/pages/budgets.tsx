@@ -86,7 +86,7 @@ export default function BudgetsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: { category_id: string; amount: number; month: string; is_recurring?: boolean }) =>
+    mutationFn: (data: { category_id: string; amount: number; month: string; is_recurring?: boolean; rollover?: boolean }) =>
       budgetsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budgets'] })
@@ -211,6 +211,11 @@ export default function BudgetsPage() {
                           <Repeat size={12} />
                         </span>
                       )}
+                      {budget.rollover && (
+                        <span title={t('budgets.rolloverHint')} className="text-[10px] font-medium text-sky-600 bg-sky-100 rounded px-1">
+                          {t('budgets.rollover')}
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="py-3 text-sm font-semibold tabular-nums text-foreground">{mask(formatCurrency(budget.amount, userCurrency, locale))}</td>
@@ -264,6 +269,7 @@ export default function BudgetsPage() {
                   amount: parseFloat(formData.get('amount') as string),
                   month: monthParam,
                   is_recurring: isRecurring,
+                  rollover: formData.get('rollover') === 'on',
                 })
               }
             }}
@@ -285,6 +291,11 @@ export default function BudgetsPage() {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" name="is_recurring" className="rounded border-border" />
                   <span className="text-sm text-foreground">{t('budgets.repeatEveryMonth')}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" name="rollover" className="rounded border-border" />
+                  <span className="text-sm text-foreground">{t('budgets.rollover')}</span>
+                  <span className="text-xs text-muted-foreground">— {t('budgets.rolloverHint')}</span>
                 </label>
               </>
             )}

@@ -866,11 +866,11 @@ export const budgets = {
     const { data } = await api.get('/budgets', { params: { month } })
     return data
   },
-  create: async (budget: { category_id: string; amount: number; month: string; is_recurring?: boolean }): Promise<Budget> => {
+  create: async (budget: { category_id: string; amount: number; month: string; is_recurring?: boolean; rollover?: boolean }): Promise<Budget> => {
     const { data } = await api.post('/budgets', budget)
     return data
   },
-  update: async (id: string, budget: { amount?: number }): Promise<Budget> => {
+  update: async (id: string, budget: { amount?: number; rollover?: boolean }): Promise<Budget> => {
     const { data } = await api.patch(`/budgets/${id}`, budget)
     return data
   },
@@ -1488,6 +1488,188 @@ export const agents = {
       const { data } = await api.post(`/agents/connections/${id}/test`)
       return data
     },
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Feature batch: notifications, subscriptions, insights, forecast, health
+// score, debt planner, advanced reports, installment grouping.
+// ---------------------------------------------------------------------------
+
+export interface Notification {
+  id: string
+  type: string
+  severity: 'info' | 'warning' | 'critical'
+  title: string
+  body: string | null
+  link: string | null
+  data_json: Record<string, unknown> | null
+  is_read: boolean
+  created_at: string
+}
+
+export const notifications = {
+  list: async (unreadOnly = false, limit = 50): Promise<{ items: Notification[]; unread: number }> => {
+    const { data } = await api.get('/notifications', { params: { unread_only: unreadOnly, limit } })
+    return data
+  },
+  unreadCount: async (): Promise<{ unread: number }> => {
+    const { data } = await api.get('/notifications/unread-count')
+    return data
+  },
+  refresh: async (): Promise<{ unread: number }> => {
+    const { data } = await api.post('/notifications/refresh')
+    return data
+  },
+  markRead: async (id: string): Promise<void> => {
+    await api.post(`/notifications/${id}/read`)
+  },
+  markAllRead: async (): Promise<{ unread: number }> => {
+    const { data } = await api.post('/notifications/read-all')
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/notifications/${id}`)
+  },
+}
+
+export interface Subscription {
+  key: string
+  name: string
+  frequency: string
+  typical_amount: number
+  last_amount: number
+  currency: string
+  monthly_cost: number
+  yearly_cost: number
+  occurrences: number
+  last_date: string
+  next_date: string
+  price_change: boolean
+  category_id: string | null
+}
+
+export const subscriptions = {
+  list: async (): Promise<{ count: number; monthly_total: number; yearly_total: number; price_changes: number; subscriptions: Subscription[] }> => {
+    const { data } = await api.get('/subscriptions')
+    return data
+  },
+}
+
+export const insights = {
+  get: async (): Promise<{
+    currency: string
+    insights: { type: string; severity: string; category: string | null; title: string; detail: string; value: number }[]
+    movers: { category: string; direction: string; current: number; previous: number; change_pct: number }[]
+    savings_series: { month: string; income: number; expense: number; savings_rate: number }[]
+    top_merchants: { name: string; total: number; count: number }[]
+  }> => {
+    const { data } = await api.get('/insights')
+    return data
+  },
+}
+
+export const forecast = {
+  get: async (days = 90): Promise<{
+    currency: string
+    days: number
+    starting_balance: number
+    ending_balance: number
+    lowest: { date: string; balance: number }
+    first_shortfall: { date: string; balance: number } | null
+    shortfall_days: number
+    series: { date: string; balance: number }[]
+  }> => {
+    const { data } = await api.get('/forecast', { params: { days } })
+    return data
+  },
+}
+
+export const healthScore = {
+  get: async (): Promise<{
+    currency: string
+    score: number
+    band: string
+    components: { key: string; label: string; score: number; detail: string }[]
+    monthly_income: number
+    monthly_expense: number
+    liquid_balance: number
+  }> => {
+    const { data } = await api.get('/health-score')
+    return data
+  },
+}
+
+export interface DebtAccount {
+  id?: string
+  name: string
+  balance: number
+  apr: number
+  min_payment: number
+  currency?: string
+}
+
+export const debt = {
+  accounts: async (): Promise<DebtAccount[]> => {
+    const { data } = await api.get('/debt/accounts')
+    return data
+  },
+  plan: async (extra_payment: number, debts?: DebtAccount[]): Promise<{
+    debts: DebtAccount[]
+    total_balance: number
+    total_minimum: number
+    extra_payment: number
+    snowball: { months: number; total_interest: number; payoff_date: string; order: string[]; amortized: boolean }
+    avalanche: { months: number; total_interest: number; payoff_date: string; order: string[]; amortized: boolean }
+    recommended: string
+  }> => {
+    const { data } = await api.post('/debt/plan', { extra_payment, debts })
+    return data
+  },
+}
+
+export interface InstallmentPlan {
+  key: string
+  name: string
+  account_id: string
+  account_name: string
+  total_installments: number
+  paid_count: number
+  per_installment: number
+  total_amount: number
+  currency: string
+  purchase_date: string
+  category_id: string | null
+  category_name: string | null
+  category_color: string | null
+  mixed_categories: boolean
+  uncategorized: boolean
+  transaction_ids: string[]
+}
+
+export const installments = {
+  list: async (onlyUncategorized = false, accountId?: string): Promise<{ count: number; uncategorized_count: number; plans: InstallmentPlan[] }> => {
+    const { data } = await api.get('/installments', { params: { only_uncategorized: onlyUncategorized, account_id: accountId } })
+    return data
+  },
+  categorize: async (transactionIds: string[], categoryId: string | null): Promise<{ updated: number }> => {
+    const { data } = await api.patch('/installments/categorize', { transaction_ids: transactionIds, category_id: categoryId })
+    return data
+  },
+}
+
+export const advancedReports = {
+  merchants: async (months = 3, categoryId?: string): Promise<{ currency: string; months: number; merchants: { merchant: string; total: number; count: number; average: number }[] }> => {
+    const { data } = await api.get('/reports/merchants', { params: { months, category_id: categoryId } })
+    return data
+  },
+  categoryTrends: async (months = 6): Promise<{ currency: string; months: string[]; categories: { id: string; name: string; color: string | null }[]; series: Record<string, string | number>[] }> => {
+    const { data } = await api.get('/reports/category-trends', { params: { months } })
+    return data
+  },
+  periodComparison: async (months = 1): Promise<{ currency: string; months: number; current_total: number; previous_total: number; rows: { category: string; current: number; previous: number; change: number; change_pct: number | null }[] }> => {
+    const { data } = await api.get('/reports/period-comparison', { params: { months } })
+    return data
   },
 }
 

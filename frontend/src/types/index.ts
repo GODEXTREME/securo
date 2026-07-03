@@ -499,6 +499,7 @@ export interface Budget {
   amount: number
   month: string
   is_recurring: boolean
+  rollover?: boolean
 }
 
 export interface BudgetVsActual {
@@ -513,6 +514,9 @@ export interface BudgetVsActual {
   prev_month_amount: number
   percentage_used: number | null
   is_recurring: boolean
+  rollover?: boolean
+  carryover?: number
+  available?: number | null
 }
 
 export interface Asset {
