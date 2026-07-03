@@ -134,7 +134,9 @@ services:
   frontend:
     image: ghcr.io/godextreme/securo-frontend:latest
     ports:
-      - "${FRONTEND_PORT:-3002}:80"
+      # The frontend image runs nginx-unprivileged, which listens on 8080
+      # (not 80). Map the host port to 8080 or the page won't load.
+      - "${FRONTEND_PORT:-3002}:8080"
     environment:
       BACKEND_URL: http://backend:8000
     depends_on:
