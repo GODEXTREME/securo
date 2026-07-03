@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { sinkingFunds as fundsApi, type SinkingFund } from '@/lib/api'
+import { sinkingFunds as fundsApi, roundups as roundupsApi, type SinkingFund } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +29,12 @@ export default function SinkingFundsPage() {
 
   const { data: funds, isLoading } = useQuery({ queryKey: ['sinking-funds'], queryFn: () => fundsApi.list() })
   const { data: summary } = useQuery({ queryKey: ['sinking-funds', 'summary'], queryFn: fundsApi.summary })
+  const [roundupMultiplier, setRoundupMultiplier] = useState(1)
+  const [sweepFundId, setSweepFundId] = useState('')
+  const { data: roundup } = useQuery({
+    queryKey: ['roundups', roundupMultiplier],
+    queryFn: () => roundupsApi.get(1, roundupMultiplier),
+  })
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['sinking-funds'] })
@@ -71,6 +77,40 @@ export default function SinkingFundsPage() {
           <Stat label={t('sinkingFunds.totalSaved')} value={formatCurrency(summary.total_saved, userCurrency, locale)} />
           <Stat label={t('sinkingFunds.totalTarget')} value={formatCurrency(summary.total_target, userCurrency, locale)} />
           <Stat label={t('sinkingFunds.monthlyNeeded')} value={formatCurrency(summary.monthly_needed, userCurrency, locale)} />
+        </div>
+      )}
+
+      {/* Round-ups */}
+      {roundup && roundup.roundup_total > 0 && (funds?.length ?? 0) > 0 && (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <Plus size={14} className="text-primary" />
+                {t('sinkingFunds.roundupTitle')}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t('sinkingFunds.roundupHint', { count: roundup.transaction_count, amount: formatCurrency(roundup.roundup_total, roundup.currency, locale) })}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center rounded-lg border border-border overflow-hidden">
+                {[1, 2, 5].map((m) => (
+                  <button key={m} onClick={() => setRoundupMultiplier(m)}
+                    className={`px-2.5 py-1 text-xs font-semibold ${roundupMultiplier === m ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{m}×</button>
+                ))}
+              </div>
+              <select className="text-sm border border-border rounded-lg px-2 py-1.5 bg-card"
+                value={sweepFundId} onChange={(e) => setSweepFundId(e.target.value)}>
+                <option value="">{t('sinkingFunds.chooseFund')}</option>
+                {funds!.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+              <Button size="sm" disabled={!sweepFundId || contributeMutation.isPending}
+                onClick={() => { contributeMutation.mutate({ id: sweepFundId, amount: roundup.roundup_total }); setSweepFundId('') }}>
+                {t('sinkingFunds.sweep')}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

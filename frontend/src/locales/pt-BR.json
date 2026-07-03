@@ -677,7 +677,12 @@
     "rollover": "Rollover",
     "rolloverHint": "Levar o saldo restante desta categoria para o próximo mês",
     "carryover": "Saldo anterior",
-    "available": "Disponível"
+    "available": "Disponível",
+    "byGroup": "Por grupo",
+    "ungrouped": "Sem grupo",
+    "streakCount": "Sequência de {{count}} meses no orçamento",
+    "streakHint": "Meses consecutivos dentro do orçamento",
+    "streakBest": "recorde: {{count}}"
   },
   "goals": {
     "title": "Metas",
@@ -1747,7 +1752,12 @@
     "ending": "Fim",
     "lowest": "Ponto mais baixo",
     "shortfallDays": "Dias negativos",
-    "projectedBalance": "Saldo projetado"
+    "projectedBalance": "Saldo projetado",
+    "whatIf": "Cenário what-if",
+    "extraIncome": "Receita extra mensal",
+    "expenseCut": "Corte de despesa mensal",
+    "resetWhatIf": "Limpar cenário",
+    "whatIfActive": "what-if aplicado"
   },
   "healthScore": {
     "title": "Score de Saúde Financeira",
@@ -1818,6 +1828,16 @@
     "withdraw": "Retirar",
     "totalSaved": "Total guardado",
     "totalTarget": "Meta total",
-    "monthlyNeeded": "Necessário/mês"
+    "monthlyNeeded": "Necessário/mês",
+    "roundupTitle": "Arredondar troco",
+    "roundupHint": "{{count}} compras → {{amount}} de arredondamento neste mês",
+    "chooseFund": "Escolher caixinha…",
+    "sweep": "Varrer"
+  },
+  "savedSearches": {
+    "saved": "Busca salva",
+    "namePrompt": "Nome da busca salva",
+    "saveCurrent": "Salvar atual",
+    "title": "Buscas salvas"
   }
 }

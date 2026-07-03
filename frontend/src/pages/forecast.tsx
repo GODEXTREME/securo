@@ -4,9 +4,11 @@ import { useQuery } from '@tanstack/react-query'
 import { forecast as forecastApi } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { formatCurrency } from '@/lib/format'
-import { AlertTriangle, TrendingDown } from 'lucide-react'
+import { AlertTriangle, TrendingDown, Sparkles } from 'lucide-react'
 
 const RANGES = [30, 90, 180]
 
@@ -14,10 +16,13 @@ export default function ForecastPage() {
   const { t } = useTranslation()
   const locale = useDisplayLocale()
   const [days, setDays] = useState(90)
+  const [incomeAdjust, setIncomeAdjust] = useState(0)
+  const [expenseAdjust, setExpenseAdjust] = useState(0)
+  const whatIf = incomeAdjust !== 0 || expenseAdjust !== 0
 
   const { data, isLoading } = useQuery({
-    queryKey: ['forecast', days],
-    queryFn: () => forecastApi.get(days),
+    queryKey: ['forecast', days, incomeAdjust, expenseAdjust],
+    queryFn: () => forecastApi.get(days, incomeAdjust, expenseAdjust),
   })
 
   const currency = data?.currency ?? 'USD'
@@ -72,8 +77,29 @@ export default function ForecastPage() {
               accent={(data?.shortfall_days ?? 0) > 0 ? 'text-rose-600' : 'text-emerald-600'} />
           </div>
 
+          {/* What-if scenario */}
+          <div className={`rounded-xl border p-5 ${whatIf ? 'border-primary/40 bg-primary/5' : 'border-border bg-card'}`}>
+            <h2 className="text-sm font-semibold mb-3 flex items-center gap-2"><Sparkles size={15} className="text-primary" />{t('forecast.whatIf')}</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">{t('forecast.extraIncome')}</Label>
+                <Input type="number" min={0} step={100} value={incomeAdjust}
+                  onChange={(e) => setIncomeAdjust(Math.max(0, Number(e.target.value) || 0))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">{t('forecast.expenseCut')}</Label>
+                <Input type="number" min={0} step={100} value={expenseAdjust}
+                  onChange={(e) => setExpenseAdjust(Math.max(0, Number(e.target.value) || 0))} />
+              </div>
+            </div>
+            {whatIf && (
+              <button onClick={() => { setIncomeAdjust(0); setExpenseAdjust(0) }}
+                className="mt-3 text-xs text-muted-foreground hover:text-foreground">{t('forecast.resetWhatIf')}</button>
+            )}
+          </div>
+
           <div className="bg-card rounded-xl border border-border shadow-sm p-5">
-            <h2 className="text-sm font-semibold mb-4 flex items-center gap-2"><TrendingDown size={15} className="text-muted-foreground" />{t('forecast.projectedBalance')}</h2>
+            <h2 className="text-sm font-semibold mb-4 flex items-center gap-2"><TrendingDown size={15} className="text-muted-foreground" />{t('forecast.projectedBalance')}{whatIf && <span className="text-[11px] font-normal text-primary">· {t('forecast.whatIfActive')}</span>}</h2>
             <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-56" preserveAspectRatio="none">
               {min < 0 && <line x1={0} x2={W} y1={zeroY} y2={zeroY} stroke="currentColor" className="text-rose-300" strokeDasharray="4 4" />}
               <path d={`${path} L${x(series.length - 1)},${y(min)} L${x(0)},${y(min)} Z`} className="fill-primary/10" />

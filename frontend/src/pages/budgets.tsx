@@ -74,6 +74,14 @@ export default function BudgetsPage() {
     queryKey: ['budgets', selectedMonth],
     queryFn: () => budgetsApi.list(monthParam),
   })
+  const { data: groupSummary } = useQuery({
+    queryKey: ['budgets', 'group-summary', selectedMonth],
+    queryFn: () => budgetsApi.groupSummary(monthParam),
+  })
+  const { data: streak } = useQuery({
+    queryKey: ['budgets', 'streak'],
+    queryFn: budgetsApi.streak,
+  })
 
   const { data: categoriesList } = useQuery({
     queryKey: ['categories'],
@@ -179,6 +187,41 @@ export default function BudgetsPage() {
           </div>
         }
       />
+
+      {/* Budget streak */}
+      {streak && streak.streak > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <span className="text-2xl">🔥</span>
+          <div>
+            <p className="text-sm font-semibold text-amber-900">{t('budgets.streakCount', { count: streak.streak })}</p>
+            <p className="text-xs text-amber-700">{t('budgets.streakHint')}{streak.best > streak.streak ? ` · ${t('budgets.streakBest', { count: streak.best })}` : ''}</p>
+          </div>
+        </div>
+      )}
+
+      {/* By-group summary */}
+      {groupSummary && groupSummary.groups.length > 0 && (
+        <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+          <h2 className="text-sm font-semibold mb-4">{t('budgets.byGroup')}</h2>
+          <div className="space-y-3">
+            {groupSummary.groups.map((g) => (
+              <div key={g.id}>
+                <div className="flex items-center justify-between mb-1 text-sm">
+                  <span className="text-foreground">{g.name ?? t('budgets.ungrouped')}</span>
+                  <span className={`tabular-nums ${g.over ? 'text-rose-600' : 'text-muted-foreground'}`}>
+                    {mask(formatCurrency(g.actual, userCurrency, locale))}{g.budget > 0 && <> / {mask(formatCurrency(g.budget, userCurrency, locale))}</>}
+                  </span>
+                </div>
+                {g.budget > 0 && (
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div className={`h-full rounded-full ${g.over ? 'bg-rose-500' : 'bg-primary'}`} style={{ width: `${Math.min(100, g.percentage ?? 0)}%` }} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <SectionCard>
         <SectionHeader
