@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.category import Category
+from app.models.category_group import CategoryGroup
 from app.models.transaction import Transaction
 from app.models.user import User
 
@@ -36,6 +37,100 @@ async def _currency(session: AsyncSession, user_id: uuid.UUID) -> str:
 
 def _amount():
     return func.coalesce(Transaction.amount_primary, Transaction.amount)
+
+
+def _range_start(months: int, period: Optional[str]) -> date:
+    """Month-aligned range start. period='ytd' → Jan 1; else the first day of
+    (current month - (months-1)). months=1 → the current month only."""
+    today = date.today()
+    if period == "ytd":
+        return date(today.year, 1, 1)
+    return _shift_month(_first_of_month(today), max(0, months - 1))
+
+
+async def category_breakdown(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    months: int = 1,
+    period: Optional[str] = None,
+    account_ids: Optional[list[uuid.UUID]] = None,
+    flow: str = "expense",
+) -> dict:
+    """Spending (or income) grouped by *top-level* category for a pie chart.
+
+    A transaction rolls up to its category's group (the "main category"); a
+    category with no group is itself a top-level slice; transactions with no
+    category fall into an "Uncategorized" slice.
+    """
+    currency = await _currency(session, user_id)
+    start = _range_start(months, period)
+    today = date.today()
+    amount = _amount()
+    tx_type = "credit" if flow == "income" else "debit"
+
+    conds = [
+        Transaction.workspace_id == workspace_id,
+        Transaction.type == tx_type,
+        Transaction.is_ignored == False,
+        Transaction.date >= start,
+        Transaction.date <= today,
+    ]
+    if account_ids is not None:
+        conds.append(Transaction.account_id.in_(account_ids))
+
+    # Per-category totals (null category_id groups the uncategorized ones).
+    rows = await session.execute(
+        select(Transaction.category_id, func.sum(func.abs(amount)))
+        .where(*conds)
+        .group_by(Transaction.category_id)
+    )
+    per_cat: dict[Optional[uuid.UUID], float] = {r[0]: float(r[1] or 0) for r in rows.all()}
+
+    # Resolve each category to (group_id, name, color) and groups to (name, color).
+    cat_ids = [cid for cid in per_cat if cid is not None]
+    cat_info: dict[uuid.UUID, tuple[Optional[uuid.UUID], str, str]] = {}
+    if cat_ids:
+        cres = await session.execute(
+            select(Category.id, Category.group_id, Category.name, Category.color).where(Category.id.in_(cat_ids))
+        )
+        cat_info = {r[0]: (r[1], r[2], r[3]) for r in cres.all()}
+    group_ids = {info[0] for info in cat_info.values() if info[0]}
+    group_info: dict[uuid.UUID, tuple[str, str]] = {}
+    if group_ids:
+        gres = await session.execute(
+            select(CategoryGroup.id, CategoryGroup.name, CategoryGroup.color).where(CategoryGroup.id.in_(group_ids))
+        )
+        group_info = {r[0]: (r[1], r[2]) for r in gres.all()}
+
+    # Roll up to top-level slices.
+    slices: dict[str, dict] = {}
+    for cid, total in per_cat.items():
+        if total <= 0:
+            continue
+        if cid is None:
+            key, name, color, is_group = "uncategorized", None, "#94A3B8", False
+        else:
+            group_id, cat_name, cat_color = cat_info.get(cid, (None, "?", "#6B7280"))
+            if group_id and group_id in group_info:
+                gname, gcolor = group_info[group_id]
+                key, name, color, is_group = f"g:{group_id}", gname, gcolor, True
+            else:
+                key, name, color, is_group = f"c:{cid}", cat_name, cat_color, False
+        slot = slices.setdefault(key, {
+            "id": key, "name": name, "color": color, "total": 0.0,
+            "is_group": is_group, "uncategorized": cid is None,
+        })
+        slot["total"] += total
+
+    result = sorted(slices.values(), key=lambda s: s["total"], reverse=True)
+    for s in result:
+        s["total"] = round(s["total"], 2)
+    grand = round(sum(s["total"] for s in result), 2)
+    for s in result:
+        s["percentage"] = round(s["total"] / grand * 100, 1) if grand > 0 else 0.0
+
+    return {"currency": currency, "flow": flow, "total": grand, "slices": result}
 
 
 async def merchant_breakdown(

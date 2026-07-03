@@ -1152,7 +1152,11 @@
     "amount": "Сума",
     "investments": "Інвестиції",
     "moneyMap": "Money Map",
-    "range30d": "30Д"
+    "range30d": "30Д",
+    "categories": "Categories",
+    "categoriesSubtitle": "Spending by main category",
+    "group": "group",
+    "range1m": "1M"
   },
   "payees": {
     "title": "Отримувачі",

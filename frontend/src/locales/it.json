@@ -1152,7 +1152,11 @@
     "amount": "Importo",
     "investments": "Investimenti",
     "moneyMap": "Mappa del Denaro",
-    "range30d": "30D"
+    "range30d": "30D",
+    "categories": "Categories",
+    "categoriesSubtitle": "Spending by main category",
+    "group": "group",
+    "range1m": "1M"
   },
   "payees": {
     "title": "Beneficiari",

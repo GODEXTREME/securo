@@ -1152,7 +1152,11 @@
     "amount": "Betrag",
     "investments": "Investitionen",
     "moneyMap": "Geld-Karte",
-    "range30d": "30T"
+    "range30d": "30T",
+    "categories": "Categories",
+    "categoriesSubtitle": "Spending by main category",
+    "group": "group",
+    "range1m": "1M"
   },
   "payees": {
     "title": "Zahlungsempfänger",

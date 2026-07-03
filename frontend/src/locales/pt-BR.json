@@ -1152,7 +1152,11 @@
     "amount": "Valor",
     "investments": "Investimentos",
     "moneyMap": "Mapa do Dinheiro",
-    "range30d": "30D"
+    "range30d": "30D",
+    "categories": "Categorias",
+    "categoriesSubtitle": "Gastos por categoria principal",
+    "group": "grupo",
+    "range1m": "1M"
   },
   "payees": {
     "title": "Beneficiários",
