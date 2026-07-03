@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { installments as installmentsApi, categories as categoriesApi, type InstallmentPlan } from '@/lib/api'
+import { installments as installmentsApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, type InstallmentPlan } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
+import { CategoryGroupedSelect } from '@/components/category-grouped-select'
 import { Skeleton } from '@/components/ui/skeleton'
+import type { CategoryGroup } from '@/types'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { formatCurrency } from '@/lib/format'
 import { Layers, AlertCircle } from 'lucide-react'
@@ -22,6 +24,10 @@ export default function InstallmentsPage() {
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: categoriesApi.list,
+  })
+  const { data: categoryGroups } = useQuery({
+    queryKey: ['category-groups'],
+    queryFn: categoryGroupsApi.list,
   })
 
   const categorize = useMutation({
@@ -83,6 +89,7 @@ export default function InstallmentsPage() {
               plan={plan}
               locale={locale}
               categories={categories ?? []}
+              categoryGroups={categoryGroups ?? []}
               onCategorize={(categoryId) => categorize.mutate({ ids: plan.transaction_ids, categoryId })}
               pending={categorize.isPending}
             />
@@ -94,11 +101,12 @@ export default function InstallmentsPage() {
 }
 
 function PlanCard({
-  plan, locale, categories, onCategorize, pending,
+  plan, locale, categories, categoryGroups, onCategorize, pending,
 }: {
   plan: InstallmentPlan
   locale: string
-  categories: { id: string; name: string; color?: string | null }[]
+  categories: { id: string; name: string; color?: string | null; group_id?: string | null }[]
+  categoryGroups: CategoryGroup[]
   onCategorize: (categoryId: string) => void
   pending: boolean
 }) {
@@ -128,17 +136,15 @@ function PlanCard({
       </div>
       <div className="mt-3 flex items-center gap-2">
         <span className="text-xs text-muted-foreground">{t('installments.setCategoryForAll')}:</span>
-        <select
+        <CategoryGroupedSelect
           className="text-sm border border-border rounded-lg px-2 py-1 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           value={plan.category_id ?? ''}
           disabled={pending}
           onChange={(e) => e.target.value && onCategorize(e.target.value)}
-        >
-          <option value="">{plan.category_name ?? t('installments.choose')}</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+          categories={categories}
+          categoryGroups={categoryGroups}
+          placeholder={plan.category_name ?? t('installments.choose')}
+        />
       </div>
     </div>
   )

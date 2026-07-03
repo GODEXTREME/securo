@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { rewards, accounts as accountsApi, categories as categoriesApi } from '@/lib/api'
+import { rewards, accounts as accountsApi, categories as categoriesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
+import { CategoryGroupedSelect } from '@/components/category-grouped-select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -35,6 +36,7 @@ export default function RewardsPage() {
   })
   const { data: accounts } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsApi.list() })
   const { data: cats } = useQuery({ queryKey: ['categories'], queryFn: () => categoriesApi.list() })
+  const { data: categoryGroups } = useQuery({ queryKey: ['category-groups'], queryFn: categoryGroupsApi.list })
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['rewards'] })
@@ -87,13 +89,10 @@ export default function RewardsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">{t('rewards.category')}</Label>
-                  <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
-                    className="mt-1 w-full h-9 rounded-lg border border-border bg-background px-2 text-sm">
-                    <option value="">{t('rewards.allCategories')}</option>
-                    {(cats ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  <CategoryGroupedSelect value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-border bg-background px-2 text-sm"
+                    categories={cats ?? []} categoryGroups={categoryGroups ?? []}
+                    placeholder={t('rewards.allCategories')} />
                 </div>
                 <div>
                   <Label className="text-xs">{t('rewards.rate')} (%)</Label>
