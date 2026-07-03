@@ -4,6 +4,7 @@ report_service) so the existing reports stay untouched. All amounts are in the
 user's primary currency via ``amount_primary`` when available.
 """
 import uuid
+from calendar import monthrange as _monthrange
 from collections import defaultdict
 from datetime import date
 from typing import Optional
@@ -56,6 +57,8 @@ async def category_breakdown(
     period: Optional[str] = None,
     account_ids: Optional[list[uuid.UUID]] = None,
     flow: str = "expense",
+    year: Optional[int] = None,
+    month: Optional[int] = None,
 ) -> dict:
     """Spending (or income) for a two-ring pie chart.
 
@@ -63,19 +66,27 @@ async def category_breakdown(
     ungrouped category on its own, or "Uncategorized") and ``children`` (outer
     ring: the leaf categories, each pointing at its parent group). ``slices`` is
     kept as an alias of ``groups`` for backward compatibility.
+
+    When ``year`` and ``month`` are given, the window is exactly that calendar
+    month (used by the month stepper); otherwise it's the last ``months``/period.
     """
     currency = await _currency(session, user_id)
-    start = _range_start(months, period)
-    today = date.today()
     amount = _amount()
     tx_type = "credit" if flow == "income" else "debit"
+
+    if year and month:
+        start = date(year, month, 1)
+        end = date(year, month, _monthrange(year, month)[1])
+    else:
+        start = _range_start(months, period)
+        end = date.today()
 
     conds = [
         Transaction.workspace_id == workspace_id,
         Transaction.type == tx_type,
         Transaction.is_ignored == False,
         Transaction.date >= start,
-        Transaction.date <= today,
+        Transaction.date <= end,
     ]
     if account_ids is not None:
         conds.append(Transaction.account_id.in_(account_ids))

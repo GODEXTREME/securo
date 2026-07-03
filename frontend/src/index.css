@@ -217,3 +217,13 @@
     animation: none;
   }
 }
+
+/* Utility: horizontally scrollable row without a visible scrollbar (used for
+   long category/group names in the reports list that must not overflow). */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

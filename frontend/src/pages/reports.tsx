@@ -20,6 +20,8 @@ import {
 } from 'recharts'
 import { HelpCircle, X } from 'lucide-react'
 import { reports, advancedReports } from '@/lib/api'
+import { MonthStepper } from '@/components/month-stepper'
+import { currentMonth } from '@/lib/month-utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { PageHeader } from '@/components/page-header'
@@ -558,7 +560,7 @@ export default function ReportsPage() {
       </div>
 
       {activeTab === 'categories' && (
-        <CategoryPie months={months} period={period} accountIds={activeAccountIds ?? undefined} userCurrency={userCurrency} locale={locale} mask={mask} />
+        <CategoryPie accountIds={activeAccountIds ?? undefined} userCurrency={userCurrency} locale={locale} mask={mask} />
       )}
 
       {activeTab !== 'categories' && (<>
@@ -1465,10 +1467,8 @@ export default function ReportsPage() {
 // Category breakdown pie (main categories: groups roll up their children;
 // ungrouped categories stand alone; uncategorized becomes its own slice).
 function CategoryPie({
-  months, period, accountIds, userCurrency, locale, mask,
+  accountIds, userCurrency, locale, mask,
 }: {
-  months: number
-  period?: 'ytd'
   accountIds?: string[]
   userCurrency: string
   locale: string
@@ -1476,9 +1476,11 @@ function CategoryPie({
 }) {
   const { t } = useTranslation()
   const [flow, setFlow] = useState<'expense' | 'income'>('expense')
+  const [month, setMonth] = useState(currentMonth())  // "YYYY-MM"
+  const [yr, mo] = month.split('-').map(Number)
   const { data, isLoading } = useQuery({
-    queryKey: ['category-breakdown', months, period ?? null, flow, accountIds],
-    queryFn: () => advancedReports.categoryBreakdown(months, period, accountIds, flow),
+    queryKey: ['category-breakdown', month, flow, accountIds],
+    queryFn: () => advancedReports.categoryBreakdown({ flow, accountIds, year: yr, month: mo }),
   })
 
   const groups = data?.groups ?? []
@@ -1502,13 +1504,16 @@ function CategoryPie({
           <h2 className="text-sm font-semibold text-foreground">{t('reports.categories')}</h2>
           <p className="text-xs text-muted-foreground">{t('reports.categoriesSubtitle')}</p>
         </div>
-        <div className="flex items-center rounded-lg border border-border overflow-hidden">
-          {(['expense', 'income'] as const).map((f) => (
-            <button key={f} onClick={() => setFlow(f)}
-              className={`px-3 py-1 text-xs font-semibold transition-colors ${flow === f ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              {t(f === 'expense' ? 'reports.expenses' : 'reports.income')}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <MonthStepper value={month} onChange={setMonth} locale={locale} />
+          <div className="flex items-center rounded-lg border border-border overflow-hidden">
+            {(['expense', 'income'] as const).map((f) => (
+              <button key={f} onClick={() => setFlow(f)}
+                className={`px-3 py-1 text-xs font-semibold transition-colors ${flow === f ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                {t(f === 'expense' ? 'reports.expenses' : 'reports.income')}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1546,19 +1551,22 @@ function CategoryPie({
                 <div key={g.id}>
                   <div className="flex items-center gap-3">
                     <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: g.color }} />
-                    <span className="text-sm font-medium text-foreground flex-1 truncate">
-                      {labelOf(g.name, g.uncategorized)}
-                      {g.is_group && <span className="ml-1.5 text-[10px] text-muted-foreground">{t('reports.group')}</span>}
+                    <span className="min-w-0 flex-1 overflow-x-auto no-scrollbar">
+                      <span className="text-sm font-medium text-foreground whitespace-nowrap">
+                        {labelOf(g.name, g.uncategorized)}
+                      </span>
                     </span>
-                    <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{g.percentage}%</span>
-                    <span className="text-sm font-medium tabular-nums w-28 text-right">{mask(formatCurrency(g.total, currency, locale))}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums w-10 text-right">{g.percentage}%</span>
+                    <span className="shrink-0 text-sm font-medium tabular-nums text-right">{mask(formatCurrency(g.total, currency, locale))}</span>
                   </div>
                   {hasChildren && kids.map((c) => (
                     <div key={c.id} className="flex items-center gap-3 pl-6 mt-1">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color, opacity: 0.72 }} />
-                      <span className="text-xs text-muted-foreground flex-1 truncate">{labelOf(c.name, c.uncategorized)}</span>
-                      <span className="text-[11px] text-muted-foreground/70 tabular-nums w-10 text-right">{c.percentage}%</span>
-                      <span className="text-xs text-muted-foreground tabular-nums w-28 text-right">{mask(formatCurrency(c.total, currency, locale))}</span>
+                      <span className="min-w-0 flex-1 overflow-x-auto no-scrollbar">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{labelOf(c.name, c.uncategorized)}</span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground/70 tabular-nums w-10 text-right">{c.percentage}%</span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums text-right">{mask(formatCurrency(c.total, currency, locale))}</span>
                     </div>
                   ))}
                 </div>
