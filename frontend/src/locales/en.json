@@ -1161,7 +1161,8 @@
     "categories": "Categories",
     "categoriesSubtitle": "Spending by main category",
     "group": "group",
-    "range1m": "1M"
+    "range1m": "1M",
+    "total": "Total"
   },
   "payees": {
     "title": "Payees",

@@ -57,11 +57,12 @@ async def category_breakdown(
     account_ids: Optional[list[uuid.UUID]] = None,
     flow: str = "expense",
 ) -> dict:
-    """Spending (or income) grouped by *top-level* category for a pie chart.
+    """Spending (or income) for a two-ring pie chart.
 
-    A transaction rolls up to its category's group (the "main category"); a
-    category with no group is itself a top-level slice; transactions with no
-    category fall into an "Uncategorized" slice.
+    Returns ``groups`` (inner ring: main categories — a category's group, an
+    ungrouped category on its own, or "Uncategorized") and ``children`` (outer
+    ring: the leaf categories, each pointing at its parent group). ``slices`` is
+    kept as an alias of ``groups`` for backward compatibility.
     """
     currency = await _currency(session, user_id)
     start = _range_start(months, period)
@@ -103,34 +104,53 @@ async def category_breakdown(
         )
         group_info = {r[0]: (r[1], r[2]) for r in gres.all()}
 
-    # Roll up to top-level slices.
-    slices: dict[str, dict] = {}
+    # Build the inner ring (groups) and outer ring (leaf categories).
+    groups: dict[str, dict] = {}
+    children: list[dict] = []
     for cid, total in per_cat.items():
         if total <= 0:
             continue
         if cid is None:
-            key, name, color, is_group = "uncategorized", None, "#94A3B8", False
+            parent_key, parent_name, parent_color, is_group = "uncategorized", None, "#94A3B8", False
+            child = {"id": "uncategorized", "name": None, "color": "#94A3B8", "uncategorized": True}
         else:
             group_id, cat_name, cat_color = cat_info.get(cid, (None, "?", "#6B7280"))
             if group_id and group_id in group_info:
                 gname, gcolor = group_info[group_id]
-                key, name, color, is_group = f"g:{group_id}", gname, gcolor, True
+                parent_key, parent_name, parent_color, is_group = f"g:{group_id}", gname, gcolor, True
             else:
-                key, name, color, is_group = f"c:{cid}", cat_name, cat_color, False
-        slot = slices.setdefault(key, {
-            "id": key, "name": name, "color": color, "total": 0.0,
+                parent_key, parent_name, parent_color, is_group = f"c:{cid}", cat_name, cat_color, False
+            child = {"id": f"c:{cid}", "name": cat_name, "color": cat_color, "uncategorized": False}
+
+        slot = groups.setdefault(parent_key, {
+            "id": parent_key, "name": parent_name, "color": parent_color, "total": 0.0,
             "is_group": is_group, "uncategorized": cid is None,
         })
         slot["total"] += total
+        children.append({**child, "total": total, "parent": parent_key})
 
-    result = sorted(slices.values(), key=lambda s: s["total"], reverse=True)
-    for s in result:
-        s["total"] = round(s["total"], 2)
-    grand = round(sum(s["total"] for s in result), 2)
-    for s in result:
-        s["percentage"] = round(s["total"] / grand * 100, 1) if grand > 0 else 0.0
+    grand = round(sum(g["total"] for g in groups.values()), 2)
 
-    return {"currency": currency, "flow": flow, "total": grand, "slices": result}
+    def _finish(items: list[dict]) -> list[dict]:
+        for it in items:
+            it["total"] = round(it["total"], 2)
+            it["percentage"] = round(it["total"] / grand * 100, 1) if grand > 0 else 0.0
+        return items
+
+    group_list = _finish(sorted(groups.values(), key=lambda s: s["total"], reverse=True))
+    order = {g["id"]: i for i, g in enumerate(group_list)}
+    # Order children by their parent group's rank, then by size, so the outer
+    # ring lines up with the inner ring.
+    child_list = _finish(sorted(children, key=lambda c: (order.get(c["parent"], 999), -c["total"])))
+
+    return {
+        "currency": currency,
+        "flow": flow,
+        "total": grand,
+        "groups": group_list,
+        "children": child_list,
+        "slices": group_list,  # backward-compat alias
+    }
 
 
 async def merchant_breakdown(

@@ -1481,9 +1481,19 @@ function CategoryPie({
     queryFn: () => advancedReports.categoryBreakdown(months, period, accountIds, flow),
   })
 
-  const slices = data?.slices ?? []
+  const groups = data?.groups ?? []
+  const children = data?.children ?? []
   const currency = data?.currency ?? userCurrency
-  const chartData = slices.map((s) => ({ name: s.uncategorized ? t('reports.uncategorized') : (s.name ?? '—'), value: s.total, color: s.color }))
+  const labelOf = (name: string | null, uncategorized: boolean) => (uncategorized ? t('reports.uncategorized') : (name ?? '—'))
+  const innerData = groups.map((g) => ({ name: labelOf(g.name, g.uncategorized), value: g.total, color: g.color }))
+  const outerData = children.map((c) => ({ name: labelOf(c.name, c.uncategorized), value: c.total, color: c.color }))
+  // Group children under their parent for the list below the chart.
+  const childrenByParent = new Map<string, typeof children>()
+  for (const c of children) {
+    const arr = childrenByParent.get(c.parent) ?? []
+    arr.push(c)
+    childrenByParent.set(c.parent, arr)
+  }
 
   return (
     <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
@@ -1504,16 +1514,19 @@ function CategoryPie({
 
       {isLoading ? (
         <div className="p-8"><Skeleton className="h-64 w-full" /></div>
-      ) : slices.length === 0 ? (
+      ) : groups.length === 0 ? (
         <p className="text-muted-foreground text-sm text-center py-16">{t('reports.noData')}</p>
       ) : (
         <div className="p-5 grid gap-6 md:grid-cols-2 items-center">
-          {/* Pie */}
+          {/* Nested donut: inner = groups (main categories), outer = children */}
           <div className="relative h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={64} outerRadius={104} paddingAngle={1}>
-                  {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                <Pie data={innerData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={46} outerRadius={70} paddingAngle={1}>
+                  {innerData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Pie>
+                <Pie data={outerData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={74} outerRadius={104} paddingAngle={1}>
+                  {outerData.map((d, i) => <Cell key={i} fill={d.color} fillOpacity={0.72} />)}
                 </Pie>
                 <Tooltip formatter={(v) => mask(formatCurrency(Number(v) || 0, currency, locale))} />
               </PieChart>
@@ -1524,19 +1537,33 @@ function CategoryPie({
             </div>
           </div>
 
-          {/* List of main categories */}
-          <div className="space-y-2">
-            {slices.map((s) => (
-              <div key={s.id} className="flex items-center gap-3">
-                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: s.color }} />
-                <span className="text-sm text-foreground flex-1 truncate">
-                  {s.uncategorized ? t('reports.uncategorized') : (s.name ?? '—')}
-                  {s.is_group && <span className="ml-1.5 text-[10px] text-muted-foreground">{t('reports.group')}</span>}
-                </span>
-                <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{s.percentage}%</span>
-                <span className="text-sm font-medium tabular-nums w-28 text-right">{mask(formatCurrency(s.total, currency, locale))}</span>
-              </div>
-            ))}
+          {/* List: main categories with their children */}
+          <div className="space-y-2.5">
+            {groups.map((g) => {
+              const kids = childrenByParent.get(g.id) ?? []
+              const hasChildren = g.is_group && kids.length > 0
+              return (
+                <div key={g.id}>
+                  <div className="flex items-center gap-3">
+                    <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: g.color }} />
+                    <span className="text-sm font-medium text-foreground flex-1 truncate">
+                      {labelOf(g.name, g.uncategorized)}
+                      {g.is_group && <span className="ml-1.5 text-[10px] text-muted-foreground">{t('reports.group')}</span>}
+                    </span>
+                    <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{g.percentage}%</span>
+                    <span className="text-sm font-medium tabular-nums w-28 text-right">{mask(formatCurrency(g.total, currency, locale))}</span>
+                  </div>
+                  {hasChildren && kids.map((c) => (
+                    <div key={c.id} className="flex items-center gap-3 pl-6 mt-1">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color, opacity: 0.72 }} />
+                      <span className="text-xs text-muted-foreground flex-1 truncate">{labelOf(c.name, c.uncategorized)}</span>
+                      <span className="text-[11px] text-muted-foreground/70 tabular-nums w-10 text-right">{c.percentage}%</span>
+                      <span className="text-xs text-muted-foreground tabular-nums w-28 text-right">{mask(formatCurrency(c.total, currency, locale))}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

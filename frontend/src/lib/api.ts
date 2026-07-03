@@ -1712,6 +1712,8 @@ export const advancedReports = {
     currency: string
     flow: string
     total: number
+    groups: { id: string; name: string | null; color: string; total: number; is_group: boolean; uncategorized: boolean; percentage: number }[]
+    children: { id: string; name: string | null; color: string; total: number; uncategorized: boolean; parent: string; percentage: number }[]
     slices: { id: string; name: string | null; color: string; total: number; is_group: boolean; uncategorized: boolean; percentage: number }[]
   }> => {
     const extra = acctIdsParam(accountIds)
