@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { rewards, accounts as accountsApi, categories as categoriesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
-import { CategoryGroupedSelect } from '@/components/category-grouped-select'
+import { CategorySelect } from '@/components/category-select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -89,9 +89,9 @@ export default function RewardsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">{t('rewards.category')}</Label>
-                  <CategoryGroupedSelect value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
-                    className="mt-1 w-full h-9 rounded-lg border border-border bg-background px-2 text-sm"
-                    categories={cats ?? []} categoryGroups={categoryGroups ?? []}
+                  <CategorySelect value={categoryId} onChange={setCategoryId}
+                    className="mt-1"
+                    categories={cats ?? []} groups={categoryGroups ?? []}
                     placeholder={t('rewards.allCategories')} />
                 </div>
                 <div>

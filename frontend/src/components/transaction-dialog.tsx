@@ -37,7 +37,7 @@ import {
 import { TransactionAttachments } from '@/components/transaction-attachments'
 import type { AttachmentPreview } from '@/components/transaction-attachments'
 import { TransactionSplitsSection } from '@/components/transaction-splits-section'
-import { CategoryGroupedSelect } from '@/components/category-grouped-select'
+import { CategorySelect } from '@/components/category-select'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import type { Transaction, RecurringTransaction, TransactionSplitsInput, CategoryGroup, Category, Rule, RuleCondition } from '@/types'
 import { toast } from 'sonner'
@@ -844,13 +844,13 @@ function TransactionForm({
         </div>
         <div className="space-y-2">
           <Label>{t('transactions.category')}</Label>
-          <CategoryGroupedSelect
-            className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-ring/30 focus-visible:ring-[2px]"
+          <CategorySelect
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
+            onChange={setCategoryId}
             categories={categories}
-            categoryGroups={categoryGroups}
+            groups={categoryGroups}
             placeholder={t('transactions.noCategory')}
+            allowNone
           />
         </div>
       </div>
