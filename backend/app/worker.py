@@ -47,6 +47,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.fx_rate_tasks.restamp_recurring_fx",
         "schedule": 60 * 60 * 12,  # twice daily, after FX rate sync
     },
+    "generate-notifications-hourly": {
+        "task": "app.tasks.notification_tasks.generate_all_notifications",
+        "schedule": 60 * 60,  # every hour; generation is idempotent via dedup_key
+    },
 }
 
 celery_app.conf.include = [
@@ -54,6 +58,7 @@ celery_app.conf.include = [
     "app.tasks.recurring_tasks",
     "app.tasks.asset_tasks",
     "app.tasks.fx_rate_tasks",
+    "app.tasks.notification_tasks",
     # Optional agents module — registering the import is harmless when
     # AGENTS_ENABLED=false (the task just won't be dispatched).
     "app.agents.tasks.ingest",

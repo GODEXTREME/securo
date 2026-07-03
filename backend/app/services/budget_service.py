@@ -166,6 +166,7 @@ async def create_budget(
         amount=data.amount,
         month=data.month.replace(day=1),
         is_recurring=data.is_recurring,
+        rollover=data.rollover,
     )
     session.add(budget)
     await session.commit()
@@ -191,6 +192,7 @@ async def update_budget(
                 amount=data.amount if data.amount is not None else budget.amount,
                 month=effective,
                 is_recurring=True,
+                rollover=data.rollover if data.rollover is not None else budget.rollover,
             )
             session.add(new_budget)
             await session.commit()
@@ -385,6 +387,15 @@ async def get_budget_vs_actual(
         )
         prev_spending_map[cat_id] = prev_spending_map.get(cat_id, Decimal("0")) + converted
 
+    # Rollover (envelope) budgets: carry last month's leftover/overspend into
+    # this month's available amount. Kept to a single prior month so the number
+    # stays intuitive ("what's left from last month") and bounded.
+    effective_budgets = await get_budgets(session, workspace_id, month_start)
+    rollover_set = {str(b.category_id) for b in effective_budgets if getattr(b, "rollover", False)}
+    prev_budget_map = (
+        await _build_budget_map(session, workspace_id, prev_month_start) if rollover_set else {}
+    )
+
     comparisons = []
     for category, group in all_categories:
         cat_id = str(category.id)
@@ -393,6 +404,16 @@ async def get_budget_vs_actual(
         budget_entry = budget_map.get(cat_id)
         budget_amount = budget_entry[0] if budget_entry else None
         is_recurring = budget_entry[1] if budget_entry else False
+
+        rollover = cat_id in rollover_set
+        carryover = Decimal("0")
+        available = None
+        if rollover:
+            prev_budget_entry = prev_budget_map.get(cat_id)
+            prev_budget_amt = prev_budget_entry[0] if prev_budget_entry else Decimal("0")
+            carryover = prev_budget_amt - prev_actual
+            if budget_amount is not None:
+                available = budget_amount + carryover
 
         # Skip categories with no spending in either month and no budget
         if actual == 0 and prev_actual == 0 and budget_amount is None:
@@ -414,6 +435,9 @@ async def get_budget_vs_actual(
             prev_month_amount=prev_actual,
             percentage_used=percentage,
             is_recurring=is_recurring,
+            rollover=rollover,
+            carryover=carryover,
+            available=available,
         ))
 
     return sorted(comparisons, key=lambda x: float(x.actual_amount), reverse=True)

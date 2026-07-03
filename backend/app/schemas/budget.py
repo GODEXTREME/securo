@@ -11,11 +11,13 @@ class BudgetCreate(BaseModel):
     amount: Decimal
     month: _Date  # First day of month
     is_recurring: bool = False
+    rollover: bool = False
 
 
 class BudgetUpdate(BaseModel):
     amount: Optional[Decimal] = None
     effective_month: Optional[_Date] = None
+    rollover: Optional[bool] = None
 
 
 class BudgetRead(BaseModel):
@@ -25,6 +27,7 @@ class BudgetRead(BaseModel):
     amount: Decimal
     month: _Date
     is_recurring: bool
+    rollover: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -41,3 +44,9 @@ class BudgetVsActual(BaseModel):
     prev_month_amount: Decimal = Decimal("0")
     percentage_used: Optional[float] = None
     is_recurring: bool = False
+    rollover: bool = False
+    # Carryover from prior months for rollover (envelope) budgets: positive when
+    # under budget historically, negative when overspent. `available` folds it
+    # into this month's budget.
+    carryover: Decimal = Decimal("0")
+    available: Optional[Decimal] = None
