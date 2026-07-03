@@ -1954,4 +1954,98 @@ export const fixedIncome = {
   },
 }
 
+// --- Cash vs installments ---
+export interface CashVsInstallments {
+  currency: string
+  cash_price: number
+  installment_total: number
+  n_installments: number
+  per_installment: number
+  monthly_rate: number
+  pv_cash: number
+  pv_installments: number
+  cheaper: 'cash' | 'installments'
+  savings: number
+  nominal_discount: number
+  nominal_discount_pct: number
+  breakeven_cash_price: number
+  breakeven_discount_pct: number
+}
+
+export const purchase = {
+  cashVsInstallments: async (payload: {
+    cash_price: number; installment_total: number; n_installments: number
+    investment_rate: number; rate_period?: 'annual' | 'monthly'; first_installment_today?: boolean
+  }): Promise<CashVsInstallments> => {
+    const { data } = await api.post('/purchase/cash-vs-installments', payload)
+    return data
+  },
+}
+
+// --- Dividends / asset income ---
+export interface AssetIncome {
+  id: string
+  asset_id: string
+  date: string
+  amount: number
+  currency: string
+  kind: 'dividend' | 'jcp' | 'rent' | 'interest' | 'other'
+  note: string | null
+  asset_name: string | null
+}
+export interface AssetIncomeSummary {
+  currency: string
+  months: number
+  total: number
+  monthly_average: number
+  by_asset: { asset_id: string; name: string; total: number; invested: number; yield_pct: number | null }[]
+  series: { month: string; total: number }[]
+}
+
+export const assetIncome = {
+  list: async (assetId?: string): Promise<AssetIncome[]> => {
+    const { data } = await api.get('/asset-income', { params: { asset_id: assetId } })
+    return data
+  },
+  summary: async (months = 12): Promise<AssetIncomeSummary> => {
+    const { data } = await api.get('/asset-income/summary', { params: { months } })
+    return data
+  },
+  create: async (payload: { asset_id: string; date: string; amount: number; kind?: string; note?: string | null }): Promise<AssetIncome> => {
+    const { data } = await api.post('/asset-income', payload)
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/asset-income/${id}`)
+  },
+}
+
+// --- Emergency fund ---
+export interface EmergencyFund {
+  target_months: number
+  current_amount: number
+  account_id: string | null
+  account_name: string | null
+  monthly_contribution: number | null
+  currency: string
+  avg_monthly_expense: number
+  target_amount: number
+  saved_amount: number
+  progress_pct: number
+  months_covered: number
+  shortfall: number
+  months_to_complete: number | null
+}
+
+export const emergencyFund = {
+  get: async (): Promise<EmergencyFund> => {
+    const { data } = await api.get('/emergency-fund')
+    return data
+  },
+  update: async (payload: Partial<{ target_months: number; current_amount: number; account_id: string | null; monthly_contribution: number | null }>): Promise<EmergencyFund> => {
+    const { data } = await api.put('/emergency-fund', payload)
+    return data
+  },
+}
+
 export default api

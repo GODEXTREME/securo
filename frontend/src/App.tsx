@@ -49,6 +49,9 @@ const LoansPage = lazy(() => import('@/pages/loans'))
 const RetirementPage = lazy(() => import('@/pages/retirement'))
 const RewardsPage = lazy(() => import('@/pages/rewards'))
 const FixedIncomePage = lazy(() => import('@/pages/fixed-income'))
+const PurchasePlannerPage = lazy(() => import('@/pages/purchase-planner'))
+const DividendsPage = lazy(() => import('@/pages/dividends'))
+const EmergencyFundPage = lazy(() => import('@/pages/emergency-fund'))
 const CalendarPage = lazy(() => import('@/pages/calendar'))
 
 const queryClient = new QueryClient({
@@ -117,6 +120,9 @@ function App() {
                   <Route path="/retirement" element={<RetirementPage />} />
                   <Route path="/rewards" element={<RewardsPage />} />
                   <Route path="/fixed-income" element={<FixedIncomePage />} />
+                  <Route path="/purchase-planner" element={<PurchasePlannerPage />} />
+                  <Route path="/dividends" element={<DividendsPage />} />
+                  <Route path="/emergency-fund" element={<EmergencyFundPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/payees" element={<PayeesPage />} />
                   <Route path="/groups" element={<GroupsPage />} />
