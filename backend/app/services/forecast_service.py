@@ -27,8 +27,11 @@ async def _primary_currency(session: AsyncSession, user_id: uuid.UUID) -> str:
 
 
 async def get_forecast(
-    session: AsyncSession, workspace_id: uuid.UUID, user_id: uuid.UUID, days: int = 90
+    session: AsyncSession, workspace_id: uuid.UUID, user_id: uuid.UUID, days: int = 90,
+    income_adjust: float = 0.0, expense_adjust: float = 0.0,
 ) -> dict:
+    """``income_adjust`` / ``expense_adjust`` are optional what-if monthly
+    amounts (extra income / expense cut) spread evenly across the horizon."""
     currency = await _primary_currency(session, user_id)
     today = date.today()
     horizon = today + timedelta(days=days)
@@ -79,13 +82,17 @@ async def get_forecast(
         daily_flow[bill.due_date] = daily_flow.get(bill.due_date, Decimal("0")) - amt
 
     # Build cumulative series.
+    # What-if: extra monthly income and a monthly expense cut both raise the
+    # balance. Spread evenly across the horizon.
+    daily_adjust = (Decimal(str(income_adjust)) + Decimal(str(expense_adjust))) / Decimal("30")
+
     series: list[dict] = []
     running = starting
     lowest = {"date": today.isoformat(), "balance": float(starting)}
     shortfalls: list[dict] = []
     d = today
     while d <= horizon:
-        running += daily_flow.get(d, Decimal("0"))
+        running += daily_flow.get(d, Decimal("0")) + daily_adjust
         bal = float(running)
         series.append({"date": d.isoformat(), "balance": round(bal, 2)})
         if bal < lowest["balance"]:
@@ -102,5 +109,7 @@ async def get_forecast(
         "lowest": lowest,
         "first_shortfall": shortfalls[0] if shortfalls else None,
         "shortfall_days": len(shortfalls),
+        "income_adjust": income_adjust,
+        "expense_adjust": expense_adjust,
         "series": series,
     }

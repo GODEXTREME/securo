@@ -48,6 +48,8 @@ from app.api.debt import router as debt_router
 from app.api.installments import router as installments_router
 from app.api.sinking_funds import router as sinking_funds_router
 from app.api.calendar import router as calendar_router
+from app.api.saved_searches import router as saved_searches_router
+from app.api.roundups import router as roundups_router
 from app.core.auth import fastapi_users
 from app.core.config import get_settings
 from app.core.rate_limit import login_rate_limit, register_rate_limit, password_reset_rate_limit
@@ -200,6 +202,8 @@ app.include_router(debt_router)
 app.include_router(installments_router)
 app.include_router(sinking_funds_router)
 app.include_router(calendar_router)
+app.include_router(saved_searches_router)
+app.include_router(roundups_router)
 
 
 # Optional agents/MCP/LLM module — fully gated by AGENTS_ENABLED so users
