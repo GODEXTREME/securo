@@ -111,6 +111,18 @@ services:
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    # Defined on the service (not the *backend-base anchor) so the Celery
+    # worker/beat containers, which have no HTTP server, don't inherit an
+    # HTTP health probe. Uses /api/health — docs live at /api/docs, so a
+    # check against /docs would 404 and read as unhealthy.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # Generous grace period: `alembic upgrade head` can take a while on the
+      # first boot after a large update, especially on slow hosts.
+      start_period: 90s
 
   frontend:
     image: ghcr.io/securo-finance/securo-frontend:latest
@@ -120,7 +132,7 @@ services:
       BACKEND_URL: http://backend:8000
       FRONTEND_URL: http://localhost:3000
     depends_on:
-      - backend
+      backend: { condition: service_healthy }
     restart: unless-stopped
 
   celery-worker:
