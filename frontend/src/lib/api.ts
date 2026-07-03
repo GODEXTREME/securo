@@ -1795,4 +1795,163 @@ export const financeCalendar = {
   },
 }
 
+// --- Loan simulator (Price / SAC) ---
+export interface LoanScheduleRow { n: number; payment: number; interest: number; principal: number; balance: number }
+export interface LoanResult {
+  method: string
+  months: number
+  first_payment: number
+  last_payment: number
+  total_interest: number
+  total_paid: number
+  payoff_date: string
+  amortized: boolean
+  schedule: LoanScheduleRow[]
+}
+export interface LoanSimulation {
+  currency: string
+  principal: number
+  monthly_rate: number
+  annual_rate: number
+  term_months: number
+  extra_payment: number
+  results: Record<string, LoanResult>
+  recommended: string
+}
+
+export const loans = {
+  simulate: async (payload: {
+    principal: number; rate: number; months: number
+    rate_period?: 'annual' | 'monthly'; extra_payment?: number; method?: 'both' | 'price' | 'sac'
+  }): Promise<LoanSimulation> => {
+    const { data } = await api.post('/loans/simulate', payload)
+    return data
+  },
+}
+
+// --- Retirement / FIRE ---
+export interface RetirementProjection {
+  currency: string
+  current_net_worth: number
+  monthly_contribution: number
+  annual_return: number
+  annual_expenses: number
+  withdrawal_rate: number
+  fire_number: number
+  progress_pct: number
+  years_to_fire: number | null
+  fire_date: string | null
+  age_at_fire: number | null
+  reached: boolean
+  total_contributed: number
+  monthly_income_at_fire: number
+  series: { year: number; month_index: number; value: number }[]
+}
+
+export const retirement = {
+  defaults: async (): Promise<{ currency: string; current_net_worth: number; suggested_monthly_contribution: number }> => {
+    const { data } = await api.get('/retirement/defaults')
+    return data
+  },
+  project: async (payload: {
+    monthly_contribution: number; annual_return: number; annual_expenses: number
+    withdrawal_rate?: number; current_age?: number | null; current_net_worth?: number | null
+  }): Promise<RetirementProjection> => {
+    const { data } = await api.post('/retirement/project', payload)
+    return data
+  },
+}
+
+// --- Cashback / rewards ---
+export interface RewardRule {
+  id: string
+  account_id: string
+  category_id: string | null
+  rate: number
+  name: string | null
+  account_name: string | null
+  category_name: string | null
+  category_color: string | null
+}
+export interface RewardSummary {
+  currency: string
+  total_earned: number
+  total_spend: number
+  effective_rate: number
+  by_card: { account_id: string; name: string; earned: number; spend: number }[]
+  by_category: { category_id: string | null; name: string | null; color: string | null; earned: number; spend: number }[]
+  best_per_category: { category_id: string | null; category_name: string | null; category_color: string | null; account_name: string; rate: number }[]
+}
+
+export const rewards = {
+  list: async (): Promise<RewardRule[]> => {
+    const { data } = await api.get('/rewards')
+    return data
+  },
+  summary: async (opts: { year?: number; month?: number; months?: number } = {}): Promise<RewardSummary> => {
+    const { data } = await api.get('/rewards/summary', { params: opts })
+    return data
+  },
+  create: async (payload: { account_id: string; category_id?: string | null; rate: number; name?: string | null }): Promise<RewardRule> => {
+    const { data } = await api.post('/rewards', payload)
+    return data
+  },
+  update: async (id: string, payload: Partial<{ account_id: string; category_id: string | null; rate: number; name: string | null }>): Promise<RewardRule> => {
+    const { data } = await api.patch(`/rewards/${id}`, payload)
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/rewards/${id}`)
+  },
+}
+
+// --- Fixed-income comparator (renda fixa) ---
+export interface FixedIncomeOption {
+  id: string
+  name: string
+  institution: string | null
+  product_type: string
+  rate_kind: 'cdi' | 'prefixed' | 'ipca_plus'
+  rate: number
+  liquidity: 'daily' | 'maturity'
+  maturity_date: string | null
+  min_amount: number | null
+  tax_exempt: boolean
+}
+export interface FixedIncomeComparison {
+  amount: number
+  horizon_days: number
+  cdi: number
+  ipca: number
+  ir_rate: number
+  best_id: string | null
+  best_daily_id: string | null
+  options: (FixedIncomeOption & {
+    gross_annual: number; ir_rate: number; net_annual: number
+    gross_earnings: number; net_earnings: number; final_amount: number
+  })[]
+}
+
+export const fixedIncome = {
+  list: async (): Promise<FixedIncomeOption[]> => {
+    const { data } = await api.get('/fixed-income')
+    return data
+  },
+  compare: async (opts: { amount?: number; horizon_days?: number; cdi?: number; ipca?: number } = {}): Promise<FixedIncomeComparison> => {
+    const { data } = await api.get('/fixed-income/compare', { params: opts })
+    return data
+  },
+  create: async (payload: Partial<FixedIncomeOption>): Promise<FixedIncomeOption> => {
+    const { data } = await api.post('/fixed-income', payload)
+    return data
+  },
+  update: async (id: string, payload: Partial<FixedIncomeOption>): Promise<FixedIncomeOption> => {
+    const { data } = await api.patch(`/fixed-income/${id}`, payload)
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/fixed-income/${id}`)
+  },
+}
+
 export default api
