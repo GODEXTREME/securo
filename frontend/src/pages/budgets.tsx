@@ -15,7 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import type { Budget } from '@/types'
-import { CategoryGroupedSelect } from '@/components/category-grouped-select'
+import { CategorySelect } from '@/components/category-select'
 import { Pencil, Trash2, Plus, Repeat, CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
@@ -69,6 +69,9 @@ export default function BudgetsPage() {
   const monthParam = `${selectedMonth}-01`
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Budget | null>(null)
+  // CategorySelect is a controlled combobox (not a native field), so the new-
+  // budget form mirrors its value into a hidden input for FormData submission.
+  const [formCategoryId, setFormCategoryId] = useState('')
 
   const { data: budgetsList } = useQuery({
     queryKey: ['budgets', selectedMonth],
@@ -228,7 +231,7 @@ export default function BudgetsPage() {
           title={t('budgets.title')}
           action={
             canWrite ? (
-              <Button size="sm" className="gap-1.5 h-8" onClick={() => { setEditing(null); setDialogOpen(true) }}>
+              <Button size="sm" className="gap-1.5 h-8" onClick={() => { setEditing(null); setFormCategoryId(''); setDialogOpen(true) }}>
                 <Plus size={13} /> {t('budgets.add')}
               </Button>
             ) : undefined
@@ -306,9 +309,10 @@ export default function BudgetsPage() {
                   amount: parseFloat(formData.get('amount') as string),
                 })
               } else {
+                if (!formCategoryId) return
                 const isRecurring = formData.get('is_recurring') === 'on'
                 createMutation.mutate({
-                  category_id: formData.get('category_id') as string,
+                  category_id: formCategoryId,
                   amount: parseFloat(formData.get('amount') as string),
                   month: monthParam,
                   is_recurring: isRecurring,
@@ -322,14 +326,14 @@ export default function BudgetsPage() {
               <>
                 <div className="space-y-2">
                   <Label>{t('budgets.category')}</Label>
-                  <CategoryGroupedSelect
-                    name="category_id"
-                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                    required
+                  <CategorySelect
+                    value={formCategoryId}
+                    onChange={setFormCategoryId}
                     categories={categoriesList ?? []}
-                    categoryGroups={groupsList}
+                    groups={groupsList ?? []}
                     placeholder={t('budgets.selectCategory')}
                   />
+                  <input type="hidden" name="category_id" value={formCategoryId} />
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" name="is_recurring" className="rounded border-border" />

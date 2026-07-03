@@ -27,6 +27,10 @@ from app.models.collection import Collection, collection_accounts, collection_as
 from app.models.notification import Notification
 from app.models.sinking_fund import SinkingFund
 from app.models.saved_search import SavedSearch
+from app.models.reward_rule import RewardRule
+from app.models.fixed_income_option import FixedIncomeOption
+from app.models.asset_income import AssetIncome
+from app.models.emergency_fund import EmergencyFund
 
 # Side-effect import: register the before_insert listener that auto-stamps
 # workspace_id from user_id on financial entities. Imported last so all
@@ -68,4 +72,8 @@ __all__ = [
     "Notification",
     "SinkingFund",
     "SavedSearch",
+    "RewardRule",
+    "FixedIncomeOption",
+    "AssetIncome",
+    "EmergencyFund",
 ]

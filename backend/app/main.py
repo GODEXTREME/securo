@@ -50,6 +50,13 @@ from app.api.sinking_funds import router as sinking_funds_router
 from app.api.calendar import router as calendar_router
 from app.api.saved_searches import router as saved_searches_router
 from app.api.roundups import router as roundups_router
+from app.api.loans import router as loans_router
+from app.api.retirement import router as retirement_router
+from app.api.rewards import router as rewards_router
+from app.api.fixed_income import router as fixed_income_router
+from app.api.purchase import router as purchase_router
+from app.api.asset_income import router as asset_income_router
+from app.api.emergency_fund import router as emergency_fund_router
 from app.core.auth import fastapi_users
 from app.core.config import get_settings
 from app.core.rate_limit import login_rate_limit, register_rate_limit, password_reset_rate_limit
@@ -204,6 +211,13 @@ app.include_router(sinking_funds_router)
 app.include_router(calendar_router)
 app.include_router(saved_searches_router)
 app.include_router(roundups_router)
+app.include_router(loans_router)
+app.include_router(retirement_router)
+app.include_router(rewards_router)
+app.include_router(fixed_income_router)
+app.include_router(purchase_router)
+app.include_router(asset_income_router)
+app.include_router(emergency_fund_router)
 
 
 # Optional agents/MCP/LLM module — fully gated by AGENTS_ENABLED so users
