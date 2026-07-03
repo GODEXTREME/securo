@@ -130,7 +130,9 @@
     "healthScore": "Saúde Financeira",
     "subscriptions": "Assinaturas",
     "debt": "Planejador de Dívidas",
-    "notifications": "Notificações"
+    "notifications": "Notificações",
+    "calendar": "Calendário",
+    "sinkingFunds": "Caixinhas"
   },
   "collections": {
     "title": "Coleções",
@@ -1780,5 +1782,38 @@
     "notAmortizing": "Pagamentos baixos demais para quitar.",
     "y": "a",
     "mo": "m"
+  },
+  "calendar": {
+    "title": "Calendário Financeiro",
+    "bill": "Fatura",
+    "legendBill": "Fatura a vencer",
+    "legendRecurringExpense": "Despesa recorrente",
+    "legendRecurringIncome": "Receita recorrente",
+    "legendActuals": "Saldo diário (realizado)"
+  },
+  "sinkingFunds": {
+    "title": "Caixinhas",
+    "add": "Nova caixinha",
+    "edit": "Editar caixinha",
+    "empty": "Nenhuma caixinha ainda. Crie uma para reservar dinheiro para um objetivo.",
+    "created": "Caixinha criada",
+    "updated": "Caixinha atualizada",
+    "deleted": "Caixinha excluída",
+    "contributed": "Saldo atualizado",
+    "name": "Nome",
+    "namePlaceholder": "Viagem, seguro, presentes…",
+    "target": "Meta",
+    "current": "Guardado até agora",
+    "targetDate": "Data alvo",
+    "color": "Cor",
+    "by": "até",
+    "suggested": "{{amount}}/mês sugerido",
+    "contribute": "Aportar",
+    "amount": "Valor",
+    "deposit": "Depositar",
+    "withdraw": "Retirar",
+    "totalSaved": "Total guardado",
+    "totalTarget": "Meta total",
+    "monthlyNeeded": "Necessário/mês"
   }
 }

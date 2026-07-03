@@ -1673,4 +1673,73 @@ export const advancedReports = {
   },
 }
 
+export interface SinkingFund {
+  id: string
+  user_id: string
+  name: string
+  target_amount: number
+  current_amount: number
+  currency: string
+  target_date: string | null
+  monthly_contribution: number | null
+  account_id: string | null
+  status: string
+  icon: string | null
+  color: string | null
+  position: number
+  percentage: number
+  suggested_monthly: number | null
+  months_remaining: number | null
+  account_name: string | null
+}
+
+export const sinkingFunds = {
+  list: async (status?: string): Promise<SinkingFund[]> => {
+    const { data } = await api.get('/sinking-funds', { params: { status } })
+    return data
+  },
+  summary: async (): Promise<{ count: number; total_saved: number; total_target: number; monthly_needed: number }> => {
+    const { data } = await api.get('/sinking-funds/summary')
+    return data
+  },
+  create: async (payload: Partial<SinkingFund>): Promise<SinkingFund> => {
+    const { data } = await api.post('/sinking-funds', payload)
+    return data
+  },
+  update: async (id: string, payload: Partial<SinkingFund>): Promise<SinkingFund> => {
+    const { data } = await api.patch(`/sinking-funds/${id}`, payload)
+    return data
+  },
+  contribute: async (id: string, amount: number): Promise<SinkingFund> => {
+    const { data } = await api.post(`/sinking-funds/${id}/contribute`, { amount })
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/sinking-funds/${id}`)
+  },
+}
+
+export interface CalendarEvent {
+  date: string
+  kind: 'bill' | 'recurring_income' | 'recurring_expense'
+  title: string
+  amount: number
+  currency: string
+}
+
+export const financeCalendar = {
+  get: async (year: number, month: number): Promise<{
+    year: number
+    month: number
+    currency: string
+    daily: Record<string, { income: number; expense: number; net: number }>
+    events: CalendarEvent[]
+    month_income: number
+    month_expense: number
+  }> => {
+    const { data } = await api.get('/calendar', { params: { year, month } })
+    return data
+  },
+}
+
 export default api
