@@ -1708,7 +1708,7 @@ export const advancedReports = {
     const { data } = await api.get('/reports/period-comparison', { params: { months } })
     return data
   },
-  categoryBreakdown: async (months = 1, period?: 'ytd', accountIds?: string[], flow: 'expense' | 'income' = 'expense'): Promise<{
+  categoryBreakdown: async (opts: { months?: number; period?: 'ytd'; accountIds?: string[]; flow?: 'expense' | 'income'; year?: number; month?: number } = {}): Promise<{
     currency: string
     flow: string
     total: number
@@ -1716,9 +1716,10 @@ export const advancedReports = {
     children: { id: string; name: string | null; color: string; total: number; uncategorized: boolean; parent: string; percentage: number }[]
     slices: { id: string; name: string | null; color: string; total: number; is_group: boolean; uncategorized: boolean; percentage: number }[]
   }> => {
+    const { months = 1, period, accountIds, flow = 'expense', year, month } = opts
     const extra = acctIdsParam(accountIds)
     const { data } = await api.get('/reports/category-breakdown', {
-      params: { months, period, flow, ...(extra.params ?? {}) },
+      params: { months, period, flow, year, month, ...(extra.params ?? {}) },
       ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}),
     })
     return data

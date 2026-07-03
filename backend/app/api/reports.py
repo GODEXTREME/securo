@@ -99,9 +99,11 @@ async def get_category_breakdown(
     period: str | None = Query(None, pattern="^ytd$"),
     flow: str = Query("expense", pattern="^(expense|income)$"),
     account_ids: Optional[list[uuid.UUID]] = Query(None),
+    year: Optional[int] = Query(None, ge=1970, le=2200),
+    month: Optional[int] = Query(None, ge=1, le=12),
     ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
 ):
     return await advanced_report_service.category_breakdown(
-        session, ctx.workspace.id, ctx.user_id, months, period, account_ids, flow
+        session, ctx.workspace.id, ctx.user_id, months, period, account_ids, flow, year, month
     )
