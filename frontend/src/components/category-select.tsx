@@ -86,7 +86,8 @@ export function CategorySelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-[var(--radix-popover-trigger-width)] p-0 overflow-hidden max-h-[var(--radix-popover-content-available-height)]"
+        collisionPadding={8}
+        className="w-[var(--radix-popover-trigger-width)] p-0 overflow-hidden max-h-[min(26rem,var(--radix-popover-content-available-height,26rem))]"
         {...contentProps}
       >
         <Command
@@ -95,11 +96,13 @@ export function CategorySelect({
           }}
         >
           <CommandInput placeholder={t('transactions.searchCategory')} />
-          {/* Cap the scroll area to the viewport space Radix reports (minus the
-              search box) so categories below the fold stay reachable when the
-              trigger sits low on screen — the previous fixed 300px could run off
-              the bottom of the viewport with no way to scroll to it. */}
-          <CommandList className="max-h-[calc(var(--radix-popover-content-available-height)-2.75rem)]">
+          {/* Always give the list a real max-height so it scrolls: a hard 22rem
+              cap, further shrunk to the viewport space Radix reports (minus the
+              search box) when the trigger sits low on screen. The var carries a
+              fallback so the calc stays valid even when Radix hasn't set it
+              (e.g. inside dialogs) — without the fallback the cap vanished and
+              the list overflowed with no way to scroll. */}
+          <CommandList className="max-h-[min(22rem,calc(var(--radix-popover-content-available-height,24rem)_-_3rem))] overflow-y-auto">
             <CommandEmpty>{t('transactions.noCategoryFound')}</CommandEmpty>
             {allowNone && (
               <CommandGroup>
