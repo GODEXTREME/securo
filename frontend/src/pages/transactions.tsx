@@ -8,7 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi, recurring, payees as payeesApi, admin, groups as groupsApi, rules as rulesApi } from '@/lib/api'
+import { transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi, recurring, payees as payeesApi, admin, groups as groupsApi, rules as rulesApi, savedSearches as savedSearchesApi } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -1192,6 +1192,8 @@ export default function TransactionsPage() {
         }
       />
 
+      <SavedSearchesBar />
+
       {/* Filters */}
       <TransactionsFilterBar
         searchInput={searchInput}
@@ -1716,6 +1718,50 @@ export default function TransactionsPage() {
         loading={createRuleMutation.isPending}
         initialData={createRuleInitialData}
       />
+    </div>
+  )
+}
+
+// Saved searches: capture the current transaction filters (reflected in the
+// URL via replaceState) as a named favorite, and re-apply one in a click.
+function SavedSearchesBar() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { data: searches } = useQuery({ queryKey: ['saved-searches'], queryFn: savedSearchesApi.list })
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['saved-searches'] })
+  const createMutation = useMutation({
+    mutationFn: ({ name, query }: { name: string; query: string }) => savedSearchesApi.create(name, { query }),
+    onSuccess: () => { invalidate(); toast.success(t('savedSearches.saved')) },
+    onError: () => toast.error(t('common.error')),
+  })
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => savedSearchesApi.remove(id),
+    onSuccess: invalidate,
+  })
+
+  const apply = (query: string) => navigate(`/transactions${query ? `?${query}` : ''}`)
+  const saveCurrent = () => {
+    const name = window.prompt(t('savedSearches.namePrompt'))
+    if (!name) return
+    createMutation.mutate({ name: name.trim(), query: window.location.search.replace(/^\?/, '') })
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {(searches ?? []).map((s) => {
+        const query = typeof s.filters_json?.query === 'string' ? s.filters_json.query : ''
+        return (
+          <span key={s.id} className="group inline-flex items-center gap-1 rounded-full border border-border bg-card pl-3 pr-1.5 py-1 text-xs hover:border-primary/40 transition-colors">
+            <button className="text-foreground hover:text-primary" onClick={() => apply(query)}>{s.name}</button>
+            <button className="text-muted-foreground/50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeMutation.mutate(s.id)}>×</button>
+          </span>
+        )
+      })}
+      <button onClick={saveCurrent} className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
+        + {t('savedSearches.saveCurrent')}
+      </button>
     </div>
   )
 }

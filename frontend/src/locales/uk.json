@@ -677,7 +677,12 @@
     "rollover": "Rollover",
     "rolloverHint": "Carry this category's leftover into next month",
     "carryover": "Carryover",
-    "available": "Available"
+    "available": "Available",
+    "byGroup": "By group",
+    "ungrouped": "Ungrouped",
+    "streakCount": "{{count}}-month budget streak",
+    "streakHint": "Consecutive months within budget",
+    "streakBest": "best: {{count}}"
   },
   "goals": {
     "title": "Цілі",
@@ -1747,7 +1752,12 @@
     "ending": "Ending",
     "lowest": "Lowest point",
     "shortfallDays": "Negative days",
-    "projectedBalance": "Projected balance"
+    "projectedBalance": "Projected balance",
+    "whatIf": "What-if scenario",
+    "extraIncome": "Extra monthly income",
+    "expenseCut": "Monthly expense cut",
+    "resetWhatIf": "Reset scenario",
+    "whatIfActive": "what-if applied"
   },
   "healthScore": {
     "title": "Financial Health Score",
@@ -1818,6 +1828,16 @@
     "withdraw": "Withdraw",
     "totalSaved": "Total saved",
     "totalTarget": "Total target",
-    "monthlyNeeded": "Monthly needed"
+    "monthlyNeeded": "Monthly needed",
+    "roundupTitle": "Round-up spare change",
+    "roundupHint": "{{count}} purchases → {{amount}} in round-ups this month",
+    "chooseFund": "Choose bucket…",
+    "sweep": "Sweep"
+  },
+  "savedSearches": {
+    "saved": "Search saved",
+    "namePrompt": "Name this saved search",
+    "saveCurrent": "Save current",
+    "title": "Saved searches"
   }
 }

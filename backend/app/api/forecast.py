@@ -11,7 +11,11 @@ router = APIRouter(prefix="/api/forecast", tags=["forecast"])
 @router.get("")
 async def get_forecast(
     days: int = Query(90, ge=7, le=365),
+    income_adjust: float = Query(0.0),
+    expense_adjust: float = Query(0.0),
     ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
 ):
-    return await forecast_service.get_forecast(session, ctx.workspace.id, ctx.user_id, days)
+    return await forecast_service.get_forecast(
+        session, ctx.workspace.id, ctx.user_id, days, income_adjust, expense_adjust
+    )

@@ -26,6 +26,7 @@ from app.models.group_settlement import GroupSettlement
 from app.models.collection import Collection, collection_accounts, collection_asset_groups
 from app.models.notification import Notification
 from app.models.sinking_fund import SinkingFund
+from app.models.saved_search import SavedSearch
 
 # Side-effect import: register the before_insert listener that auto-stamps
 # workspace_id from user_id on financial entities. Imported last so all
@@ -66,4 +67,5 @@ __all__ = [
     "collection_asset_groups",
     "Notification",
     "SinkingFund",
+    "SavedSearch",
 ]

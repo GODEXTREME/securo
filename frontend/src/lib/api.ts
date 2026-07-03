@@ -881,6 +881,14 @@ export const budgets = {
     const { data } = await api.get('/budgets/comparison', { params: { month } })
     return data
   },
+  groupSummary: async (month?: string): Promise<{ month: string; groups: { id: string; name: string | null; budget: number; actual: number; remaining: number; percentage: number | null; categories: number; over: boolean }[] }> => {
+    const { data } = await api.get('/budgets/group-summary', { params: { month } })
+    return data
+  },
+  streak: async (): Promise<{ streak: number; best: number; months: { month: string; within: boolean; budget: number; spent: number }[] }> => {
+    const { data } = await api.get('/budgets/streak')
+    return data
+  },
 }
 
 // Goals
@@ -1570,7 +1578,7 @@ export const insights = {
 }
 
 export const forecast = {
-  get: async (days = 90): Promise<{
+  get: async (days = 90, incomeAdjust = 0, expenseAdjust = 0): Promise<{
     currency: string
     days: number
     starting_balance: number
@@ -1580,8 +1588,37 @@ export const forecast = {
     shortfall_days: number
     series: { date: string; balance: number }[]
   }> => {
-    const { data } = await api.get('/forecast', { params: { days } })
+    const { data } = await api.get('/forecast', { params: { days, income_adjust: incomeAdjust, expense_adjust: expenseAdjust } })
     return data
+  },
+}
+
+export const roundups = {
+  get: async (months = 1, multiplier = 1): Promise<{ currency: string; months: number; multiplier: number; transaction_count: number; roundup_total: number }> => {
+    const { data } = await api.get('/roundups', { params: { months, multiplier } })
+    return data
+  },
+}
+
+export interface SavedSearch {
+  id: string
+  name: string
+  filters_json: Record<string, unknown> | null
+  position: number
+  created_at: string
+}
+
+export const savedSearches = {
+  list: async (): Promise<SavedSearch[]> => {
+    const { data } = await api.get('/saved-searches')
+    return data
+  },
+  create: async (name: string, filters: Record<string, unknown>): Promise<SavedSearch> => {
+    const { data } = await api.post('/saved-searches', { name, filters_json: filters })
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/saved-searches/${id}`)
   },
 }
 

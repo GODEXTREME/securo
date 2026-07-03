@@ -12,7 +12,7 @@ from app.core.workspace_context import (
     current_writable_workspace,
 )
 from app.schemas.budget import BudgetCreate, BudgetRead, BudgetUpdate, BudgetVsActual
-from app.services import budget_service
+from app.services import budget_extras_service, budget_service
 
 router = APIRouter(prefix="/api/budgets", tags=["budgets"])
 
@@ -69,3 +69,20 @@ async def budget_comparison(
     session: AsyncSession = Depends(get_async_session),
 ):
     return await budget_service.get_budget_vs_actual(session, ctx.workspace.id, ctx.user_id, month)
+
+
+@router.get("/group-summary")
+async def budget_group_summary(
+    month: Optional[date] = Query(None),
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    return await budget_extras_service.group_summary(session, ctx.workspace.id, ctx.user_id, month)
+
+
+@router.get("/streak")
+async def budget_streak(
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    return await budget_extras_service.get_streak(session, ctx.workspace.id, ctx.user_id)
