@@ -19,7 +19,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { HelpCircle, X } from 'lucide-react'
-import { reports } from '@/lib/api'
+import { reports, advancedReports } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { PageHeader } from '@/components/page-header'
@@ -67,6 +67,7 @@ function formatCompact(value: number, currency = 'USD', locale = 'en-US') {
 type RangeOption = { key: string; months: number; period?: 'ytd' }
 
 const HISTORICAL_RANGE_OPTIONS: readonly RangeOption[] = [
+  { key: '1m', months: 1 },
   { key: '6m', months: 6 },
   { key: 'ytd', months: 12, period: 'ytd' },
   { key: '1y', months: 12 },
@@ -110,6 +111,7 @@ const INTERVAL_LABELS: Record<string, string> = {
 }
 
 const RANGE_LABELS: Record<string, string> = {
+  '1m': 'range1m',
   '30d': 'range30d',
   '3m': 'range3m',
   '6m': 'range6m',
@@ -128,6 +130,7 @@ interface ReportTab {
 const REPORT_TABS: ReportTab[] = [
   { key: 'net_worth', labelKey: 'reports.netWorth', enabled: true },
   { key: 'income_expenses', labelKey: 'reports.incomeExpenses', enabled: true },
+  { key: 'categories', labelKey: 'reports.categories', enabled: true },
   { key: 'cash_flow', labelKey: 'reports.cashFlow', enabled: true },
   { key: 'money_map', labelKey: 'reports.moneyMap', enabled: true },
 ]
@@ -554,6 +557,11 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {activeTab === 'categories' && (
+        <CategoryPie months={months} period={period} accountIds={activeAccountIds ?? undefined} userCurrency={userCurrency} locale={locale} mask={mask} />
+      )}
+
+      {activeTab !== 'categories' && (<>
       {/* Hero Card */}
       <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
         <div className="px-5 py-4">
@@ -1447,6 +1455,90 @@ export default function ReportsPage() {
         </div>
       </div>
       </>
+      )}
+      </>
+      )}
+    </div>
+  )
+}
+
+// Category breakdown pie (main categories: groups roll up their children;
+// ungrouped categories stand alone; uncategorized becomes its own slice).
+function CategoryPie({
+  months, period, accountIds, userCurrency, locale, mask,
+}: {
+  months: number
+  period?: 'ytd'
+  accountIds?: string[]
+  userCurrency: string
+  locale: string
+  mask: (s: string) => string
+}) {
+  const { t } = useTranslation()
+  const [flow, setFlow] = useState<'expense' | 'income'>('expense')
+  const { data, isLoading } = useQuery({
+    queryKey: ['category-breakdown', months, period ?? null, flow, accountIds],
+    queryFn: () => advancedReports.categoryBreakdown(months, period, accountIds, flow),
+  })
+
+  const slices = data?.slices ?? []
+  const currency = data?.currency ?? userCurrency
+  const chartData = slices.map((s) => ({ name: s.uncategorized ? t('reports.uncategorized') : (s.name ?? '—'), value: s.total, color: s.color }))
+
+  return (
+    <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
+      <div className="px-5 pt-5 pb-2 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">{t('reports.categories')}</h2>
+          <p className="text-xs text-muted-foreground">{t('reports.categoriesSubtitle')}</p>
+        </div>
+        <div className="flex items-center rounded-lg border border-border overflow-hidden">
+          {(['expense', 'income'] as const).map((f) => (
+            <button key={f} onClick={() => setFlow(f)}
+              className={`px-3 py-1 text-xs font-semibold transition-colors ${flow === f ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              {t(f === 'expense' ? 'reports.expenses' : 'reports.income')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="p-8"><Skeleton className="h-64 w-full" /></div>
+      ) : slices.length === 0 ? (
+        <p className="text-muted-foreground text-sm text-center py-16">{t('reports.noData')}</p>
+      ) : (
+        <div className="p-5 grid gap-6 md:grid-cols-2 items-center">
+          {/* Pie */}
+          <div className="relative h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={64} outerRadius={104} paddingAngle={1}>
+                  {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Pie>
+                <Tooltip formatter={(v) => mask(formatCurrency(Number(v) || 0, currency, locale))} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-[11px] text-muted-foreground">{t('reports.total')}</span>
+              <span className="text-lg font-bold tabular-nums">{mask(formatCurrency(data?.total ?? 0, currency, locale))}</span>
+            </div>
+          </div>
+
+          {/* List of main categories */}
+          <div className="space-y-2">
+            {slices.map((s) => (
+              <div key={s.id} className="flex items-center gap-3">
+                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="text-sm text-foreground flex-1 truncate">
+                  {s.uncategorized ? t('reports.uncategorized') : (s.name ?? '—')}
+                  {s.is_group && <span className="ml-1.5 text-[10px] text-muted-foreground">{t('reports.group')}</span>}
+                </span>
+                <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{s.percentage}%</span>
+                <span className="text-sm font-medium tabular-nums w-28 text-right">{mask(formatCurrency(s.total, currency, locale))}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

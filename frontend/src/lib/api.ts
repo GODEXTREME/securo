@@ -1671,6 +1671,19 @@ export const advancedReports = {
     const { data } = await api.get('/reports/period-comparison', { params: { months } })
     return data
   },
+  categoryBreakdown: async (months = 1, period?: 'ytd', accountIds?: string[], flow: 'expense' | 'income' = 'expense'): Promise<{
+    currency: string
+    flow: string
+    total: number
+    slices: { id: string; name: string | null; color: string; total: number; is_group: boolean; uncategorized: boolean; percentage: number }[]
+  }> => {
+    const extra = acctIdsParam(accountIds)
+    const { data } = await api.get('/reports/category-breakdown', {
+      params: { months, period, flow, ...(extra.params ?? {}) },
+      ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}),
+    })
+    return data
+  },
 }
 
 export interface SinkingFund {

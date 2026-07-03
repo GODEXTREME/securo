@@ -1244,7 +1244,11 @@
     "amount": "Kwota",
     "investments": "Inwestycje",
     "moneyMap": "Mapa Pieniędzy",
-    "range30d": "30D"
+    "range30d": "30D",
+    "categories": "Categories",
+    "categoriesSubtitle": "Spending by main category",
+    "group": "group",
+    "range1m": "1M"
   },
   "payees": {
     "title": "Odbiorcy",
