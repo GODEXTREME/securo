@@ -39,6 +39,13 @@ from app.api.two_factor import router as two_factor_router
 from app.api.user_lookup import router as user_lookup_router
 from app.api.workspaces import router as workspaces_router
 from app.api.admin import router as admin_router, check_registration_enabled
+from app.api.notifications import router as notifications_router
+from app.api.subscriptions import router as subscriptions_router
+from app.api.insights import router as insights_router
+from app.api.forecast import router as forecast_router
+from app.api.health_score import router as health_score_router
+from app.api.debt import router as debt_router
+from app.api.installments import router as installments_router
 from app.core.auth import fastapi_users
 from app.core.config import get_settings
 from app.core.rate_limit import login_rate_limit, register_rate_limit, password_reset_rate_limit
@@ -182,6 +189,13 @@ app.include_router(settings_router)
 app.include_router(workspaces_router)
 app.include_router(admin_router)
 app.include_router(info_router)
+app.include_router(notifications_router)
+app.include_router(subscriptions_router)
+app.include_router(insights_router)
+app.include_router(forecast_router)
+app.include_router(health_score_router)
+app.include_router(debt_router)
+app.include_router(installments_router)
 
 
 # Optional agents/MCP/LLM module — fully gated by AGENTS_ENABLED so users

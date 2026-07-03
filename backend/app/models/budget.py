@@ -32,6 +32,9 @@ class Budget(Base):
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     currency: Mapped[Optional[str]] = mapped_column(String(3), server_default="USD", nullable=True)
     amount_primary: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
+    # Envelope budgeting: when true, unspent (or overspent) amount carries into
+    # the next month's available balance for this category.
+    rollover: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship()

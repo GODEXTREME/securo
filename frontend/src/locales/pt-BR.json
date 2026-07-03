@@ -123,7 +123,14 @@
     "groupAdmin": "Administração",
     "groupAgents": "IA",
     "agents": "Agentes",
-    "aiAgents": "Agentes IA"
+    "aiAgents": "Agentes IA",
+    "installments": "Parcelamentos",
+    "insights": "Insights",
+    "forecast": "Previsão",
+    "healthScore": "Saúde Financeira",
+    "subscriptions": "Assinaturas",
+    "debt": "Planejador de Dívidas",
+    "notifications": "Notificações"
   },
   "collections": {
     "title": "Coleções",
@@ -664,7 +671,11 @@
     "updated": "Orçamento atualizado",
     "deleted": "Orçamento excluído",
     "repeatEveryMonth": "Repetir todo mês",
-    "recurringLabel": "Recorrente"
+    "recurringLabel": "Recorrente",
+    "rollover": "Rollover",
+    "rolloverHint": "Levar o saldo restante desta categoria para o próximo mês",
+    "carryover": "Saldo anterior",
+    "available": "Disponível"
   },
   "goals": {
     "title": "Metas",
@@ -1676,5 +1687,98 @@
         "openai": "OpenAI Responses API"
       }
     }
+  },
+  "notifications": {
+    "title": "Notificações",
+    "markAllRead": "Marcar todas como lidas",
+    "markRead": "Marcar como lida",
+    "empty": "Tudo em dia por aqui."
+  },
+  "installments": {
+    "title": "Compras Parceladas",
+    "onlyUncategorized": "Só sem categoria",
+    "plans": "Planos",
+    "needsCategory": "Sem categoria",
+    "empty": "Nenhuma compra parcelada encontrada.",
+    "categorized": "Categoria aplicada a todas as parcelas",
+    "mixed": "Categorias mistas",
+    "uncategorized": "Sem categoria",
+    "paidOf": "{{paid}} de {{total}} parcelas",
+    "setCategoryForAll": "Definir categoria para todas",
+    "choose": "Escolher…"
+  },
+  "subscriptions": {
+    "title": "Assinaturas",
+    "count": "Ativas",
+    "monthly": "Mensal",
+    "yearly": "Anual",
+    "priceChanges": "Mudanças de preço",
+    "empty": "Nenhuma assinatura recorrente detectada ainda.",
+    "next": "Próxima",
+    "priceChanged": "Preço mudou",
+    "perMonth": "mês",
+    "freq": {
+      "weekly": "Semanal",
+      "biweekly": "Quinzenal",
+      "monthly": "Mensal",
+      "quarterly": "Trimestral",
+      "yearly": "Anual"
+    }
+  },
+  "insights": {
+    "title": "Insights",
+    "savingsTrend": "Tendência da taxa de poupança",
+    "topMerchants": "Maiores estabelecimentos do mês",
+    "noData": "Ainda não há dados suficientes.",
+    "movers": "Maiores variações por categoria",
+    "periodComparison": "Este mês vs mês passado"
+  },
+  "forecast": {
+    "title": "Previsão de Fluxo de Caixa",
+    "days": "{{count}} dias",
+    "shortfallWarning": "Projeção fica negativa em {{date}} ({{balance}}).",
+    "starting": "Início",
+    "ending": "Fim",
+    "lowest": "Ponto mais baixo",
+    "shortfallDays": "Dias negativos",
+    "projectedBalance": "Saldo projetado"
+  },
+  "healthScore": {
+    "title": "Score de Saúde Financeira",
+    "outOf100": "de 100",
+    "monthlyIncome": "Receita mensal",
+    "monthlyExpense": "Despesa mensal",
+    "liquid": "Saldo líquido",
+    "band": {
+      "excellent": "Excelente",
+      "good": "Bom",
+      "fair": "Regular",
+      "poor": "Ruim"
+    },
+    "component": {
+      "savings_rate": "Taxa de poupança",
+      "emergency_fund": "Reserva de emergência",
+      "debt_burden": "Carga de dívida",
+      "cash_flow": "Fluxo de caixa"
+    }
+  },
+  "debt": {
+    "title": "Planejador de Quitação de Dívidas",
+    "empty": "Nenhuma dívida para planejar. Adicione um saldo de cartão ou conta negativa.",
+    "apr": "Juros a.a.",
+    "minPayment": "Pgto. mínimo",
+    "extraPayment": "Pagamento extra mensal",
+    "extraHint": "Além dos pagamentos mínimos",
+    "snowball": "Bola de neve",
+    "snowballDesc": "Quita o menor saldo primeiro — vitórias rápidas.",
+    "avalanche": "Avalanche",
+    "avalancheDesc": "Quita o maior juro primeiro — menos juros.",
+    "recommended": "Recomendado",
+    "payoffTime": "Tempo de quitação",
+    "totalInterest": "Juros totais",
+    "order": "Ordem",
+    "notAmortizing": "Pagamentos baixos demais para quitar.",
+    "y": "a",
+    "mo": "m"
   }
 }

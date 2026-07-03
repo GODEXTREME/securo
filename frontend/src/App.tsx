@@ -37,6 +37,13 @@ const AgentConnectionsPage = lazy(() => import('@/pages/agent-connections'))
 const WorkspaceSettingsPage = lazy(() => import('@/pages/workspace-settings'))
 const OAuthCallbackPage = lazy(() => import('@/pages/oauth-callback'))
 const OIDCCallbackPage = lazy(() => import('@/pages/oidc-callback'))
+const NotificationsPage = lazy(() => import('@/pages/notifications'))
+const SubscriptionsPage = lazy(() => import('@/pages/subscriptions'))
+const InsightsPage = lazy(() => import('@/pages/insights'))
+const ForecastPage = lazy(() => import('@/pages/forecast'))
+const HealthScorePage = lazy(() => import('@/pages/health-score'))
+const DebtPage = lazy(() => import('@/pages/debt'))
+const InstallmentsPage = lazy(() => import('@/pages/installments'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -92,6 +99,13 @@ function App() {
                   <Route path="/recurring" element={<RecurringPage />} />
                   <Route path="/assets" element={<AssetsPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/notifications" element={<NotificationsPage />} />
+                  <Route path="/subscriptions" element={<SubscriptionsPage />} />
+                  <Route path="/insights" element={<InsightsPage />} />
+                  <Route path="/forecast" element={<ForecastPage />} />
+                  <Route path="/health-score" element={<HealthScorePage />} />
+                  <Route path="/debt" element={<DebtPage />} />
+                  <Route path="/installments" element={<InstallmentsPage />} />
                   <Route path="/payees" element={<PayeesPage />} />
                   <Route path="/groups" element={<GroupsPage />} />
                   <Route path="/groups/:id" element={<GroupDetailPage />} />

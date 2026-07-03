@@ -123,7 +123,14 @@
     "groupAgents": "AI",
     "agents": "Agenci",
     "aiAgents": "Agenci AI",
-    "collections": "Kolekcje"
+    "collections": "Kolekcje",
+    "installments": "Installments",
+    "insights": "Insights",
+    "forecast": "Forecast",
+    "healthScore": "Health Score",
+    "subscriptions": "Subscriptions",
+    "debt": "Debt Planner",
+    "notifications": "Notifications"
   },
   "collections": {
     "title": "Kolekcje",
@@ -280,7 +287,9 @@
     "fxRateUsed": "Kurs FX: {{rate}}",
     "refreshRates": "Odśwież kursy FX",
     "ratesRefreshed": "Zaktualizowano kursy FX",
-    "ratesError": "Nie udało się zaktualizować kursów FX"
+    "ratesError": "Nie udało się zaktualizować kursów FX",
+    "drillDownTotal": "{{count}} transactions · {{total}}",
+    "uncategorizedCta": "{{count}} transactions need categorizing"
   },
   "transactions": {
     "title": "Transakcje",
@@ -499,11 +508,18 @@
         "thisMonth": "Bieżący miesiąc",
         "last90": "Ostatnie 90 dni",
         "thisYear": "Bieżący rok"
-      }
+      },
+      "nSelected": "{{count}} selected"
     },
     "bulkAddTags": "Dodaj tagi",
     "addTagsPlaceholder": "#tag…",
-    "clearOverride": "Wyczyść nadpisanie"
+    "clearOverride": "Wyczyść nadpisanie",
+    "exportSelected": "Export Selected ({{count}})",
+    "summaryCount": "{{count}} transactions",
+    "bulkSuccess": "{{count}} transactions categorized",
+    "bulkAddToGroupTitle": "Add {{count}} transactions to a group",
+    "bulkAddToGroupSuccess": "{{count}} transactions added to group",
+    "installmentTooltip": "Installment plan — {{count}} charges totaling {{total}}"
   },
   "accounts": {
     "title": "Konta",
@@ -658,7 +674,10 @@
       "simplefin": {
         "description": "Banki w USA i międzynarodowe przez SimpleFIN Bridge"
       }
-    }
+    },
+    "overdueDays": "Overdue by {{count}} days",
+    "dueIn": "Due in {{count}} days",
+    "mergedCount": "{{count}} transactions merged with synced data"
   },
   "connections": {
     "settings": "Ustawienia połączenia",
@@ -700,7 +719,11 @@
     "updated": "Zaktualizowano budżet",
     "deleted": "Usunięto budżet",
     "repeatEveryMonth": "Powtarzaj co miesiąc",
-    "recurringLabel": "Cykliczny"
+    "recurringLabel": "Cykliczny",
+    "rollover": "Rollover",
+    "rolloverHint": "Carry this category's leftover into next month",
+    "carryover": "Carryover",
+    "available": "Available"
   },
   "goals": {
     "title": "Cele",
@@ -761,7 +784,9 @@
     "trackingWallet": "Portfel",
     "wallet": "Portfel",
     "selectWallet": "Wybierz portfel",
-    "walletHint": "Śledź ten cel według łącznej wartości wszystkich aktywów w wybranym portfelu."
+    "walletHint": "Śledź ten cel według łącznej wartości wszystkich aktywów w wybranym portfelu.",
+    "daysRemaining": "{{count}} days left",
+    "daysOverdue": "{{count}} days overdue"
   },
   "recurring": {
     "title": "Transakcje cykliczne",
@@ -797,7 +822,8 @@
     "generated_many": "Wygenerowano {{count}} transakcji",
     "generated_other": "Wygenerowano {{count}} transakcji",
     "generatePending": "Generuj oczekujące",
-    "fxEstimate": "Szacunek na podstawie najnowszego kursu wymiany ({{rate}}). Ostateczna kwota może się zmienić."
+    "fxEstimate": "Szacunek na podstawie najnowszego kursu wymiany ({{rate}}). Ostateczna kwota może się zmienić.",
+    "generated": "{{count}} transactions generated"
   },
   "rules": {
     "section": "Automatyzacja",
@@ -883,7 +909,10 @@
     "importConfirmTitle": "Import categorization rules?",
     "importConfirmDescription": "File {{file}} contains {{count}} rules.",
     "importOverwriteWarning": "Importing will overwrite your current categorization rules. This cannot be undone.",
-    "confirmOverwriteImport": "Overwrite and import"
+    "confirmOverwriteImport": "Overwrite and import",
+    "packRuleCount": "{{count}} rules",
+    "packInstalled": "{{count}} rules installed",
+    "applied": "Rules applied to {{count}} transactions"
   },
   "categories": {
     "title": "Kategorie",
@@ -1003,7 +1032,12 @@
     "balanceImpact": "Wpływ na saldo",
     "importedWithExcluded": "Zaimportowano: {{imported}}, pominięto: {{skipped}}, wykluczono: {{excluded}}",
     "suggested": "Sugerowane",
-    "page": "Strona {{current}} z {{total}}"
+    "page": "Strona {{current}} z {{total}}",
+    "incomeCount": "{{count}} income",
+    "expenseCount": "{{count}} expenses",
+    "importButton": "Import {{count}} transactions",
+    "undoDescription": "This will delete {{count}} imported transactions from {{filename}}. This action cannot be undone.",
+    "previewInfo": "{{count}} transactions · format {{format}}"
   },
   "assets": {
     "title": "Aktywa",
@@ -1249,7 +1283,9 @@
     "typeCompany": "Firma",
     "allTypes": "Wszystkie typy",
     "filterByType": "Filtruj według typu",
-    "favoritesOnly": "Tylko ulubione"
+    "favoritesOnly": "Tylko ulubione",
+    "viewAllTransactions": "View all {{count}} transactions",
+    "merged": "Payees merged ({{count}} transactions reassigned)"
   },
   "common": {
     "save": "Zapisz",
@@ -1273,7 +1309,8 @@
     "showMore_many": "+{{count}} więcej",
     "showMore_other": "+{{count}} więcej",
     "previous": "Poprzedni",
-    "next": "Następny"
+    "next": "Następny",
+    "showMore": "+{{count}} more"
   },
   "splitGroups": {
     "title": "Grupy",
@@ -1391,7 +1428,9 @@
       "project": "Projekt",
       "client": "Klient",
       "other": "Inne"
-    }
+    },
+    "memberCount": "{{count}} members",
+    "splitWays": "split {{count}} ways"
   },
   "privacy": {
     "hide": "Ukryj wartości",
@@ -1625,7 +1664,8 @@
       "chunks_one": "{{count}} fragment",
       "chunks_few": "{{count}} fragmenty",
       "chunks_many": "{{count}} fragmentów",
-      "chunks_other": "{{count}} fragmentów"
+      "chunks_other": "{{count}} fragmentów",
+      "chunks": "{{count}} chunks"
     },
     "tools": {
       "title": "Narzędzia",
@@ -1675,7 +1715,8 @@
         "updateRecurring": "{{description}} → {{changes}}",
         "deactivateRecurring": "Zatrzymaj przyszłe wystąpienia „{{description}}” (historia zachowana)",
         "deleteRecurring": "Trwale usuń „{{description}}”",
-        "createGoal": "„{{name}}” — cel {{target}}, termin {{deadline}}"
+        "createGoal": "„{{name}}” — cel {{target}}, termin {{deadline}}",
+        "categorize": "{{count}} transaction(s) → {{category}}"
       }
     },
     "conversation": {
@@ -1766,5 +1807,98 @@
         "openai": "OpenAI Responses API"
       }
     }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "markRead": "Mark as read",
+    "empty": "You're all caught up."
+  },
+  "installments": {
+    "title": "Installment Purchases",
+    "onlyUncategorized": "Only uncategorized",
+    "plans": "Plans",
+    "needsCategory": "Need a category",
+    "empty": "No installment purchases found.",
+    "categorized": "Category applied to all installments",
+    "mixed": "Mixed categories",
+    "uncategorized": "Uncategorized",
+    "paidOf": "{{paid}} of {{total}} installments",
+    "setCategoryForAll": "Set category for all",
+    "choose": "Choose…"
+  },
+  "subscriptions": {
+    "title": "Subscriptions",
+    "count": "Active",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "priceChanges": "Price changes",
+    "empty": "No recurring subscriptions detected yet.",
+    "next": "Next",
+    "priceChanged": "Price changed",
+    "perMonth": "mo",
+    "freq": {
+      "weekly": "Weekly",
+      "biweekly": "Biweekly",
+      "monthly": "Monthly",
+      "quarterly": "Quarterly",
+      "yearly": "Yearly"
+    }
+  },
+  "insights": {
+    "title": "Insights",
+    "savingsTrend": "Savings rate trend",
+    "topMerchants": "Top merchants this month",
+    "noData": "Not enough data yet.",
+    "movers": "Biggest category changes",
+    "periodComparison": "This month vs last month"
+  },
+  "forecast": {
+    "title": "Cash-flow Forecast",
+    "days": "{{count}} days",
+    "shortfallWarning": "Projected to go negative on {{date}} ({{balance}}).",
+    "starting": "Starting",
+    "ending": "Ending",
+    "lowest": "Lowest point",
+    "shortfallDays": "Negative days",
+    "projectedBalance": "Projected balance"
+  },
+  "healthScore": {
+    "title": "Financial Health Score",
+    "outOf100": "out of 100",
+    "monthlyIncome": "Monthly income",
+    "monthlyExpense": "Monthly expense",
+    "liquid": "Liquid balance",
+    "band": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair",
+      "poor": "Poor"
+    },
+    "component": {
+      "savings_rate": "Savings rate",
+      "emergency_fund": "Emergency fund",
+      "debt_burden": "Debt burden",
+      "cash_flow": "Cash flow"
+    }
+  },
+  "debt": {
+    "title": "Debt Payoff Planner",
+    "empty": "No debts to plan. Add a credit card balance or an overdrawn account.",
+    "apr": "APR",
+    "minPayment": "Min. payment",
+    "extraPayment": "Extra monthly payment",
+    "extraHint": "On top of the minimum payments",
+    "snowball": "Snowball",
+    "snowballDesc": "Pay smallest balance first — quick wins.",
+    "avalanche": "Avalanche",
+    "avalancheDesc": "Pay highest APR first — least interest.",
+    "recommended": "Recommended",
+    "payoffTime": "Payoff time",
+    "totalInterest": "Total interest",
+    "order": "Order",
+    "notAmortizing": "Payments too low to ever pay this off.",
+    "y": "y",
+    "mo": "mo"
   }
 }

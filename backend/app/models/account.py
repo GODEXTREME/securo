@@ -34,6 +34,9 @@ class Account(Base):
     statement_close_day: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     payment_due_day: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     minimum_payment: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
+    # Annual percentage rate (e.g. 24.900 for 24.9%). Optional; feeds the debt
+    # payoff planner. Numeric(6,3) covers rates up to 999.999%.
+    apr: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=6, scale=3), nullable=True)
     card_brand: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     card_level: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/auth-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
 import { CollectionSelector } from '@/components/collection-selector'
-import { auth as authApi, backup as backupApi, admin as adminApi } from '@/lib/api'
+import { auth as authApi, backup as backupApi, admin as adminApi, notifications as notificationsApi } from '@/lib/api'
 import { resolveSupportedLang } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { OnboardingTour } from '@/components/onboarding-tour'
@@ -50,6 +50,11 @@ import {
   Users,
   Split,
   BarChart3,
+  Lightbulb,
+  TrendingDown,
+  HeartPulse,
+  CreditCard,
+  Layers,
   Sun,
   Moon,
   Languages,
@@ -68,7 +73,7 @@ import { CommandPalette } from '@/components/command-palette'
 import { useCommandPaletteHotkey } from '@/hooks/use-command-palette-hotkey'
 import { GlobalChatPanel } from '@/components/global-chat-panel'
 import { useFeatureFlags } from '@/hooks/use-feature-flags'
-import { Bot, Search, Sparkles } from 'lucide-react'
+import { Bot, Search, Sparkles, Bell } from 'lucide-react'
 import { setThemeBasedOnSystem } from '@/lib/theme-utils'
 
 type NavItem =
@@ -83,13 +88,19 @@ const navItems: NavItem[] = [
   { type: 'separator', labelKey: 'nav.groupAccounts' },
   { type: 'link', key: 'transactions', path: '/transactions', icon: ArrowLeftRight },
   { type: 'link', key: 'accounts', path: '/accounts', icon: Building2 },
+  { type: 'link', key: 'installments', path: '/installments', icon: Layers },
   { type: 'link', key: 'import', path: '/import', icon: Upload },
   { type: 'separator', labelKey: 'nav.groupAnalysis' },
   { type: 'link', key: 'reports', path: '/reports', icon: BarChart3 },
+  { type: 'link', key: 'insights', path: '/insights', icon: Lightbulb },
+  { type: 'link', key: 'forecast', path: '/forecast', icon: TrendingDown },
+  { type: 'link', key: 'healthScore', path: '/health-score', icon: HeartPulse },
   { type: 'link', key: 'assets', path: '/assets', icon: Landmark },
   { type: 'separator', labelKey: 'nav.groupSetup' },
   { type: 'link', key: 'budgets', path: '/budgets', icon: PiggyBank },
   { type: 'link', key: 'goals', path: '/goals', icon: Target },
+  { type: 'link', key: 'subscriptions', path: '/subscriptions', icon: Repeat },
+  { type: 'link', key: 'debt', path: '/debt', icon: CreditCard },
   { type: 'link', key: 'recurring', path: '/recurring', icon: Repeat },
   { type: 'link', key: 'categories', path: '/categories', icon: Tag },
   { type: 'link', key: 'payees', path: '/payees', icon: Users },
@@ -185,6 +196,13 @@ export function AppLayout() {
     queryKey: ['accounts'],
     queryFn: () => accountsApi.list(),
   })
+
+  const { data: unreadData } = useQuery({
+    queryKey: ['notifications', 'unread'],
+    queryFn: notificationsApi.unreadCount,
+    refetchInterval: 60_000,
+  })
+  const unreadCount = unreadData?.unread ?? 0
 
   const allAccounts = accountsList ?? []
   // When a collection is active, the sidebar list + total reflect only its
@@ -316,6 +334,19 @@ export function AppLayout() {
               </span>
             </Link>
             <div className="flex items-center gap-0.5">
+              <Link
+                to="/notifications"
+                className="relative text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent"
+                title={t('nav.notifications')}
+                aria-label={t('nav.notifications')}
+              >
+                <Bell size={16} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-semibold flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </Link>
               <button
                 onClick={togglePrivacyMode}
                 className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent"
