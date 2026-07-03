@@ -46,6 +46,8 @@ from app.api.forecast import router as forecast_router
 from app.api.health_score import router as health_score_router
 from app.api.debt import router as debt_router
 from app.api.installments import router as installments_router
+from app.api.sinking_funds import router as sinking_funds_router
+from app.api.calendar import router as calendar_router
 from app.core.auth import fastapi_users
 from app.core.config import get_settings
 from app.core.rate_limit import login_rate_limit, register_rate_limit, password_reset_rate_limit
@@ -196,6 +198,8 @@ app.include_router(forecast_router)
 app.include_router(health_score_router)
 app.include_router(debt_router)
 app.include_router(installments_router)
+app.include_router(sinking_funds_router)
+app.include_router(calendar_router)
 
 
 # Optional agents/MCP/LLM module — fully gated by AGENTS_ENABLED so users

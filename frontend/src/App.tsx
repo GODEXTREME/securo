@@ -44,6 +44,8 @@ const ForecastPage = lazy(() => import('@/pages/forecast'))
 const HealthScorePage = lazy(() => import('@/pages/health-score'))
 const DebtPage = lazy(() => import('@/pages/debt'))
 const InstallmentsPage = lazy(() => import('@/pages/installments'))
+const SinkingFundsPage = lazy(() => import('@/pages/sinking-funds'))
+const CalendarPage = lazy(() => import('@/pages/calendar'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -106,6 +108,8 @@ function App() {
                   <Route path="/health-score" element={<HealthScorePage />} />
                   <Route path="/debt" element={<DebtPage />} />
                   <Route path="/installments" element={<InstallmentsPage />} />
+                  <Route path="/sinking-funds" element={<SinkingFundsPage />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/payees" element={<PayeesPage />} />
                   <Route path="/groups" element={<GroupsPage />} />
                   <Route path="/groups/:id" element={<GroupDetailPage />} />

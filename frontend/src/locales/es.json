@@ -130,7 +130,9 @@
     "healthScore": "Health Score",
     "subscriptions": "Subscriptions",
     "debt": "Debt Planner",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "calendar": "Calendar",
+    "sinkingFunds": "Savings Buckets"
   },
   "collections": {
     "title": "Colecciones",
@@ -1780,5 +1782,38 @@
     "notAmortizing": "Payments too low to ever pay this off.",
     "y": "y",
     "mo": "mo"
+  },
+  "calendar": {
+    "title": "Financial Calendar",
+    "bill": "Bill",
+    "legendBill": "Bill due",
+    "legendRecurringExpense": "Recurring expense",
+    "legendRecurringIncome": "Recurring income",
+    "legendActuals": "Daily net (actuals)"
+  },
+  "sinkingFunds": {
+    "title": "Savings Buckets",
+    "add": "New bucket",
+    "edit": "Edit bucket",
+    "empty": "No savings buckets yet. Create one to set money aside for a goal.",
+    "created": "Bucket created",
+    "updated": "Bucket updated",
+    "deleted": "Bucket deleted",
+    "contributed": "Balance updated",
+    "name": "Name",
+    "namePlaceholder": "Trip, insurance, gifts…",
+    "target": "Target",
+    "current": "Saved so far",
+    "targetDate": "Target date",
+    "color": "Color",
+    "by": "by",
+    "suggested": "{{amount}}/mo suggested",
+    "contribute": "Contribute",
+    "amount": "Amount",
+    "deposit": "Deposit",
+    "withdraw": "Withdraw",
+    "totalSaved": "Total saved",
+    "totalTarget": "Total target",
+    "monthlyNeeded": "Monthly needed"
   }
 }
