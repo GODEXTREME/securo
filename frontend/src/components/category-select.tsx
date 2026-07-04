@@ -87,6 +87,7 @@ export function CategorySelect({
       <PopoverContent
         align="start"
         collisionPadding={8}
+        portalled={false}
         className="w-[var(--radix-popover-trigger-width)] p-0 overflow-hidden max-h-[min(26rem,var(--radix-popover-content-available-height,26rem))]"
         {...contentProps}
       >
