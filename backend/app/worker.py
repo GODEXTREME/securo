@@ -51,6 +51,12 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.notification_tasks.generate_all_notifications",
         "schedule": 60 * 60,  # every hour; generation is idempotent via dedup_key
     },
+    "restamp-fallback-fx-daily": {
+        "task": "app.tasks.fx_rate_tasks.restamp_fallback_fx",
+        # Twice daily, after FX rate sync — heals transactions that were
+        # stamped with the 1:1 fallback (or left NULL) once real rates land.
+        "schedule": 60 * 60 * 12,
+    },
 }
 
 celery_app.conf.include = [
