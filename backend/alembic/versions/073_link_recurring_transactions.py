@@ -1,7 +1,7 @@
 """link recurring bills to actual transactions (issue #116)
 
-Revision ID: 064
-Revises: 063
+Revision ID: 073
+Revises: 072
 Create Date: 2026-07-02
 
 Adds the plumbing to reconcile recurring bills with the real transactions that
@@ -22,8 +22,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "064"
-down_revision: Union[str, None] = "063"
+revision: str = "073"
+down_revision: Union[str, None] = "072"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
