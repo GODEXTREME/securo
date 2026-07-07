@@ -2042,6 +2042,8 @@
     "items": "items",
     "projected": "Projected",
     "projectedTotal": "Projected: +{{amount}}",
-    "statement": "Statement"
+    "statement": "Statement",
+    "includesProjected": "включая {{amount}} прогноз",
+    "totalOwed": "Общий долг: {{amount}}"
   }
 }

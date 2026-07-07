@@ -2162,6 +2162,8 @@
     "items": "items",
     "projected": "Projected",
     "projectedTotal": "Projected: +{{amount}}",
-    "statement": "Statement"
+    "statement": "Statement",
+    "includesProjected": "zawiera {{amount}} prognozowane",
+    "totalOwed": "Łączne zadłużenie: {{amount}}"
   }
 }

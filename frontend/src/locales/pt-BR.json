@@ -2042,6 +2042,8 @@
     "items": "itens",
     "projected": "Prevista",
     "projectedTotal": "Previsto: +{{amount}}",
-    "statement": "Fatura"
+    "statement": "Fatura",
+    "includesProjected": "inclui {{amount}} previstos",
+    "totalOwed": "Saldo total: {{amount}}"
   }
 }

@@ -2042,6 +2042,8 @@
     "items": "items",
     "projected": "Projected",
     "projectedTotal": "Projected: +{{amount}}",
-    "statement": "Statement"
+    "statement": "Statement",
+    "includesProjected": "include {{amount}} previsti",
+    "totalOwed": "Saldo totale: {{amount}}"
   }
 }
