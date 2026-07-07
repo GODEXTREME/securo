@@ -2049,6 +2049,7 @@
     "statementClosed": "Cerrada",
     "closesOn": "Cierra el {{date}}",
     "openStatementNote": "Factura aún abierta — las compras únicas de este ciclo aún pueden entrar. Solo se proyectan las cuotas futuras.",
-    "missingCycle": "Define el día de cierre y vencimiento de esta tarjeta para que las compras entren en la factura correcta; de lo contrario se agrupan por mes de compra. Configúralo en los ajustes de la cuenta."
+    "missingCycle": "Define el día de cierre y vencimiento de esta tarjeta para que las compras entren en la factura correcta; de lo contrario se agrupan por mes de compra. Configúralo en los ajustes de la cuenta.",
+    "projectedTitle": "Cuotas previstas"
   }
 }

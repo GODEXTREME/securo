@@ -2169,6 +2169,7 @@
     "statementClosed": "Zamknięta",
     "closesOn": "Zamyka {{date}}",
     "openStatementNote": "Wyciąg wciąż otwarty — jednorazowe zakupy z tego cyklu mogą jeszcze wpłynąć. Prognozowane są tylko przyszłe raty.",
-    "missingCycle": "Ustaw dzień zamknięcia i płatności tej karty, aby zakupy trafiały na właściwy wyciąg — w przeciwnym razie są grupowane wg miesiąca zakupu. Ustaw w ustawieniach konta."
+    "missingCycle": "Ustaw dzień zamknięcia i płatności tej karty, aby zakupy trafiały na właściwy wyciąg — w przeciwnym razie są grupowane wg miesiąca zakupu. Ustaw w ustawieniach konta.",
+    "projectedTitle": "Prognozowane raty"
   }
 }

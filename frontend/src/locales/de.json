@@ -2049,6 +2049,7 @@
     "statementClosed": "Geschlossen",
     "closesOn": "Schließt am {{date}}",
     "openStatementNote": "Rechnung noch offen — Einmalkäufe dieses Zyklus können noch hinzukommen. Nur künftige Raten werden projiziert.",
-    "missingCycle": "Lege den Abschluss- und Fälligkeitstag dieser Karte fest, damit Käufe der richtigen Rechnung zugeordnet werden — sonst werden sie nach Kaufmonat gruppiert. In den Kontoeinstellungen festlegen."
+    "missingCycle": "Lege den Abschluss- und Fälligkeitstag dieser Karte fest, damit Käufe der richtigen Rechnung zugeordnet werden — sonst werden sie nach Kaufmonat gruppiert. In den Kontoeinstellungen festlegen.",
+    "projectedTitle": "Voraussichtliche Raten"
   }
 }
