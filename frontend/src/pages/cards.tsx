@@ -93,21 +93,26 @@ export default function CardsPage() {
 
   // Merge real purchases with projected (unbilled) installments for this card.
   // The parcel number lives in the purchase text itself (the provider's title,
-  // e.g. "… 3/6") — that's the source of truth, so we don't render a separate
-  // badge that could disagree with it. Real rows keep the provider title as-is;
-  // projected rows already come as "Merchant k/N" from the backend.
+  // e.g. "… 3/6") — that's the source of truth. The badge is parsed from that
+  // same text so it always matches; the number is stripped from the name to
+  // avoid showing it twice.
+  const parseNM = (s: string): string | null => {
+    const m = s.match(/(\d+)\s*\/\s*(\d+)/)
+    return m ? `${m[1]}/${m[2]}` : null
+  }
+  const stripNM = (s: string): string =>
+    s.replace(/\s*[-–]?\s*(parcela\s*)?\d+\s*\/\s*\d+\s*$/i, '').trim() || s
   type Row = {
-    key: string; date: string; name: string; categoryName: string | null
-    categoryColor: string | null; categoryIcon: string | null; amount: number
-    projected: boolean; tx: Transaction | null
+    key: string; date: string; name: string; installmentLabel: string | null
+    categoryName: string | null; categoryColor: string | null; categoryIcon: string | null
+    amount: number; projected: boolean; tx: Transaction | null
   }
   const realRows: Row[] = (txs?.items ?? []).map((tx) => {
     const raw = tx.payee_name || tx.payee || tx.description
-    const hasNum = /\d+\s*\/\s*\d+/.test(raw)
-    const name = !hasNum && tx.total_installments && tx.total_installments > 1
-      ? `${raw} ${tx.installment_number}/${tx.total_installments}` : raw
+    const label = parseNM(raw)
+      ?? (tx.total_installments && tx.total_installments > 1 ? `${tx.installment_number}/${tx.total_installments}` : null)
     return {
-      key: tx.id, date: tx.date, name,
+      key: tx.id, date: tx.date, name: stripNM(raw), installmentLabel: label,
       categoryName: tx.category?.name ?? null, categoryColor: tx.category?.color ?? null, categoryIcon: tx.category?.icon ?? null,
       amount: Math.abs(tx.amount), projected: false, tx,
     }
@@ -115,7 +120,9 @@ export default function CardsPage() {
   const projRows: Row[] = (projected ?? [])
     .filter((p) => p.kind === 'installment' && p.account_id === cardId)
     .map((p, i) => ({
-      key: `proj-${i}-${p.date}`, date: p.date, name: p.description,
+      key: `proj-${i}-${p.date}`, date: p.date, name: stripNM(p.description),
+      installmentLabel: p.installment_number && p.total_installments
+        ? `${p.installment_number}/${p.total_installments}` : parseNM(p.description),
       categoryName: p.category_name, categoryColor: p.category_color, categoryIcon: p.category_icon,
       amount: Math.abs(p.amount), projected: true, tx: null,
     }))
@@ -251,6 +258,11 @@ export default function CardsPage() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium truncate">
                             {row.name}
+                            {row.installmentLabel && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
+                                {row.installmentLabel}
+                              </span>
+                            )}
                             {row.projected && (
                               <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                                 {t('cards.projected')}
