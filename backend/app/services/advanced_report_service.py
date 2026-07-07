@@ -59,6 +59,7 @@ async def category_breakdown(
     flow: str = "expense",
     year: Optional[int] = None,
     month: Optional[int] = None,
+    date_basis: Optional[str] = None,
 ) -> dict:
     """Spending (or income) for a two-ring pie chart.
 
@@ -81,12 +82,16 @@ async def category_breakdown(
         start = _range_start(months, period)
         end = date.today()
 
+    # By default bucket by purchase date; date_basis="effective" buckets by the
+    # credit-card bill/due date (fatura) so a card view lines up with the invoice.
+    from app.services._query_filters import reporting_date_col
+    date_col = reporting_date_col("accrual") if date_basis == "effective" else Transaction.date
     conds = [
         Transaction.workspace_id == workspace_id,
         Transaction.type == tx_type,
         Transaction.is_ignored == False,
-        Transaction.date >= start,
-        Transaction.date <= end,
+        date_col >= start,
+        date_col <= end,
     ]
     if account_ids is not None:
         conds.append(Transaction.account_id.in_(account_ids))

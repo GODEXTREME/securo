@@ -63,6 +63,37 @@ async def test_category_breakdown_rolls_up_to_groups(
 
 
 @pytest.mark.asyncio
+async def test_category_breakdown_date_basis_effective(
+    session: AsyncSession, test_user, test_workspace, test_account, test_categories
+):
+    # Purchase this month, but its bill (effective_date) lands next month.
+    from datetime import timedelta
+    nxt = (TODAY.replace(day=1) + timedelta(days=32)).replace(day=15)
+    session.add(Transaction(
+        id=uuid.uuid4(), user_id=test_user.id, workspace_id=test_workspace.id, account_id=test_account.id,
+        category_id=test_categories[0].id, description="x", amount=Decimal("-100"),
+        currency=test_account.currency, date=TODAY, effective_date=nxt, type="debit",
+        source="sync", status="posted", created_at=datetime.now(timezone.utc),
+    ))
+    await session.commit()
+
+    # By purchase date: shows in the current month.
+    cur = await advanced_report_service.category_breakdown(
+        session, test_workspace.id, test_user.id, year=TODAY.year, month=TODAY.month,
+    )
+    assert cur["total"] == 100.0
+    # By bill/effective date (fatura): NOT in the current month, IS in next month.
+    cur_eff = await advanced_report_service.category_breakdown(
+        session, test_workspace.id, test_user.id, year=TODAY.year, month=TODAY.month, date_basis="effective",
+    )
+    assert cur_eff["total"] == 0.0
+    nxt_eff = await advanced_report_service.category_breakdown(
+        session, test_workspace.id, test_user.id, year=nxt.year, month=nxt.month, date_basis="effective",
+    )
+    assert nxt_eff["total"] == 100.0
+
+
+@pytest.mark.asyncio
 async def test_category_breakdown_api(client, auth_headers, test_workspace):
     r = await client.get("/api/reports/category-breakdown?months=1", headers=auth_headers)
     assert r.status_code == 200

@@ -105,7 +105,7 @@ async def get_calendar(
         events.append({
             "date": p["date"].isoformat(),
             "kind": "installment",
-            "title": f"{p['description']} ({p['installment_number']}/{p['total_installments']})",
+            "title": f"{p['description']} {p['installment_number']}/{p['total_installments']}",
             "amount": -float(p["amount"]),
             "currency": p["currency"],
         })

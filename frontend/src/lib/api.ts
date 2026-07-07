@@ -442,6 +442,7 @@ export const transactions = {
     max_amount?: number
     sort_by?: string
     sort_dir?: 'asc' | 'desc'
+    date_basis?: 'effective' | 'purchase'
   }): Promise<PaginatedTransactions> => {
     const { data } = await api.get('/transactions', {
       params,
@@ -963,8 +964,8 @@ export const dashboard = {
     const { data } = await api.get('/dashboard/monthly-trend', { params: { months, ...(extra.params ?? {}) }, ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}) })
     return data
   },
-  projectedTransactions: async (month?: string): Promise<ProjectedTransaction[]> => {
-    const { data } = await api.get('/dashboard/projected-transactions', { params: { month } })
+  projectedTransactions: async (month?: string, dateBasis?: 'effective' | 'purchase'): Promise<ProjectedTransaction[]> => {
+    const { data } = await api.get('/dashboard/projected-transactions', { params: { month, date_basis: dateBasis } })
     return data
   },
   balanceHistory: async (month?: string, accountIds?: string[]): Promise<BalanceHistory> => {
@@ -1722,7 +1723,7 @@ export const advancedReports = {
     const { data } = await api.get('/reports/period-comparison', { params: { months } })
     return data
   },
-  categoryBreakdown: async (opts: { months?: number; period?: 'ytd'; accountIds?: string[]; flow?: 'expense' | 'income'; year?: number; month?: number } = {}): Promise<{
+  categoryBreakdown: async (opts: { months?: number; period?: 'ytd'; accountIds?: string[]; flow?: 'expense' | 'income'; year?: number; month?: number; dateBasis?: 'effective' | 'purchase' } = {}): Promise<{
     currency: string
     flow: string
     total: number
@@ -1730,10 +1731,10 @@ export const advancedReports = {
     children: { id: string; name: string | null; color: string; total: number; uncategorized: boolean; parent: string; percentage: number }[]
     slices: { id: string; name: string | null; color: string; total: number; is_group: boolean; uncategorized: boolean; percentage: number }[]
   }> => {
-    const { months = 1, period, accountIds, flow = 'expense', year, month } = opts
+    const { months = 1, period, accountIds, flow = 'expense', year, month, dateBasis } = opts
     const extra = acctIdsParam(accountIds)
     const { data } = await api.get('/reports/category-breakdown', {
-      params: { months, period, flow, year, month, ...(extra.params ?? {}) },
+      params: { months, period, flow, year, month, date_basis: dateBasis, ...(extra.params ?? {}) },
       ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}),
     })
     return data

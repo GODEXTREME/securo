@@ -77,6 +77,30 @@ async def test_real_parcel_replaces_projection(session: AsyncSession, test_user,
 
 
 @pytest.mark.asyncio
+async def test_projection_strips_anchor_parcel_number(
+    client, auth_headers, session, test_user, test_workspace
+):
+    # Provider embeds the parcel number in the payee ("… 2/10"). The projected
+    # row must not carry that stale number — only the projected one.
+    acc = await _cc_account(session, test_user)
+    session.add(Transaction(
+        id=uuid.uuid4(), user_id=test_user.id, workspace_id=test_workspace.id, account_id=acc.id,
+        description="Unidas Locadora - Parcela 2/10", payee="Unidas Locadora 2/10",
+        amount=Decimal("-66.29"), currency="BRL", date=THIS_FIRST, effective_date=THIS_FIRST,
+        type="debit", source="sync", status="posted",
+        installment_number=2, total_installments=10,
+        installment_total_amount=Decimal("662.90"), installment_purchase_date=date(2025, 5, 1),
+        created_at=datetime.now(timezone.utc),
+    ))
+    await session.commit()
+    r = await client.get(f"/api/dashboard/projected-transactions?month={NEXT_FIRST.isoformat()}", headers=auth_headers)
+    inst = [p for p in r.json() if p.get("kind") == "installment"]
+    assert len(inst) == 1
+    assert inst[0]["installment_number"] == 3
+    assert inst[0]["description"] == "Unidas Locadora 3/10"  # stripped anchor "2/10", projected "3/10"
+
+
+@pytest.mark.asyncio
 async def test_finished_plan_not_projected(session: AsyncSession, test_user, test_workspace):
     acc = await _cc_account(session, test_user)
     # Last parcel of a 3x plan already synced → nothing to project.
@@ -96,5 +120,5 @@ async def test_projected_transactions_endpoint_includes_installment(
     inst = [p for p in r.json() if p.get("kind") == "installment"]
     assert len(inst) == 1
     assert inst[0]["installment_number"] == 4
-    assert "(4/10)" in inst[0]["description"]
+    assert inst[0]["description"].endswith("4/10")
     assert inst[0]["account_id"] == str(acc.id)

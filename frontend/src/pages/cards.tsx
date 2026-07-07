@@ -1,17 +1,21 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { accounts as accountsApi, transactions as txApi, advancedReports, dashboard } from '@/lib/api'
+import { accounts as accountsApi, transactions as txApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, advancedReports, dashboard } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { MonthStepper } from '@/components/month-stepper'
 import { CategoryIcon } from '@/components/category-icon'
+import { TransactionDialog, extractApiError } from '@/components/transaction-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { currentMonth, monthRange } from '@/lib/month-utils'
 import { getAccountName } from '@/lib/account-utils'
+import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { formatCurrency } from '@/lib/format'
+import type { Transaction } from '@/types'
 import { CreditCard, Layers } from 'lucide-react'
 
 export default function CardsPage() {
@@ -19,7 +23,28 @@ export default function CardsPage() {
   const locale = useDisplayLocale()
   const { mask } = usePrivacyMode()
 
+  const queryClient = useQueryClient()
   const { data: accounts, isLoading } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsApi.list() })
+  const { data: categoriesList } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list })
+  const { data: categoryGroupsList } = useQuery({ queryKey: ['category-groups'], queryFn: categoryGroupsApi.list })
+
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const invalidateTx = () => {
+    invalidateFinancialQueries(queryClient)
+    queryClient.invalidateQueries({ queryKey: ['card-txs'] })
+    queryClient.invalidateQueries({ queryKey: ['card-breakdown'] })
+    queryClient.invalidateQueries({ queryKey: ['card-projected'] })
+  }
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string } & Partial<Transaction>) => txApi.update(id, data),
+    onSuccess: () => { invalidateTx(); setEditingTx(null); toast.success(t('transactions.updated')) },
+    onError: (e) => toast.error(extractApiError(e)),
+  })
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => txApi.delete(id),
+    onSuccess: () => { invalidateTx(); setEditingTx(null); toast.success(t('transactions.deleted')) },
+    onError: (e) => toast.error(extractApiError(e)),
+  })
   // Cards with an open balance first (by nearest due date), then paid-off cards
   // (also by due date). Null due dates sort last within each group.
   const cards = (accounts ?? [])
@@ -44,20 +69,23 @@ export default function CardsPage() {
   const [yr, mo] = month.split('-').map(Number)
   const { from, to } = monthRange(month)
 
+  // The card view is organized by statement (fatura): filter/bucket by the
+  // bill's due date (effective) so it lines up with the bank's invoice, not the
+  // purchase-date calendar month.
   const { data: breakdown } = useQuery({
     queryKey: ['card-breakdown', cardId, month],
-    queryFn: () => advancedReports.categoryBreakdown({ accountIds: [cardId!], year: yr, month: mo, flow: 'expense' }),
+    queryFn: () => advancedReports.categoryBreakdown({ accountIds: [cardId!], year: yr, month: mo, flow: 'expense', dateBasis: 'effective' }),
     enabled: !!cardId,
   })
   const { data: txs, isLoading: txLoading } = useQuery({
     queryKey: ['card-txs', cardId, month],
-    queryFn: () => txApi.list({ account_id: cardId, from, to, type: 'debit', sort_by: 'date', sort_dir: 'desc', limit: 300 }),
+    queryFn: () => txApi.list({ account_id: cardId, from, to, type: 'debit', sort_by: 'date', sort_dir: 'desc', limit: 300, date_basis: 'effective' }),
     enabled: !!cardId,
   })
-  // Installments not yet billed that will land on this card in the selected month.
+  // Installments not yet billed that will land on this card's statement.
   const { data: projected } = useQuery({
     queryKey: ['card-projected', month],
-    queryFn: () => dashboard.projectedTransactions(`${month}-01`),
+    queryFn: () => dashboard.projectedTransactions(`${month}-01`, 'effective'),
   })
 
   const currency = breakdown?.currency ?? card?.currency ?? 'BRL'
@@ -67,27 +95,39 @@ export default function CardsPage() {
   const pieData = groups.map((g) => ({ name: labelOf(g.name, g.uncategorized), value: g.total, color: g.color }))
 
   // Merge real purchases with projected (unbilled) installments for this card.
-  type Row = {
-    key: string; date: string; name: string; categoryName: string | null
-    categoryColor: string | null; categoryIcon: string | null; amount: number
-    installmentLabel: string | null; projected: boolean
+  // The parcel number lives in the purchase text itself (the provider's title,
+  // e.g. "… 3/6") — that's the source of truth. The badge is parsed from that
+  // same text so it always matches; the number is stripped from the name to
+  // avoid showing it twice.
+  const parseNM = (s: string): string | null => {
+    const m = s.match(/(\d+)\s*\/\s*(\d+)/)
+    return m ? `${m[1]}/${m[2]}` : null
   }
-  const realRows: Row[] = (txs?.items ?? []).map((tx) => ({
-    key: tx.id, date: tx.date, name: tx.payee_name || tx.payee || tx.description,
-    categoryName: tx.category?.name ?? null, categoryColor: tx.category?.color ?? null, categoryIcon: tx.category?.icon ?? null,
-    amount: Math.abs(tx.amount),
-    installmentLabel: tx.total_installments && tx.total_installments > 1 ? `${tx.installment_number}/${tx.total_installments}` : null,
-    projected: false,
-  }))
+  const stripNM = (s: string): string =>
+    s.replace(/\s*[-–]?\s*(parcela\s*)?\d+\s*\/\s*\d+\s*$/i, '').trim() || s
+  type Row = {
+    key: string; date: string; name: string; installmentLabel: string | null
+    categoryName: string | null; categoryColor: string | null; categoryIcon: string | null
+    amount: number; projected: boolean; tx: Transaction | null
+  }
+  const realRows: Row[] = (txs?.items ?? []).map((tx) => {
+    const raw = tx.payee_name || tx.payee || tx.description
+    const label = parseNM(raw)
+      ?? (tx.total_installments && tx.total_installments > 1 ? `${tx.installment_number}/${tx.total_installments}` : null)
+    return {
+      key: tx.id, date: tx.date, name: stripNM(raw), installmentLabel: label,
+      categoryName: tx.category?.name ?? null, categoryColor: tx.category?.color ?? null, categoryIcon: tx.category?.icon ?? null,
+      amount: Math.abs(tx.amount), projected: false, tx,
+    }
+  })
   const projRows: Row[] = (projected ?? [])
     .filter((p) => p.kind === 'installment' && p.account_id === cardId)
     .map((p, i) => ({
-      key: `proj-${i}-${p.date}`, date: p.date,
-      name: p.description.replace(/\s*\(\d+\/\d+\)\s*$/, ''),
+      key: `proj-${i}-${p.date}`, date: p.date, name: stripNM(p.description),
+      installmentLabel: p.installment_number && p.total_installments
+        ? `${p.installment_number}/${p.total_installments}` : parseNM(p.description),
       categoryName: p.category_name, categoryColor: p.category_color, categoryIcon: p.category_icon,
-      amount: Math.abs(p.amount),
-      installmentLabel: p.installment_number && p.total_installments ? `${p.installment_number}/${p.total_installments}` : null,
-      projected: true,
+      amount: Math.abs(p.amount), projected: true, tx: null,
     }))
   const purchaseRows = [...realRows, ...projRows].sort((a, b) => b.date.localeCompare(a.date))
   const projectedTotal = projRows.reduce((s, r) => s + r.amount, 0)
@@ -150,7 +190,10 @@ export default function CardsPage() {
                     </p>
                   )}
                 </div>
-                <MonthStepper value={month} onChange={setMonth} locale={locale} />
+                <div className="flex flex-col items-start sm:items-end gap-1">
+                  <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('cards.statement')}</span>
+                  <MonthStepper value={month} onChange={setMonth} locale={locale} />
+                </div>
               </div>
 
               {/* Spending summary + pie */}
@@ -211,7 +254,10 @@ export default function CardsPage() {
                 ) : (
                   <div className="divide-y divide-muted">
                     {purchaseRows.map((row) => (
-                      <div key={row.key} className={`flex items-center gap-3 px-5 py-3 ${row.projected ? 'opacity-80' : ''}`}>
+                      <div key={row.key} role={row.tx ? 'button' : undefined} tabIndex={row.tx ? 0 : undefined}
+                        onClick={row.tx ? () => setEditingTx(row.tx) : undefined}
+                        onKeyDown={row.tx ? (e) => { if (e.key === 'Enter') setEditingTx(row.tx) } : undefined}
+                        className={`flex items-center gap-3 px-5 py-3 ${row.projected ? 'opacity-80' : 'cursor-pointer hover:bg-muted/50 transition-colors'}`}>
                         {row.categoryIcon
                           ? <CategoryIcon icon={row.categoryIcon} color={row.categoryColor ?? undefined} size="sm" />
                           : <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0"><Layers size={13} className="text-muted-foreground" /></span>}
@@ -243,6 +289,20 @@ export default function CardsPage() {
           )}
         </>
       )}
+
+      <TransactionDialog
+        open={!!editingTx}
+        onClose={() => { setEditingTx(null); updateMutation.reset() }}
+        transaction={editingTx}
+        categories={categoriesList ?? []}
+        categoryGroups={categoryGroupsList ?? []}
+        accounts={(accounts ?? []).map((a) => ({ id: a.id, name: getAccountName(a), type: a.type }))}
+        onSave={(data) => { if (editingTx) updateMutation.mutate({ id: editingTx.id, ...data }) }}
+        onDelete={editingTx ? () => deleteMutation.mutate(editingTx.id) : undefined}
+        isSynced={editingTx?.source === 'sync'}
+        loading={updateMutation.isPending || deleteMutation.isPending}
+        error={updateMutation.error ? extractApiError(updateMutation.error) : null}
+      />
     </div>
   )
 }
