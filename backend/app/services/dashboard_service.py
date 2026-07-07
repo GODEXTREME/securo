@@ -885,6 +885,7 @@ async def get_projected_transactions(
                 category_name=cat_name,
                 category_icon=cat_icon,
                 category_color=cat_color,
+                account_id=str(rec.account_id) if rec.account_id else None,
             ))
 
     # Unbilled credit-card installments projected from their plans.
@@ -917,6 +918,7 @@ async def get_projected_transactions(
             kind="installment",
             installment_number=p["installment_number"],
             total_installments=p["total_installments"],
+            account_id=str(p["account_id"]) if p.get("account_id") else None,
         ))
 
     return projections

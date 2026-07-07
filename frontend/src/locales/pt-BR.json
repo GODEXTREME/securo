@@ -2039,6 +2039,8 @@
     "spendingByCategory": "Gastos por categoria",
     "noPurchases": "Nenhuma compra neste mês.",
     "purchases": "Compras",
-    "items": "itens"
+    "items": "itens",
+    "projected": "Prevista",
+    "projectedTotal": "Previsto: +{{amount}}"
   }
 }

@@ -452,6 +452,7 @@ export interface ProjectedTransaction {
   kind?: 'recurring' | 'installment'
   installment_number?: number | null
   total_installments?: number | null
+  account_id?: string | null
 }
 
 export interface DashboardSummary {

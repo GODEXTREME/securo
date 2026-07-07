@@ -97,3 +97,4 @@ async def test_projected_transactions_endpoint_includes_installment(
     assert len(inst) == 1
     assert inst[0]["installment_number"] == 4
     assert "(4/10)" in inst[0]["description"]
+    assert inst[0]["account_id"] == str(acc.id)
