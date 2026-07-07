@@ -72,8 +72,15 @@ export default function CardsPage() {
     categoryColor: string | null; categoryIcon: string | null; amount: number
     installmentLabel: string | null; projected: boolean
   }
+  // Providers (Nubank) embed the parcel number in the title ("… 3/6",
+  // "… - Parcela 3/6"). Strip it so it doesn't clash with the badge, which is
+  // the single source of truth for the parcel number.
+  const cleanName = (s: string) => s
+    .replace(/\s*\(\d+\s*\/\s*\d+\)\s*$/, '')
+    .replace(/\s*[-–]?\s*(parcela\s*)?\d+\s*\/\s*\d+\s*$/i, '')
+    .trim() || s
   const realRows: Row[] = (txs?.items ?? []).map((tx) => ({
-    key: tx.id, date: tx.date, name: tx.payee_name || tx.payee || tx.description,
+    key: tx.id, date: tx.date, name: cleanName(tx.payee_name || tx.payee || tx.description),
     categoryName: tx.category?.name ?? null, categoryColor: tx.category?.color ?? null, categoryIcon: tx.category?.icon ?? null,
     amount: Math.abs(tx.amount),
     installmentLabel: tx.total_installments && tx.total_installments > 1 ? `${tx.installment_number}/${tx.total_installments}` : null,
@@ -83,7 +90,7 @@ export default function CardsPage() {
     .filter((p) => p.kind === 'installment' && p.account_id === cardId)
     .map((p, i) => ({
       key: `proj-${i}-${p.date}`, date: p.date,
-      name: p.description.replace(/\s*\(\d+\/\d+\)\s*$/, ''),
+      name: cleanName(p.description),
       categoryName: p.category_name, categoryColor: p.category_color, categoryIcon: p.category_icon,
       amount: Math.abs(p.amount),
       installmentLabel: p.installment_number && p.total_installments ? `${p.installment_number}/${p.total_installments}` : null,
