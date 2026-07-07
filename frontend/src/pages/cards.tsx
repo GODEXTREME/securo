@@ -311,19 +311,21 @@ export default function CardsPage() {
                           ? <CategoryIcon icon={row.categoryIcon} color={row.categoryColor ?? undefined} size="sm" />
                           : <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0"><Layers size={13} className="text-muted-foreground" /></span>}
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">
-                            {row.name}
+                          {/* Only the merchant name truncates; the badges stay
+                              shrink-0 so "Prevista" is never clipped. */}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium truncate">{row.name}</span>
                             {row.installmentLabel && (
-                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
+                              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
                                 {row.installmentLabel}
                               </span>
                             )}
                             {row.projected && (
-                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                                 {t('cards.projected')}
                               </span>
                             )}
-                          </p>
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {new Date(row.date).toLocaleDateString(locale)}{row.categoryName ? ` · ${row.categoryName}` : ''}
                           </p>
