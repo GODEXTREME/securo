@@ -236,6 +236,16 @@ export default function CardsPage() {
                 </div>
               </div>
 
+              {/* Without the card's close/due days we can't tell which invoice
+                  a purchase belongs to, so the view falls back to purchase
+                  month and nothing rolls over at the cutoff. Point the user to
+                  set them. */}
+              {card.type === 'credit_card' && (!card.statement_close_day || !card.payment_due_day) && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 dark:border-rose-900/50 dark:bg-rose-950/20 px-4 py-3 text-[13px] text-rose-800 dark:text-rose-200">
+                  {t('cards.missingCycle')}
+                </div>
+              )}
+
               {/* Open-statement notice: this fatura is still accumulating, so
                   one-off purchases haven't all posted yet — only installments
                   are projected forward. */}
