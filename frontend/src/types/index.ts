@@ -437,7 +437,7 @@ export interface RecurringTransaction {
 }
 
 export interface ProjectedTransaction {
-  recurring_id: string
+  recurring_id: string | null
   description: string
   amount: number
   amount_primary: number | null
@@ -449,6 +449,9 @@ export interface ProjectedTransaction {
   category_icon: string | null
   category_color: string | null
   is_ignored: boolean
+  kind?: 'recurring' | 'installment'
+  installment_number?: number | null
+  total_installments?: number | null
 }
 
 export interface DashboardSummary {

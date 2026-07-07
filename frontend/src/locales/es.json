@@ -498,7 +498,8 @@
     },
     "bulkAddTags": "Añadir etiquetas",
     "addTagsPlaceholder": "#etiqueta…",
-    "clearOverride": "Borrar anulación"
+    "clearOverride": "Borrar anulación",
+    "installmentBadge": "Installment"
   },
   "accounts": {
     "title": "Cuentas",
@@ -1825,7 +1826,8 @@
     "legendBill": "Bill due",
     "legendRecurringExpense": "Recurring expense",
     "legendRecurringIncome": "Recurring income",
-    "legendActuals": "Daily net (actuals)"
+    "legendActuals": "Daily net (actuals)",
+    "legendInstallment": "Installment (projected)"
   },
   "sinkingFunds": {
     "title": "Savings Buckets",

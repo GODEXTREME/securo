@@ -408,6 +408,7 @@ export default function DashboardPage() {
     categoryColor: string | null
     accountId: string | null
     isProjected: boolean
+    projectedKind: 'recurring' | 'installment'
     attachmentCount: number
     isShared: boolean
     parentTotal: number | null
@@ -458,6 +459,7 @@ export default function DashboardPage() {
         categoryColor: tx.category?.color ?? null,
         accountId: tx.account_id ?? null,
         isProjected: false,
+        projectedKind: 'recurring',
         attachmentCount: tx.attachment_count ?? 0,
         isShared,
         parentTotal: isShared ? Number(tx.amount) : null,
@@ -470,7 +472,7 @@ export default function DashboardPage() {
     }
     for (const pt of projectedTxs ?? []) {
       rows.push({
-        key: `proj-${pt.recurring_id}-${pt.date}`,
+        key: `proj-${pt.kind ?? 'recurring'}-${pt.recurring_id ?? `${pt.description}-${pt.installment_number ?? ''}`}-${pt.date}`,
         description: pt.description,
         date: pt.date,
         type: pt.type,
@@ -482,6 +484,7 @@ export default function DashboardPage() {
         categoryColor: pt.category_color ?? null,
         accountId: null,
         isProjected: true,
+        projectedKind: pt.kind ?? 'recurring',
         attachmentCount: 0,
         isShared: false,
         parentTotal: null,
@@ -1094,7 +1097,12 @@ export default function DashboardPage() {
                                     : row.groupName ?? t('splitGroups.sharedShortBadge')}
                                 </span>
                               )}
-                              {row.isProjected && (
+                              {row.isProjected && row.projectedKind === 'installment' && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300 shrink-0">
+                                  {t('transactions.installmentBadge')}
+                                </span>
+                              )}
+                              {row.isProjected && row.projectedKind !== 'installment' && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-600 shrink-0">
                                   {t('transactions.recurringBadge')}
                                 </span>

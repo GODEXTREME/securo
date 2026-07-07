@@ -498,7 +498,8 @@
     },
     "bulkAddTags": "Adicionar tags",
     "addTagsPlaceholder": "#tag…",
-    "clearOverride": "Limpar substituição"
+    "clearOverride": "Limpar substituição",
+    "installmentBadge": "Parcela"
   },
   "accounts": {
     "title": "Contas",
@@ -1825,7 +1826,8 @@
     "legendBill": "Fatura a vencer",
     "legendRecurringExpense": "Despesa recorrente",
     "legendRecurringIncome": "Receita recorrente",
-    "legendActuals": "Saldo diário (realizado)"
+    "legendActuals": "Saldo diário (realizado)",
+    "legendInstallment": "Parcela (prevista)"
   },
   "sinkingFunds": {
     "title": "Caixinhas",

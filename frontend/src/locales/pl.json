@@ -534,7 +534,8 @@
     "bulkSuccess": "{{count}} transactions categorized",
     "bulkAddToGroupTitle": "Add {{count}} transactions to a group",
     "bulkAddToGroupSuccess": "{{count}} transactions added to group",
-    "installmentTooltip": "Installment plan — {{count}} charges totaling {{total}}"
+    "installmentTooltip": "Installment plan — {{count}} charges totaling {{total}}",
+    "installmentBadge": "Installment"
   },
   "accounts": {
     "title": "Konta",
@@ -1945,7 +1946,8 @@
     "legendBill": "Bill due",
     "legendRecurringExpense": "Recurring expense",
     "legendRecurringIncome": "Recurring income",
-    "legendActuals": "Daily net (actuals)"
+    "legendActuals": "Daily net (actuals)",
+    "legendInstallment": "Installment (projected)"
   },
   "sinkingFunds": {
     "title": "Savings Buckets",

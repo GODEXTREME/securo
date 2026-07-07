@@ -22,6 +22,8 @@ from app.services._query_filters import (
     viewer_shared_spending_by_category,
 )
 from app.services.admin_service import get_credit_card_accounting_mode
+from app.services.credit_card_service import compute_effective_date
+from app.services.installment_service import _plan_key
 from app.services.recurring_transaction_service import get_occurrences_in_range
 from app.services.asset_service import get_asset_values_at
 from app.services.fx_rate_service import convert
@@ -87,6 +89,97 @@ async def _get_recurring_projections(
     return projections
 
 
+def _add_months(d: date, months: int) -> date:
+    """Add ``months`` to ``d``, clamping the day to the target month's length."""
+    total = d.month - 1 + months
+    year = d.year + total // 12
+    month = total % 12 + 1
+    # Last day of the target month.
+    if month == 12:
+        last = 31
+    else:
+        last = (date(year, month + 1, 1) - timedelta(days=1)).day
+    return date(year, month, min(d.day, last))
+
+
+async def _get_installment_projections(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    month_start: date,
+    month_end: date,
+    account_ids: Optional[list[uuid.UUID]] = None,
+) -> list[dict]:
+    """Virtual projections for credit-card installments not yet synced.
+
+    Installments arrive as real rows only when the bank bills them, so a purchase
+    made in the past whose next parcel lands on the still-open bill is invisible
+    until the bill closes. This projects the remaining parcels (number greater
+    than the highest one already synced for the plan) at monthly cadence, bucketed
+    by the reporting date so they line up with how real parcels show. Read-only;
+    the projection for a parcel disappears the moment its real row syncs, so there
+    is no double counting. Returns the same dict shape as ``_get_recurring_projections``."""
+    if account_ids is not None and len(account_ids) == 0:
+        return []
+    since = date.today() - timedelta(days=1100)  # ~3y — bounds the scan to live plans
+    stmt = select(Transaction).where(
+        Transaction.workspace_id == workspace_id,
+        Transaction.total_installments.isnot(None),
+        Transaction.total_installments > 1,
+        Transaction.is_ignored == False,
+        Transaction.date >= since,
+    )
+    if account_ids:
+        stmt = stmt.where(Transaction.account_id.in_(account_ids))
+    txns = list((await session.execute(stmt)).scalars().all())
+    if not txns:
+        return []
+
+    accounting_mode = await get_credit_card_accounting_mode(session)
+    acc_ids = {t.account_id for t in txns}
+    accounts = {
+        a.id: a for a in (
+            await session.execute(select(Account).where(Account.id.in_(acc_ids)))
+        ).scalars().all()
+    }
+
+    groups: dict[str, list[Transaction]] = {}
+    for tx in txns:
+        groups.setdefault(_plan_key(tx), []).append(tx)
+
+    projections: list[dict] = []
+    for items in groups.values():
+        numbered = [t for t in items if t.installment_number]
+        if not numbered:
+            continue
+        last = max(numbered, key=lambda t: t.installment_number)
+        total = last.total_installments or 0
+        if total <= 1 or last.installment_number >= total:
+            continue  # plan finished or single parcel — nothing to project
+        acc = accounts.get(last.account_id)
+        per = round(abs(float(last.amount)), 2)
+        for k in range(last.installment_number + 1, total + 1):
+            charge_date = _add_months(last.date, k - last.installment_number)
+            if acc is not None and acc.type == "credit_card":
+                eff = compute_effective_date(charge_date, acc.statement_close_day, acc.payment_due_day)
+            else:
+                eff = charge_date
+            report_date = eff if accounting_mode == "accrual" else charge_date
+            if month_start <= report_date < month_end:
+                projections.append({
+                    "category_id": last.category_id,
+                    "amount": per,
+                    "type": "debit",
+                    "currency": last.currency,
+                    "date": report_date,
+                    # Extra fields for the projected-transactions list display.
+                    "installment_number": k,
+                    "total_installments": total,
+                    "description": last.payee or last.description,
+                    "account_id": last.account_id,
+                })
+    return projections
+
+
 async def get_summary(
     session: AsyncSession,
     workspace_id: uuid.UUID,
@@ -137,6 +230,9 @@ async def get_summary(
     if month_end > cutoff:
         projection_start = cutoff + timedelta(days=1)
         balance_projections = await _get_recurring_projections(
+            session, workspace_id, projection_start, month_end, account_ids
+        )
+        balance_projections += await _get_installment_projections(
             session, workspace_id, projection_start, month_end, account_ids
         )
         for proj in balance_projections:
@@ -196,6 +292,9 @@ async def get_summary(
 
     # Add virtual recurring projections
     projections = await _get_recurring_projections(
+        session, workspace_id, month_start, month_end, account_ids
+    )
+    projections += await _get_installment_projections(
         session, workspace_id, month_start, month_end, account_ids
     )
     for proj in projections:
@@ -586,6 +685,9 @@ async def get_spending_by_category(
     projections = await _get_recurring_projections(
         session, workspace_id, month_start, month_end, account_ids
     )
+    projections += await _get_installment_projections(
+        session, workspace_id, month_start, month_end, account_ids
+    )
     # We need category info for recurring projections — fetch categories
     cat_cache: dict[str, dict] = {}
     for proj in projections:
@@ -784,6 +886,38 @@ async def get_projected_transactions(
                 category_icon=cat_icon,
                 category_color=cat_color,
             ))
+
+    # Unbilled credit-card installments projected from their plans.
+    inst = await _get_installment_projections(session, workspace_id, month_start, month_end)
+    inst_cat_ids = {p["category_id"] for p in inst if p["category_id"]} - set(cat_map)
+    if inst_cat_ids:
+        cat_result = await session.execute(
+            select(Category.id, Category.name, Category.icon, Category.color)
+            .where(Category.id.in_(inst_cat_ids))
+        )
+        for row in cat_result.all():
+            cat_map[row[0]] = (row[1], row[2], row[3])
+    for p in inst:
+        cat_name, cat_icon, cat_color = cat_map.get(p["category_id"], (None, None, None)) if p["category_id"] else (None, None, None)
+        amt_primary = None
+        if p["currency"] != primary_currency:
+            converted, _ = await convert(session, Decimal(str(p["amount"])), p["currency"], primary_currency)
+            amt_primary = float(converted)
+        projections.append(ProjectedTransaction(
+            description=f"{p['description']} ({p['installment_number']}/{p['total_installments']})",
+            amount=float(p["amount"]),
+            amount_primary=amt_primary,
+            currency=p["currency"],
+            type="debit",
+            date=p["date"].isoformat(),
+            category_id=str(p["category_id"]) if p["category_id"] else None,
+            category_name=cat_name,
+            category_icon=cat_icon,
+            category_color=cat_color,
+            kind="installment",
+            installment_number=p["installment_number"],
+            total_installments=p["total_installments"],
+        ))
 
     return projections
 
@@ -1042,6 +1176,9 @@ async def get_balance_history(
     if month_end > today:
         proj_start = max(month_start, today + timedelta(days=1))
         projections = await _get_recurring_projections(
+            session, workspace_id, proj_start, month_end, account_ids
+        )
+        projections += await _get_installment_projections(
             session, workspace_id, proj_start, month_end, account_ids
         )
         for proj in projections:

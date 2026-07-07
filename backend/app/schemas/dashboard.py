@@ -51,7 +51,7 @@ class BalanceHistory(BaseModel):
 
 
 class ProjectedTransaction(BaseModel):
-    recurring_id: str
+    recurring_id: Optional[str] = None
     description: str
     amount: float
     amount_primary: Optional[float] = None
@@ -62,3 +62,8 @@ class ProjectedTransaction(BaseModel):
     category_name: Optional[str]
     category_icon: Optional[str]
     category_color: Optional[str] = None
+    # "recurring" (a recurring-bill occurrence) or "installment" (an unbilled
+    # credit-card parcel projected from its plan).
+    kind: str = "recurring"
+    installment_number: Optional[int] = None
+    total_installments: Optional[int] = None
