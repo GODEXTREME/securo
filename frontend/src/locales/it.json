@@ -2048,6 +2048,8 @@
     "statementOpen": "Aperta",
     "statementClosed": "Chiusa",
     "closesOn": "Chiude il {{date}}",
-    "openStatementNote": "Estratto ancora aperto — gli acquisti singoli di questo ciclo possono ancora arrivare. Sono previste solo le rate future."
+    "openStatementNote": "Estratto ancora aperto — gli acquisti singoli di questo ciclo possono ancora arrivare. Sono previste solo le rate future.",
+    "missingCycle": "Imposta il giorno di chiusura e scadenza di questa carta così gli acquisti finiscono nell'estratto giusto — altrimenti sono raggruppati per mese di acquisto. Impostalo nelle impostazioni del conto.",
+    "projectedTitle": "Rate previste"
   }
 }

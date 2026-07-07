@@ -2048,6 +2048,8 @@
     "statementOpen": "Open",
     "statementClosed": "Closed",
     "closesOn": "Closes {{date}}",
-    "openStatementNote": "Statement still open — one-off purchases this cycle may still post. Only future installments are projected."
+    "openStatementNote": "Statement still open — one-off purchases this cycle may still post. Only future installments are projected.",
+    "missingCycle": "Set this card's statement close and due days so purchases roll into the right invoice — otherwise they're grouped by purchase month. Set them in the account's settings.",
+    "projectedTitle": "Projected installments"
   }
 }

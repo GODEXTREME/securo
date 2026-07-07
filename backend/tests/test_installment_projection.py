@@ -101,6 +101,26 @@ async def test_projection_strips_anchor_parcel_number(
 
 
 @pytest.mark.asyncio
+async def test_projected_display_date_is_purchase_date_in_fatura_mode(
+    client, auth_headers, session, test_user, test_workspace
+):
+    # In statement (fatura) mode the parcel is *bucketed* by the bill due date,
+    # but should be *displayed* with its purchase date — matching how real rows
+    # show, not the due date. Card closes on the 20th / due on the 28th.
+    acc = await _cc_account(session, test_user)
+    await _parcel(session, test_user, test_workspace, acc, 3, 10, THIS_FIRST)
+    # 4/10 is charged next month on the 1st; its bill is due on the 28th.
+    r = await client.get(
+        f"/api/dashboard/projected-transactions?date_basis=effective&month={NEXT_FIRST.isoformat()}",
+        headers=auth_headers,
+    )
+    inst = [p for p in r.json() if p.get("kind") == "installment"]
+    assert len(inst) == 1
+    # Displayed date is the purchase date (day 1), NOT the bill due date (day 28).
+    assert inst[0]["date"] == NEXT_FIRST.isoformat()
+
+
+@pytest.mark.asyncio
 async def test_finished_plan_not_projected(session: AsyncSession, test_user, test_workspace):
     acc = await _cc_account(session, test_user)
     # Last parcel of a 3x plan already synced → nothing to project.

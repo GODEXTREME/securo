@@ -2048,6 +2048,8 @@
     "statementOpen": "Aberta",
     "statementClosed": "Fechada",
     "closesOn": "Fecha em {{date}}",
-    "openStatementNote": "Fatura em aberto — compras à vista deste ciclo ainda podem entrar. Só as parcelas futuras estão previstas."
+    "openStatementNote": "Fatura em aberto — compras à vista deste ciclo ainda podem entrar. Só as parcelas futuras estão previstas.",
+    "missingCycle": "Defina o dia de fechamento e vencimento deste cartão para as compras entrarem na fatura certa — sem isso, elas são agrupadas pelo mês da compra. Configure nos ajustes da conta.",
+    "projectedTitle": "Parcelas previstas"
   }
 }

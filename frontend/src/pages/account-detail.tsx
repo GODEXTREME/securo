@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, addDays, addMonths, parseISO } from 'date-fns'
-import { accounts, transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
+import { accounts, transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi, dashboard } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import type { CreditCardBill, Transaction } from '@/types'
@@ -31,11 +31,32 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts'
 
 function defaultFrom() {
   const now = new Date()
   return format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd')
+}
+
+// Is the statement whose bill is due on `dueDateStr` still open (accumulating)
+// or already closed? A statement closes a few days before it's due
+// (statement_close_day); when close_day > due_day the close falls in the month
+// before the due date. Past the close date the invoice is final.
+function statementStatus(
+  dueDateStr: string | null,
+  closeDay: number | null | undefined,
+  dueDay: number | null | undefined,
+): { status: 'open' | 'closed' | 'unknown'; closeDate: Date | null } {
+  if (!dueDateStr || !closeDay) return { status: 'unknown', closeDate: null }
+  const due = parseISO(dueDateStr + 'T00:00:00')
+  let cy = due.getFullYear()
+  let cm = due.getMonth() // 0-based
+  if (dueDay && closeDay > dueDay) { cm -= 1; if (cm < 0) { cm = 11; cy -= 1 } }
+  const close = new Date(cy, cm, closeDay, 23, 59, 59, 999)
+  return { status: Date.now() > close.getTime() ? 'closed' : 'open', closeDate: close }
 }
 
 function defaultTo() {
@@ -620,6 +641,48 @@ export default function AccountDetailPage() {
   const usePrimary = !isForeignCurrency || showPrimary
   const displayCurrency = (isForeignCurrency && !showPrimary) ? (account?.currency || userCurrency) : userCurrency
 
+  // The invoice (fatura) currently in view — used to pull unbilled installment
+  // projections and to flag the statement open/closed.
+  const cycleDueForView = activeBill
+    ? activeBill.due_date
+    : dueDateForCycle(filterTo, account?.payment_due_day)
+  const cycleMonth = cycleDueForView ? cycleDueForView.slice(0, 7) : null
+  const stmt = statementStatus(cycleDueForView, account?.statement_close_day, account?.payment_due_day)
+
+  const { data: projectedData } = useQuery({
+    queryKey: ['account-projected', id, cycleMonth],
+    queryFn: () => dashboard.projectedTransactions(`${cycleMonth}-01`, 'effective'),
+    enabled: isCreditCard && !!cycleMonth,
+  })
+  const projectedInstallments = useMemo(
+    () => (projectedData ?? []).filter((p) => p.kind === 'installment' && p.account_id === id),
+    [projectedData, id],
+  )
+  const projectedTotal = projectedInstallments.reduce((s, p) => s + Math.abs(Number(p.amount_primary ?? p.amount)), 0)
+
+  // Category breakdown for the viewed statement, derived from the same rows the
+  // list shows (real debits + projected installments) so the chart always
+  // covers the whole invoice. Uses the primary-currency amount so a foreign
+  // purchase counts at its charged value, not its raw foreign number.
+  const cycleCatSlices = useMemo(() => {
+    const m = new Map<string, { name: string; color: string; value: number }>()
+    const add = (name: string | null, color: string | null, value: number) => {
+      const key = name ?? '__uncat__'
+      const cur = m.get(key) ?? { name: name ?? t('reports.uncategorized'), color: color ?? '#9ca3af', value: 0 }
+      cur.value += value
+      m.set(key, cur)
+    }
+    for (const tx of txData?.items ?? []) {
+      if (tx.type !== 'debit' || tx.is_ignored || tx.source === 'opening_balance' || tx.transfer_pair_id) continue
+      add(tx.category?.name ?? null, tx.category?.color ?? null, Math.abs(Number(tx.amount_primary ?? tx.amount)))
+    }
+    for (const p of projectedInstallments) {
+      add(p.category_name, p.category_color, Math.abs(Number(p.amount_primary ?? p.amount)))
+    }
+    return [...m.values()].sort((a, b) => b.value - a.value)
+  }, [txData, projectedInstallments, t])
+  const cycleCatTotal = cycleCatSlices.reduce((s, c) => s + c.value, 0)
+
   // Chart data:
   // - Non-CC: daily running balance from /balance-history
   // - CC: cumulative charges within the current cycle, starting at 0
@@ -864,6 +927,11 @@ export default function AccountDetailPage() {
               >
                 <ChevronRight size={16} />
               </button>
+              {stmt.status !== 'unknown' && (
+                <span className={`ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${stmt.status === 'open' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
+                  {t(stmt.status === 'open' ? 'cards.statementOpen' : 'cards.statementClosed')}
+                </span>
+              )}
             </div>
           ) : (
             <>
@@ -1333,6 +1401,44 @@ export default function AccountDetailPage() {
         )
       })()}
 
+      {/* Spending by category for the viewed statement (real + projected) */}
+      {isCreditCard && cycleCatSlices.length > 0 && (
+        <div className="bg-card rounded-xl border border-border shadow-sm p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="font-semibold text-foreground">{t('cards.spendingByCategory')}</p>
+            <span className="text-sm font-semibold tabular-nums">{mask(formatCurrency(cycleCatTotal, userCurrency, locale))}</span>
+          </div>
+          <div className="grid gap-6 md:grid-cols-2 items-center">
+            <div className="relative h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={cycleCatSlices} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={58} outerRadius={92} paddingAngle={1}>
+                    {cycleCatSlices.map((c, i) => <Cell key={i} fill={c.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => mask(formatCurrency(Number(v) || 0, userCurrency, locale))} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[11px] text-muted-foreground">{t('reports.total')}</span>
+                <span className="text-lg font-bold tabular-nums">{mask(formatCurrency(cycleCatTotal, userCurrency, locale))}</span>
+              </div>
+            </div>
+            <div className="space-y-2.5">
+              {cycleCatSlices.map((c, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: c.color }} />
+                  <span className="min-w-0 flex-1 overflow-x-auto no-scrollbar">
+                    <span className="text-sm font-medium whitespace-nowrap">{c.name}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums w-10 text-right">{cycleCatTotal > 0 ? Math.round((c.value / cycleCatTotal) * 100) : 0}%</span>
+                  <span className="shrink-0 text-sm font-medium tabular-nums text-right">{mask(formatCurrency(c.value, userCurrency, locale))}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Transaction table */}
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-border">
@@ -1462,6 +1568,38 @@ export default function AccountDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Unbilled installments projected onto this (still-open) statement. */}
+      {isCreditCard && projectedInstallments.length > 0 && (
+        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden mt-6">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-2 flex-wrap">
+            <p className="font-semibold text-foreground">{t('cards.projectedTitle')}</p>
+            <span className="text-[11px] text-indigo-600 dark:text-indigo-300">{t('cards.projectedTotal', { amount: mask(formatCurrency(projectedTotal, userCurrency, locale)) })}</span>
+          </div>
+          <div className="divide-y divide-muted">
+            {projectedInstallments.map((p, i) => (
+              <div key={`${p.description}-${i}`} className="flex items-center gap-3 px-5 py-3 opacity-90">
+                {p.category_icon
+                  ? <CategoryIcon icon={p.category_icon} color={p.category_color ?? undefined} size="sm" />
+                  : <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0"><CalendarClock size={13} className="text-muted-foreground" /></span>}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium truncate">{p.description}</span>
+                    <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">{t('cards.projected')}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateStr(p.date, dateLocale)}{p.category_name ? ` · ${p.category_name}` : ''}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold tabular-nums shrink-0 text-muted-foreground">{mask(formatCurrency(Math.abs(Number(p.amount_primary ?? p.amount)), userCurrency, locale))}</span>
+              </div>
+            ))}
+          </div>
+          <div className="px-5 py-2.5 border-t border-border text-[11px] text-muted-foreground bg-muted/30">
+            {t('cards.openStatementNote')}
+          </div>
+        </div>
+      )}
 
       <TransactionDialog
         open={dialogOpen}

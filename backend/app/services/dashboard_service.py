@@ -186,6 +186,11 @@ async def _get_installment_projections(
                     "total_installments": total,
                     "description": _strip_parcel(last.payee or last.description),
                     "account_id": last.account_id,
+                    # `date` (report_date) is what every caller buckets by; keep
+                    # the raw purchase date separately so the list can show when
+                    # the parcel was bought (matching real rows) rather than the
+                    # bill due date.
+                    "purchase_date": charge_date,
                 })
     return projections
 
@@ -926,7 +931,7 @@ async def get_projected_transactions(
             amount_primary=amt_primary,
             currency=p["currency"],
             type="debit",
-            date=p["date"].isoformat(),
+            date=p.get("purchase_date", p["date"]).isoformat(),
             category_id=str(p["category_id"]) if p["category_id"] else None,
             category_name=cat_name,
             category_icon=cat_icon,
