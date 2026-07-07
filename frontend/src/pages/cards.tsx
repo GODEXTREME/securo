@@ -15,8 +15,25 @@ import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { formatCurrency } from '@/lib/format'
-import type { Transaction } from '@/types'
+import type { Transaction, Account } from '@/types'
 import { CreditCard, Layers } from 'lucide-react'
+
+// Is the statement being viewed still open (accumulating) or already closed?
+// We navigate by statement, bucketing purchases on their bill *due* date, so
+// `month` is the statement's due month. The statement closes a few days before
+// it's due (statement_close_day); when close_day > due_day the close falls in
+// the previous calendar month. If today is past that close date the fatura is
+// final; otherwise it's still open and one-off purchases can still land on it.
+function statementStatus(card: Account | undefined, month: string): { status: 'open' | 'closed' | 'unknown'; closeDate: Date | null } {
+  const closeDay = card?.statement_close_day
+  if (!closeDay) return { status: 'unknown', closeDate: null }
+  const dueDay = card?.payment_due_day ?? closeDay
+  const [y, m] = month.split('-').map(Number)
+  let cy = y, cm = m
+  if (closeDay > dueDay) { cm -= 1; if (cm < 1) { cm = 12; cy -= 1 } }
+  const close = new Date(cy, cm - 1, closeDay, 23, 59, 59, 999)
+  return { status: Date.now() > close.getTime() ? 'closed' : 'open', closeDate: close }
+}
 
 export default function CardsPage() {
   const { t } = useTranslation()
@@ -67,6 +84,7 @@ export default function CardsPage() {
 
   const [month, setMonth] = useState(currentMonth())
   const { from, to } = monthRange(month)
+  const { status: stmtStatus, closeDate: stmtClose } = statementStatus(card, month)
 
   // The card view is organized by statement (fatura): filter/bucket by the
   // bill's due date (effective) so it lines up with the bank's invoice, not the
@@ -203,10 +221,29 @@ export default function CardsPage() {
                   )}
                 </div>
                 <div className="flex flex-col items-start sm:items-end gap-1">
-                  <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('cards.statement')}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('cards.statement')}</span>
+                    {stmtStatus !== 'unknown' && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${stmtStatus === 'open' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
+                        {t(stmtStatus === 'open' ? 'cards.statementOpen' : 'cards.statementClosed')}
+                      </span>
+                    )}
+                  </div>
                   <MonthStepper value={month} onChange={setMonth} locale={locale} />
+                  {stmtStatus === 'open' && stmtClose && (
+                    <span className="text-[10px] text-muted-foreground">{t('cards.closesOn', { date: stmtClose.toLocaleDateString(locale) })}</span>
+                  )}
                 </div>
               </div>
+
+              {/* Open-statement notice: this fatura is still accumulating, so
+                  one-off purchases haven't all posted yet — only installments
+                  are projected forward. */}
+              {stmtStatus === 'open' && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20 px-4 py-3 text-[13px] text-amber-800 dark:text-amber-200">
+                  {t('cards.openStatementNote')}
+                </div>
+              )}
 
               {/* Spending summary + pie */}
               <div className="bg-card rounded-xl border border-border shadow-sm p-5">

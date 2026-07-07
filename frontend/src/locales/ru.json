@@ -2044,6 +2044,10 @@
     "projectedTotal": "Projected: +{{amount}}",
     "statement": "Statement",
     "includesProjected": "включая {{amount}} прогноз",
-    "totalOwed": "Общий долг: {{amount}}"
+    "totalOwed": "Общий долг: {{amount}}",
+    "statementOpen": "Открыт",
+    "statementClosed": "Закрыт",
+    "closesOn": "Закрытие {{date}}",
+    "openStatementNote": "Выписка ещё открыта — разовые покупки этого цикла ещё могут появиться. Прогнозируются только будущие платежи по рассрочке."
   }
 }

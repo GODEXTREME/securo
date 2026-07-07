@@ -2044,6 +2044,10 @@
     "projectedTotal": "Previsto: +{{amount}}",
     "statement": "Fatura",
     "includesProjected": "inclui {{amount}} previstos",
-    "totalOwed": "Saldo total: {{amount}}"
+    "totalOwed": "Saldo total: {{amount}}",
+    "statementOpen": "Aberta",
+    "statementClosed": "Fechada",
+    "closesOn": "Fecha em {{date}}",
+    "openStatementNote": "Fatura em aberto — compras à vista deste ciclo ainda podem entrar. Só as parcelas futuras estão previstas."
   }
 }

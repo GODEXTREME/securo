@@ -2044,6 +2044,10 @@
     "projectedTotal": "Projected: +{{amount}}",
     "statement": "Statement",
     "includesProjected": "inkl. {{amount}} voraussichtlich",
-    "totalOwed": "Gesamtsaldo: {{amount}}"
+    "totalOwed": "Gesamtsaldo: {{amount}}",
+    "statementOpen": "Offen",
+    "statementClosed": "Geschlossen",
+    "closesOn": "Schließt am {{date}}",
+    "openStatementNote": "Rechnung noch offen — Einmalkäufe dieses Zyklus können noch hinzukommen. Nur künftige Raten werden projiziert."
   }
 }
