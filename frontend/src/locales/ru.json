@@ -139,7 +139,8 @@
     "fixedIncome": "Fixed income",
     "purchasePlanner": "Cash vs instalments",
     "dividends": "Dividends",
-    "emergencyFund": "Emergency fund"
+    "emergencyFund": "Emergency fund",
+    "cards": "Cards"
   },
   "collections": {
     "title": "Коллекции",
@@ -2027,5 +2028,17 @@
     "usingAccount": "Using {{name}} balance",
     "monthlyContribution": "Monthly contribution",
     "save": "Save"
+  },
+  "cards": {
+    "title": "Credit cards",
+    "empty": "No credit cards yet. Add or connect a credit-card account to see it here.",
+    "creditCard": "Credit card",
+    "currentBalance": "Current balance",
+    "ofLimit": "of limit",
+    "dueOn": "Due on {{date}}",
+    "spendingByCategory": "Spending by category",
+    "noPurchases": "No purchases this month.",
+    "purchases": "Purchases",
+    "items": "items"
   }
 }

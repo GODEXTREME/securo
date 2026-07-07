@@ -97,6 +97,7 @@ const navItems: NavItem[] = [
   { type: 'separator', labelKey: 'nav.groupAccounts' },
   { type: 'link', key: 'transactions', path: '/transactions', icon: ArrowLeftRight },
   { type: 'link', key: 'accounts', path: '/accounts', icon: Building2 },
+  { type: 'link', key: 'cards', path: '/cards', icon: CreditCard },
   { type: 'link', key: 'installments', path: '/installments', icon: Layers },
   { type: 'link', key: 'import', path: '/import', icon: Upload },
   { type: 'separator', labelKey: 'nav.groupAnalysis' },

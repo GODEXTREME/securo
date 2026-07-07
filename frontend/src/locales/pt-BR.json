@@ -139,7 +139,8 @@
     "fixedIncome": "Renda fixa",
     "purchasePlanner": "À vista vs parcelado",
     "dividends": "Dividendos",
-    "emergencyFund": "Reserva de emergência"
+    "emergencyFund": "Reserva de emergência",
+    "cards": "Cartões"
   },
   "collections": {
     "title": "Coleções",
@@ -2027,5 +2028,17 @@
     "usingAccount": "Usando saldo de {{name}}",
     "monthlyContribution": "Aporte mensal",
     "save": "Salvar"
+  },
+  "cards": {
+    "title": "Cartões de crédito",
+    "empty": "Nenhum cartão de crédito ainda. Adicione ou conecte uma conta de cartão para vê-la aqui.",
+    "creditCard": "Cartão de crédito",
+    "currentBalance": "Fatura atual",
+    "ofLimit": "do limite",
+    "dueOn": "Vence em {{date}}",
+    "spendingByCategory": "Gastos por categoria",
+    "noPurchases": "Nenhuma compra neste mês.",
+    "purchases": "Compras",
+    "items": "itens"
   }
 }
