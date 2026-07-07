@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { accounts as accountsApi, transactions as txApi, advancedReports } from '@/lib/api'
+import { accounts as accountsApi, transactions as txApi, advancedReports, dashboard } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { MonthStepper } from '@/components/month-stepper'
 import { CategoryIcon } from '@/components/category-icon'
@@ -20,7 +20,21 @@ export default function CardsPage() {
   const { mask } = usePrivacyMode()
 
   const { data: accounts, isLoading } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsApi.list() })
-  const cards = (accounts ?? []).filter((a) => a.type === 'credit_card' && !a.is_closed)
+  // Cards with an open balance first (by nearest due date), then paid-off cards
+  // (also by due date). Null due dates sort last within each group.
+  const cards = (accounts ?? [])
+    .filter((a) => a.type === 'credit_card' && !a.is_closed)
+    .sort((a, b) => {
+      const aPaid = (a.balance ?? 0) <= 0
+      const bPaid = (b.balance ?? 0) <= 0
+      if (aPaid !== bPaid) return aPaid ? 1 : -1
+      const ad = a.next_due_date ?? ''
+      const bd = b.next_due_date ?? ''
+      if (!ad && !bd) return 0
+      if (!ad) return 1
+      if (!bd) return -1
+      return ad.localeCompare(bd)
+    })
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const cardId = selectedId && cards.some((c) => c.id === selectedId) ? selectedId : cards[0]?.id
@@ -40,12 +54,43 @@ export default function CardsPage() {
     queryFn: () => txApi.list({ account_id: cardId, from, to, type: 'debit', sort_by: 'date', sort_dir: 'desc', limit: 300 }),
     enabled: !!cardId,
   })
+  // Installments not yet billed that will land on this card in the selected month.
+  const { data: projected } = useQuery({
+    queryKey: ['card-projected', month],
+    queryFn: () => dashboard.projectedTransactions(`${month}-01`),
+  })
 
   const currency = breakdown?.currency ?? card?.currency ?? 'BRL'
   const fmt = (n: number) => mask(formatCurrency(n, currency, locale))
   const groups = breakdown?.groups ?? []
   const labelOf = (name: string | null, uncat: boolean) => (uncat ? t('reports.uncategorized') : (name ?? '—'))
   const pieData = groups.map((g) => ({ name: labelOf(g.name, g.uncategorized), value: g.total, color: g.color }))
+
+  // Merge real purchases with projected (unbilled) installments for this card.
+  type Row = {
+    key: string; date: string; name: string; categoryName: string | null
+    categoryColor: string | null; categoryIcon: string | null; amount: number
+    installmentLabel: string | null; projected: boolean
+  }
+  const realRows: Row[] = (txs?.items ?? []).map((tx) => ({
+    key: tx.id, date: tx.date, name: tx.payee_name || tx.payee || tx.description,
+    categoryName: tx.category?.name ?? null, categoryColor: tx.category?.color ?? null, categoryIcon: tx.category?.icon ?? null,
+    amount: Math.abs(tx.amount),
+    installmentLabel: tx.total_installments && tx.total_installments > 1 ? `${tx.installment_number}/${tx.total_installments}` : null,
+    projected: false,
+  }))
+  const projRows: Row[] = (projected ?? [])
+    .filter((p) => p.kind === 'installment' && p.account_id === cardId)
+    .map((p, i) => ({
+      key: `proj-${i}-${p.date}`, date: p.date,
+      name: p.description.replace(/\s*\(\d+\/\d+\)\s*$/, ''),
+      categoryName: p.category_name, categoryColor: p.category_color, categoryIcon: p.category_icon,
+      amount: Math.abs(p.amount),
+      installmentLabel: p.installment_number && p.total_installments ? `${p.installment_number}/${p.total_installments}` : null,
+      projected: true,
+    }))
+  const purchaseRows = [...realRows, ...projRows].sort((a, b) => b.date.localeCompare(a.date))
+  const projectedTotal = projRows.reduce((s, r) => s + r.amount, 0)
 
   // Limit usage (credit card balance is the amount owed).
   const owed = card?.balance ?? 0
@@ -148,37 +193,47 @@ export default function CardsPage() {
                 )}
               </div>
 
-              {/* Purchases list */}
+              {/* Purchases list (real + projected installments) */}
               <div className="bg-card rounded-xl border border-border shadow-sm">
-                <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+                <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-2 flex-wrap">
                   <h2 className="text-sm font-semibold">{t('cards.purchases')}</h2>
-                  <span className="text-xs text-muted-foreground">{txs?.items?.length ?? 0} {t('cards.items')}</span>
+                  <div className="flex items-center gap-3">
+                    {projectedTotal > 0 && (
+                      <span className="text-[11px] text-indigo-600 dark:text-indigo-300">{t('cards.projectedTotal', { amount: fmt(projectedTotal) })}</span>
+                    )}
+                    <span className="text-xs text-muted-foreground">{purchaseRows.length} {t('cards.items')}</span>
+                  </div>
                 </div>
                 {txLoading ? (
                   <div className="p-5"><Skeleton className="h-24 w-full" /></div>
-                ) : !txs || txs.items.length === 0 ? (
+                ) : purchaseRows.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-10">{t('cards.noPurchases')}</p>
                 ) : (
                   <div className="divide-y divide-muted">
-                    {txs.items.map((tx) => (
-                      <div key={tx.id} className="flex items-center gap-3 px-5 py-3">
-                        {tx.category
-                          ? <CategoryIcon icon={tx.category.icon} color={tx.category.color} size="sm" />
+                    {purchaseRows.map((row) => (
+                      <div key={row.key} className={`flex items-center gap-3 px-5 py-3 ${row.projected ? 'opacity-80' : ''}`}>
+                        {row.categoryIcon
+                          ? <CategoryIcon icon={row.categoryIcon} color={row.categoryColor ?? undefined} size="sm" />
                           : <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0"><Layers size={13} className="text-muted-foreground" /></span>}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium truncate">
-                            {tx.payee_name || tx.payee || tx.description}
-                            {tx.total_installments && tx.total_installments > 1 && (
+                            {row.name}
+                            {row.installmentLabel && (
                               <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
-                                {tx.installment_number}/{tx.total_installments}
+                                {row.installmentLabel}
+                              </span>
+                            )}
+                            {row.projected && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                                {t('cards.projected')}
                               </span>
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {new Date(tx.date).toLocaleDateString(locale)}{tx.category ? ` · ${tx.category.name}` : ''}
+                            {new Date(row.date).toLocaleDateString(locale)}{row.categoryName ? ` · ${row.categoryName}` : ''}
                           </p>
                         </div>
-                        <span className="text-sm font-semibold tabular-nums shrink-0">{fmt(Math.abs(tx.amount))}</span>
+                        <span className={`text-sm font-semibold tabular-nums shrink-0 ${row.projected ? 'text-muted-foreground' : ''}`}>{fmt(row.amount)}</span>
                       </div>
                     ))}
                   </div>

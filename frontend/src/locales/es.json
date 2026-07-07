@@ -2039,6 +2039,8 @@
     "spendingByCategory": "Spending by category",
     "noPurchases": "No purchases this month.",
     "purchases": "Purchases",
-    "items": "items"
+    "items": "items",
+    "projected": "Projected",
+    "projectedTotal": "Projected: +{{amount}}"
   }
 }

@@ -67,3 +67,4 @@ class ProjectedTransaction(BaseModel):
     kind: str = "recurring"
     installment_number: Optional[int] = None
     total_installments: Optional[int] = None
+    account_id: Optional[str] = None
