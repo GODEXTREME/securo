@@ -2042,6 +2042,12 @@
     "items": "items",
     "projected": "Projected",
     "projectedTotal": "Projected: +{{amount}}",
-    "statement": "Statement"
+    "statement": "Statement",
+    "includesProjected": "incluye {{amount}} previstos",
+    "totalOwed": "Saldo total: {{amount}}",
+    "statementOpen": "Abierta",
+    "statementClosed": "Cerrada",
+    "closesOn": "Cierra el {{date}}",
+    "openStatementNote": "Factura aún abierta — las compras únicas de este ciclo aún pueden entrar. Solo se proyectan las cuotas futuras."
   }
 }

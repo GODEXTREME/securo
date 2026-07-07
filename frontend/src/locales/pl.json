@@ -2162,6 +2162,12 @@
     "items": "items",
     "projected": "Projected",
     "projectedTotal": "Projected: +{{amount}}",
-    "statement": "Statement"
+    "statement": "Statement",
+    "includesProjected": "zawiera {{amount}} prognozowane",
+    "totalOwed": "Łączne zadłużenie: {{amount}}",
+    "statementOpen": "Otwarta",
+    "statementClosed": "Zamknięta",
+    "closesOn": "Zamyka {{date}}",
+    "openStatementNote": "Wyciąg wciąż otwarty — jednorazowe zakupy z tego cyklu mogą jeszcze wpłynąć. Prognozowane są tylko przyszłe raty."
   }
 }

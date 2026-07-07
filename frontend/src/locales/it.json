@@ -2042,6 +2042,12 @@
     "items": "items",
     "projected": "Projected",
     "projectedTotal": "Projected: +{{amount}}",
-    "statement": "Statement"
+    "statement": "Statement",
+    "includesProjected": "include {{amount}} previsti",
+    "totalOwed": "Saldo totale: {{amount}}",
+    "statementOpen": "Aperta",
+    "statementClosed": "Chiusa",
+    "closesOn": "Chiude il {{date}}",
+    "openStatementNote": "Estratto ancora aperto — gli acquisti singoli di questo ciclo possono ancora arrivare. Sono previste solo le rate future."
   }
 }

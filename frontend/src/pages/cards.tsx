@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { accounts as accountsApi, transactions as txApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, advancedReports, dashboard } from '@/lib/api'
+import { accounts as accountsApi, transactions as txApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, dashboard } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { MonthStepper } from '@/components/month-stepper'
 import { CategoryIcon } from '@/components/category-icon'
@@ -15,8 +15,25 @@ import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { formatCurrency } from '@/lib/format'
-import type { Transaction } from '@/types'
+import type { Transaction, Account } from '@/types'
 import { CreditCard, Layers } from 'lucide-react'
+
+// Is the statement being viewed still open (accumulating) or already closed?
+// We navigate by statement, bucketing purchases on their bill *due* date, so
+// `month` is the statement's due month. The statement closes a few days before
+// it's due (statement_close_day); when close_day > due_day the close falls in
+// the previous calendar month. If today is past that close date the fatura is
+// final; otherwise it's still open and one-off purchases can still land on it.
+function statementStatus(card: Account | undefined, month: string): { status: 'open' | 'closed' | 'unknown'; closeDate: Date | null } {
+  const closeDay = card?.statement_close_day
+  if (!closeDay) return { status: 'unknown', closeDate: null }
+  const dueDay = card?.payment_due_day ?? closeDay
+  const [y, m] = month.split('-').map(Number)
+  let cy = y, cm = m
+  if (closeDay > dueDay) { cm -= 1; if (cm < 1) { cm = 12; cy -= 1 } }
+  const close = new Date(cy, cm - 1, closeDay, 23, 59, 59, 999)
+  return { status: Date.now() > close.getTime() ? 'closed' : 'open', closeDate: close }
+}
 
 export default function CardsPage() {
   const { t } = useTranslation()
@@ -66,17 +83,12 @@ export default function CardsPage() {
   const card = cards.find((c) => c.id === cardId)
 
   const [month, setMonth] = useState(currentMonth())
-  const [yr, mo] = month.split('-').map(Number)
   const { from, to } = monthRange(month)
+  const { status: stmtStatus, closeDate: stmtClose } = statementStatus(card, month)
 
   // The card view is organized by statement (fatura): filter/bucket by the
   // bill's due date (effective) so it lines up with the bank's invoice, not the
   // purchase-date calendar month.
-  const { data: breakdown } = useQuery({
-    queryKey: ['card-breakdown', cardId, month],
-    queryFn: () => advancedReports.categoryBreakdown({ accountIds: [cardId!], year: yr, month: mo, flow: 'expense', dateBasis: 'effective' }),
-    enabled: !!cardId,
-  })
   const { data: txs, isLoading: txLoading } = useQuery({
     queryKey: ['card-txs', cardId, month],
     queryFn: () => txApi.list({ account_id: cardId, from, to, type: 'debit', sort_by: 'date', sort_dir: 'desc', limit: 300, date_basis: 'effective' }),
@@ -88,11 +100,8 @@ export default function CardsPage() {
     queryFn: () => dashboard.projectedTransactions(`${month}-01`, 'effective'),
   })
 
-  const currency = breakdown?.currency ?? card?.currency ?? 'BRL'
+  const currency = card?.currency ?? 'BRL'
   const fmt = (n: number) => mask(formatCurrency(n, currency, locale))
-  const groups = breakdown?.groups ?? []
-  const labelOf = (name: string | null, uncat: boolean) => (uncat ? t('reports.uncategorized') : (name ?? '—'))
-  const pieData = groups.map((g) => ({ name: labelOf(g.name, g.uncategorized), value: g.total, color: g.color }))
 
   // Merge real purchases with projected (unbilled) installments for this card.
   // The parcel number lives in the purchase text itself (the provider's title,
@@ -131,6 +140,23 @@ export default function CardsPage() {
     }))
   const purchaseRows = [...realRows, ...projRows].sort((a, b) => b.date.localeCompare(a.date))
   const projectedTotal = projRows.reduce((s, r) => s + r.amount, 0)
+
+  // Pie + statement total are derived from the SAME rows shown in the list
+  // (real purchases + projected installments), so the chart and the "fatura"
+  // figure always cover every purchase — including unbilled installments that
+  // the synced category report doesn't know about yet.
+  const catSlices = (() => {
+    const m = new Map<string, { name: string; color: string; value: number }>()
+    for (const r of purchaseRows) {
+      const key = r.categoryName ?? '__uncat__'
+      const cur = m.get(key) ?? { name: r.categoryName ?? t('reports.uncategorized'), color: r.categoryColor ?? '#9ca3af', value: 0 }
+      cur.value += r.amount
+      m.set(key, cur)
+    }
+    return [...m.values()].sort((a, b) => b.value - a.value)
+  })()
+  const faturaTotal = catSlices.reduce((s, c) => s + c.value, 0)
+  const pieData = catSlices.map((c) => ({ name: c.name, value: c.value, color: c.color }))
 
   // Limit usage (credit card balance is the amount owed).
   const owed = card?.balance ?? 0
@@ -172,7 +198,10 @@ export default function CardsPage() {
               <div className="bg-card rounded-xl border border-border shadow-sm p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">{t('cards.currentBalance')}</p>
-                  <p className="text-2xl font-bold tabular-nums">{fmt(owed)}</p>
+                  <p className="text-2xl font-bold tabular-nums">{fmt(faturaTotal)}</p>
+                  {projectedTotal > 0 && (
+                    <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-0.5">{t('cards.includesProjected', { amount: fmt(projectedTotal) })}</p>
+                  )}
                   {limit > 0 && (
                     <div className="mt-2 w-48 max-w-full">
                       <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
@@ -182,6 +211,7 @@ export default function CardsPage() {
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
                         <div className={`h-full rounded-full ${(usage ?? 0) >= 90 ? 'bg-rose-500' : 'bg-gradient-to-r from-indigo-400 to-indigo-600'}`} style={{ width: `${usage}%` }} />
                       </div>
+                      <p className="text-[11px] text-muted-foreground mt-1">{t('cards.totalOwed', { amount: fmt(owed) })}</p>
                     </div>
                   )}
                   {card.next_due_date && (
@@ -191,18 +221,37 @@ export default function CardsPage() {
                   )}
                 </div>
                 <div className="flex flex-col items-start sm:items-end gap-1">
-                  <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('cards.statement')}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('cards.statement')}</span>
+                    {stmtStatus !== 'unknown' && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${stmtStatus === 'open' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
+                        {t(stmtStatus === 'open' ? 'cards.statementOpen' : 'cards.statementClosed')}
+                      </span>
+                    )}
+                  </div>
                   <MonthStepper value={month} onChange={setMonth} locale={locale} />
+                  {stmtStatus === 'open' && stmtClose && (
+                    <span className="text-[10px] text-muted-foreground">{t('cards.closesOn', { date: stmtClose.toLocaleDateString(locale) })}</span>
+                  )}
                 </div>
               </div>
+
+              {/* Open-statement notice: this fatura is still accumulating, so
+                  one-off purchases haven't all posted yet — only installments
+                  are projected forward. */}
+              {stmtStatus === 'open' && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20 px-4 py-3 text-[13px] text-amber-800 dark:text-amber-200">
+                  {t('cards.openStatementNote')}
+                </div>
+              )}
 
               {/* Spending summary + pie */}
               <div className="bg-card rounded-xl border border-border shadow-sm p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-semibold">{t('cards.spendingByCategory')}</h2>
-                  <span className="text-sm font-semibold tabular-nums">{fmt(breakdown?.total ?? 0)}</span>
+                  <span className="text-sm font-semibold tabular-nums">{fmt(faturaTotal)}</span>
                 </div>
-                {groups.length === 0 ? (
+                {catSlices.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-10">{t('cards.noPurchases')}</p>
                 ) : (
                   <div className="grid gap-6 md:grid-cols-2 items-center">
@@ -217,18 +266,18 @@ export default function CardsPage() {
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                         <span className="text-[11px] text-muted-foreground">{t('reports.total')}</span>
-                        <span className="text-lg font-bold tabular-nums">{fmt(breakdown?.total ?? 0)}</span>
+                        <span className="text-lg font-bold tabular-nums">{fmt(faturaTotal)}</span>
                       </div>
                     </div>
                     <div className="space-y-2.5">
-                      {groups.map((g) => (
-                        <div key={g.id} className="flex items-center gap-3">
-                          <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: g.color }} />
+                      {catSlices.map((c, i) => (
+                        <div key={i} className="flex items-center gap-3">
+                          <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: c.color }} />
                           <span className="min-w-0 flex-1 overflow-x-auto no-scrollbar">
-                            <span className="text-sm font-medium whitespace-nowrap">{labelOf(g.name, g.uncategorized)}</span>
+                            <span className="text-sm font-medium whitespace-nowrap">{c.name}</span>
                           </span>
-                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums w-10 text-right">{g.percentage}%</span>
-                          <span className="shrink-0 text-sm font-medium tabular-nums text-right">{fmt(g.total)}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums w-10 text-right">{faturaTotal > 0 ? Math.round((c.value / faturaTotal) * 100) : 0}%</span>
+                          <span className="shrink-0 text-sm font-medium tabular-nums text-right">{fmt(c.value)}</span>
                         </div>
                       ))}
                     </div>
