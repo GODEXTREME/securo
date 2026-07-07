@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -28,6 +29,14 @@ from app.services.recurring_transaction_service import get_occurrences_in_range
 from app.services.asset_service import get_asset_values_at
 from app.services.fx_rate_service import convert
 from app.models.user import User
+
+# Providers embed the parcel marker in the title ("… 3/6", "… - Parcela 3/6").
+# Strip it so a projected row doesn't carry the anchor parcel's stale number.
+_PARCEL_SUFFIX = re.compile(r"\s*[-–]?\s*(parcela\s*)?\d+\s*/\s*\d+\s*$", re.IGNORECASE)
+
+
+def _strip_parcel(text: str) -> str:
+    return _PARCEL_SUFFIX.sub("", text or "").strip() or (text or "")
 
 
 def _month_range(month: date) -> tuple[date, date]:
@@ -174,7 +183,7 @@ async def _get_installment_projections(
                     # Extra fields for the projected-transactions list display.
                     "installment_number": k,
                     "total_installments": total,
-                    "description": last.payee or last.description,
+                    "description": _strip_parcel(last.payee or last.description),
                     "account_id": last.account_id,
                 })
     return projections
@@ -905,7 +914,7 @@ async def get_projected_transactions(
             converted, _ = await convert(session, Decimal(str(p["amount"])), p["currency"], primary_currency)
             amt_primary = float(converted)
         projections.append(ProjectedTransaction(
-            description=f"{p['description']} ({p['installment_number']}/{p['total_installments']})",
+            description=f"{p['description']} {p['installment_number']}/{p['total_installments']}",
             amount=float(p["amount"]),
             amount_primary=amt_primary,
             currency=p["currency"],

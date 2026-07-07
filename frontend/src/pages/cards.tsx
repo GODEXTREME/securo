@@ -1,17 +1,21 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { accounts as accountsApi, transactions as txApi, advancedReports, dashboard } from '@/lib/api'
+import { accounts as accountsApi, transactions as txApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, advancedReports, dashboard } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { MonthStepper } from '@/components/month-stepper'
 import { CategoryIcon } from '@/components/category-icon'
+import { TransactionDialog, extractApiError } from '@/components/transaction-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { currentMonth, monthRange } from '@/lib/month-utils'
 import { getAccountName } from '@/lib/account-utils'
+import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { formatCurrency } from '@/lib/format'
+import type { Transaction } from '@/types'
 import { CreditCard, Layers } from 'lucide-react'
 
 export default function CardsPage() {
@@ -19,7 +23,28 @@ export default function CardsPage() {
   const locale = useDisplayLocale()
   const { mask } = usePrivacyMode()
 
+  const queryClient = useQueryClient()
   const { data: accounts, isLoading } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsApi.list() })
+  const { data: categoriesList } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list })
+  const { data: categoryGroupsList } = useQuery({ queryKey: ['category-groups'], queryFn: categoryGroupsApi.list })
+
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const invalidateTx = () => {
+    invalidateFinancialQueries(queryClient)
+    queryClient.invalidateQueries({ queryKey: ['card-txs'] })
+    queryClient.invalidateQueries({ queryKey: ['card-breakdown'] })
+    queryClient.invalidateQueries({ queryKey: ['card-projected'] })
+  }
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string } & Partial<Transaction>) => txApi.update(id, data),
+    onSuccess: () => { invalidateTx(); setEditingTx(null); toast.success(t('transactions.updated')) },
+    onError: (e) => toast.error(extractApiError(e)),
+  })
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => txApi.delete(id),
+    onSuccess: () => { invalidateTx(); setEditingTx(null); toast.success(t('transactions.deleted')) },
+    onError: (e) => toast.error(extractApiError(e)),
+  })
   // Cards with an open balance first (by nearest due date), then paid-off cards
   // (also by due date). Null due dates sort last within each group.
   const cards = (accounts ?? [])
@@ -67,34 +92,32 @@ export default function CardsPage() {
   const pieData = groups.map((g) => ({ name: labelOf(g.name, g.uncategorized), value: g.total, color: g.color }))
 
   // Merge real purchases with projected (unbilled) installments for this card.
+  // The parcel number lives in the purchase text itself (the provider's title,
+  // e.g. "… 3/6") — that's the source of truth, so we don't render a separate
+  // badge that could disagree with it. Real rows keep the provider title as-is;
+  // projected rows already come as "Merchant k/N" from the backend.
   type Row = {
     key: string; date: string; name: string; categoryName: string | null
     categoryColor: string | null; categoryIcon: string | null; amount: number
-    installmentLabel: string | null; projected: boolean
+    projected: boolean; tx: Transaction | null
   }
-  // Providers (Nubank) embed the parcel number in the title ("… 3/6",
-  // "… - Parcela 3/6"). Strip it so it doesn't clash with the badge, which is
-  // the single source of truth for the parcel number.
-  const cleanName = (s: string) => s
-    .replace(/\s*\(\d+\s*\/\s*\d+\)\s*$/, '')
-    .replace(/\s*[-–]?\s*(parcela\s*)?\d+\s*\/\s*\d+\s*$/i, '')
-    .trim() || s
-  const realRows: Row[] = (txs?.items ?? []).map((tx) => ({
-    key: tx.id, date: tx.date, name: cleanName(tx.payee_name || tx.payee || tx.description),
-    categoryName: tx.category?.name ?? null, categoryColor: tx.category?.color ?? null, categoryIcon: tx.category?.icon ?? null,
-    amount: Math.abs(tx.amount),
-    installmentLabel: tx.total_installments && tx.total_installments > 1 ? `${tx.installment_number}/${tx.total_installments}` : null,
-    projected: false,
-  }))
+  const realRows: Row[] = (txs?.items ?? []).map((tx) => {
+    const raw = tx.payee_name || tx.payee || tx.description
+    const hasNum = /\d+\s*\/\s*\d+/.test(raw)
+    const name = !hasNum && tx.total_installments && tx.total_installments > 1
+      ? `${raw} ${tx.installment_number}/${tx.total_installments}` : raw
+    return {
+      key: tx.id, date: tx.date, name,
+      categoryName: tx.category?.name ?? null, categoryColor: tx.category?.color ?? null, categoryIcon: tx.category?.icon ?? null,
+      amount: Math.abs(tx.amount), projected: false, tx,
+    }
+  })
   const projRows: Row[] = (projected ?? [])
     .filter((p) => p.kind === 'installment' && p.account_id === cardId)
     .map((p, i) => ({
-      key: `proj-${i}-${p.date}`, date: p.date,
-      name: cleanName(p.description),
+      key: `proj-${i}-${p.date}`, date: p.date, name: p.description,
       categoryName: p.category_name, categoryColor: p.category_color, categoryIcon: p.category_icon,
-      amount: Math.abs(p.amount),
-      installmentLabel: p.installment_number && p.total_installments ? `${p.installment_number}/${p.total_installments}` : null,
-      projected: true,
+      amount: Math.abs(p.amount), projected: true, tx: null,
     }))
   const purchaseRows = [...realRows, ...projRows].sort((a, b) => b.date.localeCompare(a.date))
   const projectedTotal = projRows.reduce((s, r) => s + r.amount, 0)
@@ -218,18 +241,16 @@ export default function CardsPage() {
                 ) : (
                   <div className="divide-y divide-muted">
                     {purchaseRows.map((row) => (
-                      <div key={row.key} className={`flex items-center gap-3 px-5 py-3 ${row.projected ? 'opacity-80' : ''}`}>
+                      <div key={row.key} role={row.tx ? 'button' : undefined} tabIndex={row.tx ? 0 : undefined}
+                        onClick={row.tx ? () => setEditingTx(row.tx) : undefined}
+                        onKeyDown={row.tx ? (e) => { if (e.key === 'Enter') setEditingTx(row.tx) } : undefined}
+                        className={`flex items-center gap-3 px-5 py-3 ${row.projected ? 'opacity-80' : 'cursor-pointer hover:bg-muted/50 transition-colors'}`}>
                         {row.categoryIcon
                           ? <CategoryIcon icon={row.categoryIcon} color={row.categoryColor ?? undefined} size="sm" />
                           : <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0"><Layers size={13} className="text-muted-foreground" /></span>}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium truncate">
                             {row.name}
-                            {row.installmentLabel && (
-                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
-                                {row.installmentLabel}
-                              </span>
-                            )}
                             {row.projected && (
                               <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                                 {t('cards.projected')}
@@ -250,6 +271,20 @@ export default function CardsPage() {
           )}
         </>
       )}
+
+      <TransactionDialog
+        open={!!editingTx}
+        onClose={() => { setEditingTx(null); updateMutation.reset() }}
+        transaction={editingTx}
+        categories={categoriesList ?? []}
+        categoryGroups={categoryGroupsList ?? []}
+        accounts={(accounts ?? []).map((a) => ({ id: a.id, name: getAccountName(a), type: a.type }))}
+        onSave={(data) => { if (editingTx) updateMutation.mutate({ id: editingTx.id, ...data }) }}
+        onDelete={editingTx ? () => deleteMutation.mutate(editingTx.id) : undefined}
+        isSynced={editingTx?.source === 'sync'}
+        loading={updateMutation.isPending || deleteMutation.isPending}
+        error={updateMutation.error ? extractApiError(updateMutation.error) : null}
+      />
     </div>
   )
 }
