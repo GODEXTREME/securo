@@ -97,6 +97,19 @@ async def get_calendar(
             "currency": p["currency"],
         })
 
+    # Projected credit-card installments not yet billed (upcoming parcels).
+    inst_projections = await dashboard_service._get_installment_projections(
+        session, workspace_id, month_start, month_end
+    )
+    for p in inst_projections:
+        events.append({
+            "date": p["date"].isoformat(),
+            "kind": "installment",
+            "title": f"{p['description']} ({p['installment_number']}/{p['total_installments']})",
+            "amount": -float(p["amount"]),
+            "currency": p["currency"],
+        })
+
     events.sort(key=lambda e: e["date"])
     month_income = round(sum(v["income"] for v in daily.values()), 2)
     month_expense = round(sum(v["expense"] for v in daily.values()), 2)

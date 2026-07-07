@@ -12,6 +12,7 @@ const KIND_DOT: Record<string, string> = {
   bill: 'bg-rose-500',
   recurring_expense: 'bg-amber-500',
   recurring_income: 'bg-emerald-500',
+  installment: 'bg-indigo-500',
 }
 
 export default function CalendarPage() {
@@ -119,6 +120,7 @@ export default function CalendarPage() {
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> {t('calendar.legendBill')}</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500" /> {t('calendar.legendRecurringExpense')}</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> {t('calendar.legendRecurringIncome')}</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-indigo-500" /> {t('calendar.legendInstallment')}</span>
         <span className="flex items-center gap-1.5"><Receipt size={12} /> {t('calendar.legendActuals')}</span>
       </div>
     </div>

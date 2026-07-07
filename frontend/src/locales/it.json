@@ -498,7 +498,8 @@
     },
     "bulkAddTags": "Aggiungi tag",
     "addTagsPlaceholder": "#tag…",
-    "clearOverride": "Rimuovi override"
+    "clearOverride": "Rimuovi override",
+    "installmentBadge": "Installment"
   },
   "accounts": {
     "title": "Conti",
@@ -1825,7 +1826,8 @@
     "legendBill": "Bill due",
     "legendRecurringExpense": "Recurring expense",
     "legendRecurringIncome": "Recurring income",
-    "legendActuals": "Daily net (actuals)"
+    "legendActuals": "Daily net (actuals)",
+    "legendInstallment": "Installment (projected)"
   },
   "sinkingFunds": {
     "title": "Savings Buckets",

@@ -498,7 +498,8 @@
         "last90": "Letzte 90 Tage",
         "thisYear": "Dieses Jahr"
       }
-    }
+    },
+    "installmentBadge": "Installment"
   },
   "accounts": {
     "title": "Konten",
@@ -1825,7 +1826,8 @@
     "legendBill": "Bill due",
     "legendRecurringExpense": "Recurring expense",
     "legendRecurringIncome": "Recurring income",
-    "legendActuals": "Daily net (actuals)"
+    "legendActuals": "Daily net (actuals)",
+    "legendInstallment": "Installment (projected)"
   },
   "sinkingFunds": {
     "title": "Savings Buckets",

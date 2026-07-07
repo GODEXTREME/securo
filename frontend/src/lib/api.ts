@@ -1788,7 +1788,7 @@ export const sinkingFunds = {
 
 export interface CalendarEvent {
   date: string
-  kind: 'bill' | 'recurring_income' | 'recurring_expense'
+  kind: 'bill' | 'recurring_income' | 'recurring_expense' | 'installment'
   title: string
   amount: number
   currency: string
