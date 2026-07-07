@@ -69,20 +69,23 @@ export default function CardsPage() {
   const [yr, mo] = month.split('-').map(Number)
   const { from, to } = monthRange(month)
 
+  // The card view is organized by statement (fatura): filter/bucket by the
+  // bill's due date (effective) so it lines up with the bank's invoice, not the
+  // purchase-date calendar month.
   const { data: breakdown } = useQuery({
     queryKey: ['card-breakdown', cardId, month],
-    queryFn: () => advancedReports.categoryBreakdown({ accountIds: [cardId!], year: yr, month: mo, flow: 'expense' }),
+    queryFn: () => advancedReports.categoryBreakdown({ accountIds: [cardId!], year: yr, month: mo, flow: 'expense', dateBasis: 'effective' }),
     enabled: !!cardId,
   })
   const { data: txs, isLoading: txLoading } = useQuery({
     queryKey: ['card-txs', cardId, month],
-    queryFn: () => txApi.list({ account_id: cardId, from, to, type: 'debit', sort_by: 'date', sort_dir: 'desc', limit: 300 }),
+    queryFn: () => txApi.list({ account_id: cardId, from, to, type: 'debit', sort_by: 'date', sort_dir: 'desc', limit: 300, date_basis: 'effective' }),
     enabled: !!cardId,
   })
-  // Installments not yet billed that will land on this card in the selected month.
+  // Installments not yet billed that will land on this card's statement.
   const { data: projected } = useQuery({
     queryKey: ['card-projected', month],
-    queryFn: () => dashboard.projectedTransactions(`${month}-01`),
+    queryFn: () => dashboard.projectedTransactions(`${month}-01`, 'effective'),
   })
 
   const currency = breakdown?.currency ?? card?.currency ?? 'BRL'
@@ -187,7 +190,10 @@ export default function CardsPage() {
                     </p>
                   )}
                 </div>
-                <MonthStepper value={month} onChange={setMonth} locale={locale} />
+                <div className="flex flex-col items-start sm:items-end gap-1">
+                  <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{t('cards.statement')}</span>
+                  <MonthStepper value={month} onChange={setMonth} locale={locale} />
+                </div>
               </div>
 
               {/* Spending summary + pie */}

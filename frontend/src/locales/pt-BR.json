@@ -2041,6 +2041,7 @@
     "purchases": "Compras",
     "items": "itens",
     "projected": "Prevista",
-    "projectedTotal": "Previsto: +{{amount}}"
+    "projectedTotal": "Previsto: +{{amount}}",
+    "statement": "Fatura"
   }
 }

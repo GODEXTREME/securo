@@ -117,6 +117,7 @@ async def _get_installment_projections(
     month_start: date,
     month_end: date,
     account_ids: Optional[list[uuid.UUID]] = None,
+    force_effective: bool = False,
 ) -> list[dict]:
     """Virtual projections for credit-card installments not yet synced.
 
@@ -172,7 +173,7 @@ async def _get_installment_projections(
                 eff = compute_effective_date(charge_date, acc.statement_close_day, acc.payment_due_day)
             else:
                 eff = charge_date
-            report_date = eff if accounting_mode == "accrual" else charge_date
+            report_date = eff if (accounting_mode == "accrual" or force_effective) else charge_date
             if month_start <= report_date < month_end:
                 projections.append({
                     "category_id": last.category_id,
@@ -828,9 +829,13 @@ async def get_projected_transactions(
     workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     month: Optional[date] = None,
+    date_basis: Optional[str] = None,
 ) -> list[ProjectedTransaction]:
     """Return virtual recurring transaction projections for a month,
-    enriched with description and category info for display."""
+    enriched with description and category info for display.
+
+    ``date_basis="effective"`` buckets installment projections by the bill/due
+    date (fatura) instead of the purchase date, for the per-card statement view."""
     if not month:
         month = date.today().replace(day=1)
 
@@ -898,7 +903,9 @@ async def get_projected_transactions(
             ))
 
     # Unbilled credit-card installments projected from their plans.
-    inst = await _get_installment_projections(session, workspace_id, month_start, month_end)
+    inst = await _get_installment_projections(
+        session, workspace_id, month_start, month_end, force_effective=date_basis == "effective"
+    )
     inst_cat_ids = {p["category_id"] for p in inst if p["category_id"]} - set(cat_map)
     if inst_cat_ids:
         cat_result = await session.execute(

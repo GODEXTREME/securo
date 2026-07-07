@@ -99,10 +99,15 @@ async def list_transactions(
     max_amount: Optional[float] = Query(None, ge=0, description="Filter to transactions with absolute amount <= this value (primary currency)."),
     sort_by: Optional[str] = Query(None, description="Column to sort by (date|amount|description|payee|category|account|type|status). Default: date desc."),
     sort_dir: str = Query("desc", regex="^(asc|desc)$"),
+    date_basis: Optional[str] = Query(None, pattern="^(effective|purchase)$", description="Override the date basis for from/to filtering & bucketing: 'effective' = credit-card bill/due date (fatura), 'purchase' = raw date. Defaults to the global accounting mode."),
     ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
 ):
     accounting_mode = await get_credit_card_accounting_mode(session)
+    if date_basis == "effective":
+        accounting_mode = "accrual"
+    elif date_basis == "purchase":
+        accounting_mode = "cash"
     transactions, total, summary = await transaction_service.get_transactions(
         session, ctx.workspace.id, ctx.user_id,
         account_ids=_merge_id_filters(account_id, account_ids),

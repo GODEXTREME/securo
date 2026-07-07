@@ -67,9 +67,10 @@ async def get_balance_history(
 @router.get("/projected-transactions", response_model=list[ProjectedTransaction])
 async def get_projected_transactions(
     month: Optional[date] = Query(None),
+    date_basis: Optional[str] = Query(None, pattern="^(effective|purchase)$"),
     ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
 ):
     return await dashboard_service.get_projected_transactions(
-        session, ctx.workspace.id, ctx.user_id, month
+        session, ctx.workspace.id, ctx.user_id, month, date_basis=date_basis
     )
