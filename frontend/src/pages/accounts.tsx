@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import axios from 'axios'
 import { accounts, connections, currencies } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
@@ -26,6 +27,7 @@ import {
   Pencil,
   Trash2,
   RefreshCw,
+  TriangleAlert,
   Unlink,
   Plus,
   Settings,
@@ -109,6 +111,7 @@ export default function AccountsPage() {
   const [closingAccountId, setClosingAccountId] = useState<string | null>(null)
   const [reconnectConnId, setReconnectConnId] = useState<string | null>(null)
   const [reconnectItemId, setReconnectItemId] = useState<string | null>(null)
+  const [tokenReconnectConnection, setTokenReconnectConnection] = useState<BankConnection | null>(null)
   // Which page design to render: the default (grouped by bank connection) or
   // the "By type" redesign (grouped by account kind). Persisted per browser.
   const [viewDesign, setViewDesign] = useState<AccountsViewDesign>(() =>
@@ -154,6 +157,10 @@ export default function AccountsPage() {
       }
       return
     }
+    if (providerInfo?.flow_type === 'token') {
+      setTokenReconnectConnection(conn)
+      return
+    }
     // Widget flow (Pluggy): re-open the widget with the existing item_id.
     setReconnectConnId(conn.id)
     setReconnectItemId(conn.external_id)
@@ -176,7 +183,14 @@ export default function AccountsPage() {
         toast.info(t('accounts.mergedCount', { count: merged }))
       }
     },
-    onError: () => toast.error(t('accounts.syncError')),
+    onError: (err) => {
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      const detail = axios.isAxiosError(err)
+        ? err.response?.data?.detail
+        : null
+      const message = typeof detail === 'string' ? detail : detail?.message
+      toast.error(message || t('accounts.syncError'))
+    },
   })
 
   const disconnectMutation = useMutation({
@@ -653,6 +667,8 @@ export default function AccountsPage() {
             <div className="space-y-3">
               {connectionsList.map((conn) => {
                 const connAccounts = bankAccounts.filter((a) => a.connection_id === conn.id)
+                const needsReconnect = conn.status !== 'active'
+                const syncPending = syncMutation.isPending && syncMutation.variables === conn.id
                 return (
                   <div key={conn.id} className="bg-card rounded-xl border border-border shadow-sm">
                     {/* Connection header */}
@@ -664,7 +680,11 @@ export default function AccountsPage() {
                             <p className="text-sm font-semibold text-foreground">{getConnectionName(conn)}</p>
                             <Badge
                               variant={conn.status === 'active' ? 'default' : 'secondary'}
-                              className="text-[10px] px-1.5 py-0 h-4"
+                              className={
+                                conn.status === 'active'
+                                  ? 'text-[10px] px-1.5 py-0 h-4'
+                                  : 'text-[10px] px-1.5 py-0 h-4 border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                              }
                             >
                               {conn.status}
                             </Badge>
@@ -683,17 +703,32 @@ export default function AccountsPage() {
                             size="sm"
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                             onClick={() => setSettingsConnection(conn)}
+                            title={t('connections.settings')}
                           >
                             <Settings size={14} />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                            onClick={() => syncMutation.mutate(conn.id)}
-                            disabled={syncMutation.isPending && syncMutation.variables === conn.id}
+                            className={needsReconnect
+                              ? 'relative h-8 w-8 p-0 text-amber-500 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300'
+                              : 'h-8 w-8 p-0 text-muted-foreground hover:text-foreground'}
+                            onClick={() => needsReconnect ? handleReconnectClick(conn) : syncMutation.mutate(conn.id)}
+                            disabled={syncPending}
+                            title={needsReconnect
+                              ? conn.status === 'expired'
+                                ? t('accounts.connectionExpired')
+                                : t('accounts.connectionError')
+                              : t('accounts.sync')}
+                            aria-label={needsReconnect ? t('accounts.reconnect') : t('accounts.sync')}
                           >
-                            <RefreshCw size={14} className={syncMutation.isPending && syncMutation.variables === conn.id ? 'animate-spin' : ''} />
+                            <RefreshCw size={14} className={syncPending ? 'animate-spin' : ''} />
+                            {needsReconnect && (
+                              <TriangleAlert
+                                size={10}
+                                className="absolute -right-0.5 -top-0.5 rounded-full bg-card text-amber-500"
+                              />
+                            )}
                           </Button>
                           <Button
                             variant="ghost"
@@ -701,33 +736,13 @@ export default function AccountsPage() {
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-500"
                             onClick={() => setDisconnectingConnection(conn)}
                             disabled={disconnectMutation.isPending}
+                            title={t('accounts.disconnect')}
                           >
                             <Unlink size={14} />
                           </Button>
                         </div>
                       )}
                     </div>
-                    {/* Reconnect banner */}
-                    {conn.status !== 'active' && (
-                      <div className="mx-5 mt-3 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
-                        <span className="text-sm text-amber-800">
-                          {conn.status === 'expired'
-                            ? t('accounts.connectionExpired')
-                            : t('accounts.connectionError')}
-                        </span>
-                        {canWrite && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-amber-300 text-amber-700 hover:bg-amber-100 gap-1.5 h-8"
-                            onClick={() => handleReconnectClick(conn)}
-                          >
-                            <RefreshCw size={12} />
-                            {t('accounts.reconnect')}
-                          </Button>
-                        )}
-                      </div>
-                    )}
                     {/* Accounts list */}
                     {connAccounts.length > 0 ? (
                       <div className="divide-y divide-muted">
@@ -950,12 +965,20 @@ export default function AccountsPage() {
         supportsAssetSync={selectedProvider?.supports_asset_sync ?? false}
       />
 
-      {/* Reconnect Dialog */}
+      {/* Reconnect Dialog — widget-based (Pluggy) */}
       <BankConnectDialog
         open={!!reconnectConnId}
         onClose={() => { setReconnectConnId(null); setReconnectItemId(null) }}
         reconnectConnectionId={reconnectConnId ?? undefined}
         updateItemId={reconnectItemId ?? undefined}
+      />
+
+      {/* Reconnect Dialog — paste-a-token flow (SimpleFIN) */}
+      <TokenConnectDialog
+        open={!!tokenReconnectConnection}
+        onClose={() => setTokenReconnectConnection(null)}
+        provider={tokenReconnectConnection?.provider ?? ''}
+        reconnectConnectionId={tokenReconnectConnection?.id}
       />
 
       {/* Connection Settings Dialog */}

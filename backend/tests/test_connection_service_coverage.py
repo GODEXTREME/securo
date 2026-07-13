@@ -334,7 +334,7 @@ async def test_sync_session_expired_marks_expired(session: AsyncSession, test_us
 
 
 @pytest.mark.asyncio
-async def test_sync_user_action_required_propagates_without_error_status(
+async def test_sync_user_action_required_marks_error_status(
     session: AsyncSession, test_user, test_workspace,
 ):
     conn = await _make_connection(session, test_user.id, "ActionBank")
@@ -348,11 +348,11 @@ async def test_sync_user_action_required_propagates_without_error_status(
         with pytest.raises(ProviderUserActionRequired):
             await sync_connection(session, conn_id, test_workspace.id, test_user.id)
 
-    # Connection status NOT flipped to error for this case.
+    # User-action failures are visible in the UI via the reconnect banner.
     refreshed = (await session.execute(
         select(BankConnection).where(BankConnection.id == conn_id)
     )).scalar_one()
-    assert refreshed.status == "active"
+    assert refreshed.status == "error"
 
 
 # ---------------------------------------------------------------------------

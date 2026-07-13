@@ -679,7 +679,10 @@
       "simplefin": {
         "title": "Połącz przez SimpleFIN",
         "description": "SimpleFIN to protokół danych bankowych tylko do odczytu. Przejdź do SimpleFIN Bridge, wybierz swój bank i skopiuj token konfiguracyjny tutaj."
-      }
+      },
+      "reconnectTitle": "Połącz ponownie za pomocą nowego tokenu",
+      "reconnectDescription": "Wklej nowy token konfiguracji, aby odświeżyć to połączenie bez jego usuwania. Istniejące konta, transakcje, kategorie i reguły zostaną zachowane.",
+      "reconnect": "Połącz ponownie"
     },
     "providers": {
       "pluggy": {
@@ -694,7 +697,8 @@
     },
     "overdueDays": "Overdue by {{count}} days",
     "dueIn": "Due in {{count}} days",
-    "mergedCount": "{{count}} transactions merged with synced data"
+    "mergedCount": "{{count}} transactions merged with synced data",
+    "reconnected": "Bank połączony ponownie"
   },
   "connections": {
     "settings": "Ustawienia połączenia",
@@ -1194,6 +1198,10 @@
     "syncedFromHint": "Pierwotnie zsynchronizowane z {{source}} — możesz dowolnie zmieniać nazwę, dopasowanie przy synchronizacji korzysta z identyfikatora połączenia.",
     "chartByWallet": "Wg portfela",
     "chartByAsset": "Wg aktywa",
+    "chartGroupMode": "Grupowanie wykresu",
+    "chartDrawMode": "Sposób rysowania wykresu",
+    "chartStacked": "Skumulowany",
+    "chartLines": "Linie",
     "portfolioValue": "Wartość portfela",
     "total": "Łącznie",
     "confirmRegenerateTitle": "Przeliczyć wartości ponownie?",
@@ -1279,6 +1287,8 @@
     "total": "Razem"
   },
   "payees": {
+    "addFavorite": "Dodaj do ulubionych",
+    "removeFavorite": "Usuń z ulubionych",
     "title": "Odbiorcy",
     "section": "Konfiguracja",
     "payee": "Odbiorca",
@@ -1322,6 +1332,7 @@
     "merged": "Payees merged ({{count}} transactions reassigned)"
   },
   "common": {
+    "view": "Zobacz",
     "save": "Zapisz",
     "cancel": "Anuluj",
     "close": "Zamknij",
@@ -1448,6 +1459,8 @@
     "date": "Data",
     "splitTransaction": "Podziel tę transakcję",
     "splitNoGroups": "Najpierw utwórz grupę, aby podzielić transakcję.",
+    "splitNoGroupsLinkPrefix": "Nie masz jeszcze grupy. Możesz ",
+    "splitNoGroupsLinkSuffix": "utworzyć ją tutaj",
     "splitNoMembers": "Najpierw dodaj członków do grupy.",
     "group": "Grupa",
     "shareType": "Podziel wg",
