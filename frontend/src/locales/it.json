@@ -1114,7 +1114,14 @@
     "total": "Totale",
     "confirmRegenerateTitle": "Rigenerare i valori?",
     "confirmRegenerate": "I parametri di crescita sono cambiati. Tutti i valori generati automaticamente saranno eliminati e ricalcolati. I valori manuali saranno mantenuti.",
-    "regenerate": "Rigenera"
+    "regenerate": "Rigenera",
+    "returnsTitle": "Rendimenti",
+    "returnsSubtitle": "Quanto hanno reso i tuoi investimenti — esclusi i versamenti.",
+    "returnsMonth": "Questo mese",
+    "returnsYear": "Quest'anno",
+    "returnsAllTime": "Da sempre",
+    "returnsGain": "Rendimento",
+    "returnsAsset": "Investimento"
   },
   "reports": {
     "section": "Analisi",

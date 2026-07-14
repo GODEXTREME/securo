@@ -1,5 +1,6 @@
 import logging
 import uuid
+from typing import Optional
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -192,6 +193,19 @@ async def portfolio_trend(
     session: AsyncSession = Depends(get_async_session),
 ):
     return await asset_service.get_portfolio_trend(session, ctx.workspace.id, ctx.user_id)
+
+
+@router.get("/returns")
+async def asset_returns(
+    types: Optional[list[str]] = Query(None, description="Filter by asset type (e.g. investment); omit for all."),
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Rendimento (return excluding contributions) per asset + portfolio:
+    cumulative gain series and month-to-date / year-to-date / all-time %."""
+    return await asset_service.get_asset_returns(
+        session, ctx.workspace.id, ctx.user_id, types=types
+    )
 
 
 # ----------------------------------------------------------------------------

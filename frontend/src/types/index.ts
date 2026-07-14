@@ -624,6 +624,36 @@ export interface AssetValue {
   source: string
 }
 
+export interface AssetReturnRow {
+  id: string
+  name: string
+  type: string
+  group_id: string | null
+  currency: string
+  current_value: number
+  invested: number
+  gain: number
+  income: number
+  pct_month: number | null
+  pct_year: number | null
+  pct_total: number | null
+}
+
+export interface AssetReturns {
+  currency: string
+  series: { date: string; gain: number }[]
+  totals: {
+    gain: number
+    invested: number
+    current_value: number
+    income: number
+    pct_month: number | null
+    pct_year: number | null
+    pct_total: number | null
+  } | null
+  assets: AssetReturnRow[]
+}
+
 export interface Goal {
   id: string
   user_id: string

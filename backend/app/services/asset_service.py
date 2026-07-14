@@ -906,6 +906,227 @@ async def get_portfolio_trend(
     return {"assets": asset_meta, "trend": trend, "total": round(total, 2)}
 
 
+def _window_pct(
+    gain_t1: float, gain_t0: float, value_t0: float, inflows_window: float,
+) -> Optional[float]:
+    """Return % for a window: gain earned in it over the capital exposed in it.
+
+    Capital base = value at the window start + contributions made during the
+    window (unweighted — simple Dietz). None when there was no capital at risk.
+    """
+    denom = value_t0 + inflows_window
+    if denom <= 0:
+        return None
+    return round((gain_t1 - gain_t0) / denom * 100, 2)
+
+
+async def get_asset_returns(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: Optional[uuid.UUID] = None,
+    types: Optional[list[str]] = None,
+) -> dict:
+    """Per-asset and portfolio *rendimento* (return) figures.
+
+    The gain excludes contributions — it's what the money earned, not what was
+    deposited: gain(d) = value(d) + income(≤d) + sale proceeds(≤d)
+    − contributions(≤d). Contributions come from the buy/sell ledger when one
+    exists, else from purchase_price, else from the first recorded value (so a
+    tracked-only asset measures from its first snapshot).
+
+    Percentages are computed on native-currency values (a CDB's BRL yield
+    shouldn't be distorted by FX); the portfolio gain series and R$ totals are
+    converted to the primary currency at today's rate.
+
+    Windows follow the Brazilian-app convention: *no mês* (month-to-date),
+    *no ano* (year-to-date) and *desde o início* (all time, over everything
+    contributed).
+    """
+    from app.models.asset_income import AssetIncome
+
+    stmt = select(Asset).where(
+        Asset.workspace_id == workspace_id,
+        Asset.is_archived == False,
+    ).order_by(Asset.position, Asset.name)
+    if types:
+        stmt = stmt.where(Asset.type.in_(types))
+    assets = list((await session.execute(stmt)).scalars().all())
+
+    user = await session.get(User, user_id) if user_id is not None else None
+    primary_currency = user.primary_currency if user else get_settings().default_currency
+
+    if not assets:
+        return {"currency": primary_currency, "series": [], "totals": None, "assets": []}
+
+    values_map = await _load_asset_native_values(session, assets)
+    asset_ids = [a.id for a in assets]
+
+    # Cash flows per asset: (date, amount) — positive = money put in
+    # (buys + fees), negative = money taken out (sells − fees).
+    flows: dict[str, list[tuple[date, float]]] = {str(a.id): [] for a in assets}
+    tx_rows = (await session.execute(
+        select(
+            AssetTransaction.asset_id, AssetTransaction.date, AssetTransaction.kind,
+            AssetTransaction.quantity, AssetTransaction.price, AssetTransaction.fee,
+        ).where(AssetTransaction.asset_id.in_(asset_ids))
+    )).all()
+    has_ledger: set[str] = set()
+    for aid, d, kind, qty, price, fee in tx_rows:
+        aid = str(aid)
+        has_ledger.add(aid)
+        gross = float(qty) * float(price)
+        fee_f = float(fee or 0)
+        flows[aid].append((d, gross + fee_f if kind == "buy" else -(gross - fee_f)))
+
+    income: dict[str, list[tuple[date, float]]] = {str(a.id): [] for a in assets}
+    inc_rows = (await session.execute(
+        select(AssetIncome.asset_id, AssetIncome.date, AssetIncome.amount)
+        .where(AssetIncome.asset_id.in_(asset_ids))
+    )).all()
+    for aid, d, amt in inc_rows:
+        income[str(aid)].append((d, float(amt)))
+
+    today = date.today()
+    month_t0 = today.replace(day=1) - timedelta(days=1)   # last day of prev month
+    year_t0 = date(today.year - 1, 12, 31)
+
+    def cum(pairs: list[tuple[date, float]], upto: date, positive_only: bool = False) -> float:
+        return sum(v for d, v in pairs if d <= upto and (v > 0 if positive_only else True))
+
+    def value_at(vals: list[tuple[date, float]], as_of: date) -> float:
+        out = 0.0
+        for d, v in vals:
+            if d > as_of:
+                break
+            out = v
+        return out
+
+    all_dates: set[date] = set()
+    per_asset: list[dict] = []
+    # Per-asset native components, kept for the portfolio series/windows.
+    components: dict[str, dict] = {}
+
+    for asset in assets:
+        aid = str(asset.id)
+        vals = sorted(values_map.get(aid) or [])
+        if not vals:
+            continue
+        fl = sorted(flows[aid])
+        inc = sorted(income[aid])
+
+        # Contribution baseline when there's no ledger: purchase_price if
+        # recorded, else the first snapshot (measure from tracking start).
+        if aid not in has_ledger:
+            base_date = asset.purchase_date if (asset.purchase_price is not None and asset.purchase_date is not None) else vals[0][0]
+            base_amount = float(asset.purchase_price) if asset.purchase_price is not None else vals[0][1]
+            fl.insert(0, (base_date, base_amount))
+
+        # A sold asset realizes sell_price as an outflow and holds no value after.
+        if asset.sell_date is not None:
+            vals = [(d, v) for d, v in vals if d <= asset.sell_date] or vals[:1]
+            if asset.sell_price is not None:
+                fl.append((asset.sell_date, -float(asset.sell_price)))
+
+        sold = asset.sell_date is not None and asset.sell_date <= today
+
+        def gain_at(as_of: date) -> float:
+            v = 0.0 if (sold and as_of >= asset.sell_date) else value_at(vals, as_of)
+            if not sold and vals[0][0] > as_of:
+                v = 0.0
+            return v + cum(inc, as_of) - cum(fl, as_of)
+
+        gain_total = gain_at(today)
+        invested_total = cum(fl, today, positive_only=True)
+        current_value = 0.0 if sold else value_at(vals, today)
+        income_total = cum(inc, today)
+
+        pct_total = round(gain_total / invested_total * 100, 2) if invested_total > 0 else None
+        inflows_mtd = sum(v for d, v in fl if month_t0 < d <= today and v > 0)
+        inflows_ytd = sum(v for d, v in fl if year_t0 < d <= today and v > 0)
+        pct_month = _window_pct(gain_total, gain_at(month_t0), value_at(vals, month_t0), inflows_mtd)
+        pct_year = _window_pct(gain_total, gain_at(year_t0), value_at(vals, year_t0), inflows_ytd)
+
+        components[aid] = {"vals": vals, "fl": fl, "inc": inc, "sold": sold, "sell_date": asset.sell_date, "currency": asset.currency}
+        for d, _ in vals:
+            all_dates.add(d)
+        for d, _ in fl:
+            all_dates.add(d)
+
+        if not sold:
+            per_asset.append({
+                "id": aid,
+                "name": asset.name,
+                "type": asset.type,
+                "group_id": str(asset.group_id) if asset.group_id else None,
+                "currency": asset.currency,
+                "current_value": round(current_value, 2),
+                "invested": round(invested_total, 2),
+                "gain": round(gain_total, 2),
+                "income": round(income_total, 2),
+                "pct_month": pct_month,
+                "pct_year": pct_year,
+                "pct_total": pct_total,
+            })
+
+    if not components:
+        return {"currency": primary_currency, "series": [], "totals": None, "assets": []}
+
+    # FX for the aggregated figures: one rate per foreign currency, at today.
+    # Percent windows stay native per asset; the portfolio aggregation accepts
+    # today's rate for simplicity (identity for single-currency portfolios).
+    fx: dict[str, float] = {primary_currency: 1.0}
+    for c in {comp["currency"] for comp in components.values()}:
+        if c not in fx:
+            converted, _ = await convert(session, Decimal("1"), c, primary_currency, today)
+            fx[c] = float(converted)
+
+    def portfolio_gain(as_of: date) -> float:
+        total = 0.0
+        for comp in components.values():
+            sold = comp["sold"] and comp["sell_date"] is not None and as_of >= comp["sell_date"]
+            v = 0.0 if sold else (value_at(comp["vals"], as_of) if comp["vals"][0][0] <= as_of else 0.0)
+            g = v + sum(x for d, x in comp["inc"] if d <= as_of) - sum(x for d, x in comp["fl"] if d <= as_of)
+            total += g * fx[comp["currency"]]
+        return total
+
+    sorted_dates = [d for d in sorted(all_dates) if d <= today]
+    series = [{"date": d.isoformat(), "gain": round(portfolio_gain(d), 2)} for d in sorted_dates]
+
+    def portfolio_value(as_of: date) -> float:
+        total = 0.0
+        for comp in components.values():
+            sold = comp["sold"] and comp["sell_date"] is not None and as_of >= comp["sell_date"]
+            if not sold and comp["vals"][0][0] <= as_of:
+                total += value_at(comp["vals"], as_of) * fx[comp["currency"]]
+        return total
+
+    def portfolio_inflows(t0: date, t1: date, positive_only: bool = True) -> float:
+        return sum(
+            x * fx[comp["currency"]]
+            for comp in components.values()
+            for d, x in comp["fl"]
+            if t0 < d <= t1 and (x > 0 if positive_only else True)
+        )
+
+    gain_now = portfolio_gain(today)
+    invested_all = sum(
+        x * fx[comp["currency"]]
+        for comp in components.values() for d, x in comp["fl"] if d <= today and x > 0
+    )
+    totals = {
+        "gain": round(gain_now, 2),
+        "invested": round(invested_all, 2),
+        "current_value": round(portfolio_value(today), 2),
+        "income": round(sum(x * fx[comp["currency"]] for comp in components.values() for d, x in comp["inc"] if d <= today), 2),
+        "pct_total": round(gain_now / invested_all * 100, 2) if invested_all > 0 else None,
+        "pct_month": _window_pct(gain_now, portfolio_gain(month_t0), portfolio_value(month_t0), portfolio_inflows(month_t0, today)),
+        "pct_year": _window_pct(gain_now, portfolio_gain(year_t0), portfolio_value(year_t0), portfolio_inflows(year_t0, today)),
+    }
+
+    per_asset.sort(key=lambda a: -a["current_value"])
+    return {"currency": primary_currency, "series": series, "totals": totals, "assets": per_asset}
+
+
 async def get_asset_values_at(
     session: AsyncSession,
     scope_id: uuid.UUID,

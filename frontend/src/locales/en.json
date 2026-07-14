@@ -1114,7 +1114,14 @@
     "total": "Total",
     "confirmRegenerateTitle": "Regenerate values?",
     "confirmRegenerate": "Growth parameters changed. All automatically generated values will be deleted and recalculated. Manual values will be kept.",
-    "regenerate": "Regenerate"
+    "regenerate": "Regenerate",
+    "returnsTitle": "Investment returns",
+    "returnsSubtitle": "What your investments earned — contributions excluded.",
+    "returnsMonth": "This month",
+    "returnsYear": "This year",
+    "returnsAllTime": "All time",
+    "returnsGain": "Return",
+    "returnsAsset": "Investment"
   },
   "reports": {
     "section": "Analytics",

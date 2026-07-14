@@ -1077,6 +1077,9 @@ export default function AssetsPage() {
         />
       )}
 
+      {/* Investment returns (rendimentos) — gains only, contributions stripped */}
+      <ReturnsSection locale={locale} dateLocale={dateLocale} mask={mask} />
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
@@ -1687,6 +1690,119 @@ export default function AssetsPage() {
 }
 
 const PORTFOLIO_COLORS = ['#6366F1', '#F43F5E', '#F59E0B', '#10B981', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16']
+
+function ReturnsPct({ value }: { value: number | null }) {
+  if (value == null) return <span className="text-muted-foreground">—</span>
+  const cls = value > 0 ? 'text-emerald-600' : value < 0 ? 'text-rose-500' : 'text-muted-foreground'
+  return <span className={`font-semibold tabular-nums ${cls}`}>{value > 0 ? '+' : ''}{value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span>
+}
+
+// Rendimentos: what the investments *earned*, with contributions stripped out.
+// The chart plots the cumulative gain (value + income + sale proceeds −
+// contributions) and the table shows each investment's month-to-date,
+// year-to-date and all-time return %.
+function ReturnsSection({ locale: loc, dateLocale: dateLoc, mask }: {
+  locale: string
+  dateLocale: string
+  mask: (v: string) => string
+}) {
+  const { t } = useTranslation()
+  const { data } = useQuery({
+    queryKey: ['asset-returns', 'investment'],
+    queryFn: () => assets.returns(['investment']),
+  })
+  if (!data || !data.totals || data.series.length === 0) return null
+  const currency = data.currency
+  const fmt = (v: number) => mask(formatCurrency(v, currency, loc))
+  const gainPositive = data.totals.gain >= 0
+
+  return (
+    <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+      <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">{t('assets.returnsTitle')}</h2>
+          <p className="text-xs text-muted-foreground">{t('assets.returnsSubtitle')}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([
+            [t('assets.returnsMonth'), data.totals.pct_month],
+            [t('assets.returnsYear'), data.totals.pct_year],
+            [t('assets.returnsAllTime'), data.totals.pct_total],
+          ] as [string, number | null][]).map(([label, v]) => (
+            <div key={label} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+              <p className="text-sm"><ReturnsPct value={v} /></p>
+            </div>
+          ))}
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t('assets.returnsGain')}</p>
+            <p className={`text-sm font-semibold tabular-nums ${gainPositive ? 'text-emerald-600' : 'text-rose-500'}`}>{fmt(data.totals.gain)}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data.series} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="returns-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={gainPositive ? '#10b981' : '#f43f5e'} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={gainPositive ? '#10b981' : '#f43f5e'} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+            <XAxis
+              dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={40}
+              tickFormatter={(d: string) => new Date(d + 'T00:00:00').toLocaleDateString(dateLoc, { month: 'short', year: '2-digit' })}
+            />
+            <YAxis
+              tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={70}
+              tickFormatter={(v: number) => mask(formatCurrency(v, currency, loc).replace(/[.,]00$/, ''))}
+            />
+            <RechartsTooltip
+              formatter={(v) => [fmt(Number(v) || 0), t('assets.returnsGain')]}
+              labelFormatter={(d) => new Date(String(d) + 'T00:00:00').toLocaleDateString(dateLoc)}
+            />
+            <Area type="monotone" dataKey="gain" stroke={gainPositive ? '#10b981' : '#f43f5e'} strokeWidth={2} fill="url(#returns-grad)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {data.assets.length > 0 && (
+        <div className="overflow-x-auto mt-4">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs text-muted-foreground">
+                <th className="py-2 pr-3 text-left font-medium">{t('assets.returnsAsset')}</th>
+                <th className="py-2 px-3 text-right font-medium">{t('assets.returnsMonth')}</th>
+                <th className="py-2 px-3 text-right font-medium">{t('assets.returnsYear')}</th>
+                <th className="py-2 px-3 text-right font-medium">{t('assets.returnsAllTime')}</th>
+                <th className="py-2 px-3 text-right font-medium hidden sm:table-cell">{t('assets.returnsGain')}</th>
+                <th className="py-2 pl-3 text-right font-medium hidden md:table-cell">{t('assets.currentValue')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.assets.map((a) => (
+                <tr key={a.id} className="border-b border-border/50 last:border-0">
+                  <td className="py-2.5 pr-3 font-medium truncate max-w-[14rem]">{a.name}</td>
+                  <td className="py-2.5 px-3 text-right"><ReturnsPct value={a.pct_month} /></td>
+                  <td className="py-2.5 px-3 text-right"><ReturnsPct value={a.pct_year} /></td>
+                  <td className="py-2.5 px-3 text-right"><ReturnsPct value={a.pct_total} /></td>
+                  <td className={`py-2.5 px-3 text-right tabular-nums hidden sm:table-cell ${a.gain >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {mask(formatCurrency(a.gain, a.currency, loc))}
+                  </td>
+                  <td className="py-2.5 pl-3 text-right tabular-nums text-muted-foreground hidden md:table-cell">
+                    {mask(formatCurrency(a.current_value, a.currency, loc))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function PortfolioChart({ data, wallets, currency, locale: loc, dateLocale: dateLoc, mask }: {
   data: { assets: { id: string; name: string; type: string; group_id: string | null }[]; trend: Record<string, unknown>[]; total: number }
