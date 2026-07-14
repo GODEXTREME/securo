@@ -8,6 +8,9 @@ on:
 jobs:
   update-badge:
     name: Update Downloads Badge
+    # Counts downloads of the upstream images and writes to the upstream
+    # maintainer's gist; forks lack the GIST_TOKEN and fail daily with 401.
+    if: github.repository == 'securo-finance/securo'
     runs-on: ubuntu-latest
     steps:
       - name: Fetch GHCR download counts
