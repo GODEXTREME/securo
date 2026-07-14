@@ -1206,7 +1206,14 @@
     "total": "Łącznie",
     "confirmRegenerateTitle": "Przeliczyć wartości ponownie?",
     "confirmRegenerate": "Zmieniono parametry wzrostu. Wszystkie automatycznie wygenerowane wartości zostaną usunięte i przeliczone ponownie. Wartości ręczne zostaną zachowane.",
-    "regenerate": "Przelicz ponownie"
+    "regenerate": "Przelicz ponownie",
+    "returnsTitle": "Zyski z inwestycji",
+    "returnsSubtitle": "Ile zarobiły Twoje inwestycje — bez wpłat.",
+    "returnsMonth": "W tym miesiącu",
+    "returnsYear": "W tym roku",
+    "returnsAllTime": "Od początku",
+    "returnsGain": "Zysk",
+    "returnsAsset": "Inwestycja"
   },
   "reports": {
     "section": "Analityka",

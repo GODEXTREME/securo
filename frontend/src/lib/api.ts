@@ -34,6 +34,7 @@ import type {
   AssetGroup,
   AssetTransaction,
   AssetValue,
+  AssetReturns,
   MarketSymbolMatch,
   MarketSymbolQuote,
   Attachment,
@@ -1017,6 +1018,10 @@ export const assets = {
   },
   portfolioTrend: async (): Promise<{ assets: { id: string; name: string; type: string; group_id: string | null }[]; trend: Record<string, unknown>[]; total: number }> => {
     const { data } = await api.get('/assets/portfolio-trend')
+    return data
+  },
+  returns: async (types?: string[]): Promise<AssetReturns> => {
+    const { data } = await api.get('/assets/returns', { params: { types } })
     return data
   },
   marketSearch: async (q: string, limit = 15): Promise<MarketSymbolMatch[]> => {

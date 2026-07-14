@@ -1114,7 +1114,14 @@
     "total": "Gesamt",
     "confirmRegenerateTitle": "Werte neu generieren?",
     "confirmRegenerate": "Wachstumsparameter wurden geändert. Alle automatisch generierten Werte werden gelöscht und neu berechnet. Manuell eingegebene Werte bleiben erhalten.",
-    "regenerate": "Neu generieren"
+    "regenerate": "Neu generieren",
+    "returnsTitle": "Anlageerträge",
+    "returnsSubtitle": "Was Ihre Anlagen erwirtschaftet haben — ohne Einzahlungen.",
+    "returnsMonth": "Diesen Monat",
+    "returnsYear": "Dieses Jahr",
+    "returnsAllTime": "Gesamt",
+    "returnsGain": "Ertrag",
+    "returnsAsset": "Anlage"
   },
   "reports": {
     "section": "Analysen",
