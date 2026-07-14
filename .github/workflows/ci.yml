@@ -81,7 +81,9 @@ jobs:
           echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
 
       - name: Update coverage badge
-        if: github.ref == 'refs/heads/main' && steps.backend-changes.outputs.run_backend == 'true'
+        # The badge gist belongs to the upstream repo; forks lack its
+        # GIST_TOKEN and would fail with 401 here.
+        if: github.repository == 'securo-finance/securo' && github.ref == 'refs/heads/main' && steps.backend-changes.outputs.run_backend == 'true'
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}
