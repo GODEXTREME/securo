@@ -634,7 +634,10 @@
       "simplefin": {
         "title": "Підключення через SimpleFIN",
         "description": "SimpleFIN — це протокол банківських даних лише для читання. Перейдіть до SimpleFIN Bridge, оберіть свій банк і скопіюйте установчий токен сюди."
-      }
+      },
+      "reconnectTitle": "Перепідключити з новим токеном",
+      "reconnectDescription": "Вставте новий setup-токен, щоб оновити це підключення на місці. Наявні рахунки, транзакції, категорії та правила буде збережено.",
+      "reconnect": "Перепідключити"
     },
     "providers": {
       "pluggy": {
@@ -646,7 +649,8 @@
       "simplefin": {
         "description": "Банки США та інших країн через SimpleFIN Bridge"
       }
-    }
+    },
+    "reconnected": "Банк успішно перепідключено"
   },
   "connections": {
     "settings": "Налаштування підключення",
@@ -1102,6 +1106,10 @@
     "syncedFromHint": "Початково синхронізовано з {{source}} — ви можете вільно перейменовувати, зіставлення використовує ID підключення.",
     "chartByWallet": "За гаманцями",
     "chartByAsset": "За активами",
+    "chartGroupMode": "Групування графіка",
+    "chartDrawMode": "Відображення графіка",
+    "chartStacked": "Накопичено",
+    "chartLines": "Лінії",
     "portfolioValue": "Вартість портфеля",
     "total": "Усього",
     "confirmRegenerateTitle": "Перегенерувати значення?",
@@ -1187,6 +1195,8 @@
     "total": "Разом"
   },
   "payees": {
+    "addFavorite": "Додати до обраного",
+    "removeFavorite": "Видалити з обраного",
     "title": "Отримувачі",
     "section": "Налаштування",
     "payee": "Отримувач",
@@ -1222,6 +1232,7 @@
     "favoritesOnly": "Тільки обрані"
   },
   "common": {
+    "view": "Переглянути",
     "save": "Зберегти",
     "cancel": "Скасувати",
     "close": "Закрити",
@@ -1338,6 +1349,8 @@
     "date": "Дата",
     "splitTransaction": "Розділити цю транзакцію",
     "splitNoGroups": "Спочатку створіть групу, щоб розділити транзакцію.",
+    "splitNoGroupsLinkPrefix": "У вас ще немає групи. Ви можете ",
+    "splitNoGroupsLinkSuffix": "створити її тут",
     "splitNoMembers": "Спочатку додайте учасників до групи.",
     "group": "Група",
     "shareType": "Розділити за",

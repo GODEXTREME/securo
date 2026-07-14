@@ -634,7 +634,10 @@
       "simplefin": {
         "title": "Conectar via SimpleFIN",
         "description": "O SimpleFIN é um protocolo de leitura de dados bancários. Vá ao SimpleFIN Bridge, escolha o seu banco e copie o token de configuração aqui."
-      }
+      },
+      "reconnectTitle": "Reconectar com um novo token",
+      "reconnectDescription": "Cole um novo token de configuração para atualizar esta conexão no lugar. Contas, transações, categorias e regras existentes são preservadas.",
+      "reconnect": "Reconectar"
     },
     "providers": {
       "pluggy": {
@@ -646,7 +649,8 @@
       "simplefin": {
         "description": "Bancos dos EUA e internacionais via SimpleFIN Bridge"
       }
-    }
+    },
+    "reconnected": "Banco reconectado com sucesso"
   },
   "connections": {
     "settings": "Configurações da conexão",
@@ -1102,6 +1106,10 @@
     "syncedFromHint": "Sincronizada originalmente de {{source}} — pode renomear livremente, a sincronização não usa o nome.",
     "chartByWallet": "Por Carteira",
     "chartByAsset": "Por Ativo",
+    "chartGroupMode": "Agrupamento do gráfico",
+    "chartDrawMode": "Desenho do gráfico",
+    "chartStacked": "Empilhado",
+    "chartLines": "Linhas",
     "portfolioValue": "Valor do Patrimônio",
     "total": "Total",
     "confirmRegenerateTitle": "Regenerar valores?",
@@ -1187,6 +1195,8 @@
     "total": "Total"
   },
   "payees": {
+    "addFavorite": "Adicionar aos favoritos",
+    "removeFavorite": "Remover dos favoritos",
     "title": "Beneficiários",
     "section": "Configuração",
     "payee": "Beneficiário",
@@ -1222,6 +1232,7 @@
     "favoritesOnly": "Apenas favoritos"
   },
   "common": {
+    "view": "Ver",
     "save": "Salvar",
     "cancel": "Cancelar",
     "close": "Fechar",
@@ -1338,6 +1349,8 @@
     "date": "Data",
     "splitTransaction": "Dividir esta transação",
     "splitNoGroups": "Crie um grupo antes de dividir uma transação.",
+    "splitNoGroupsLinkPrefix": "Você ainda não tem um grupo. Você pode ",
+    "splitNoGroupsLinkSuffix": "criar um aqui",
     "splitNoMembers": "Adicione membros ao grupo primeiro.",
     "group": "Grupo",
     "shareType": "Dividir por",
