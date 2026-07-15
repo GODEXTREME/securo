@@ -128,6 +128,9 @@ export interface Account {
   external_id: string | null
   name: string
   display_name: string | null
+  // Last 4 chars of the bank's identifier for the account, when the provider
+  // exposes one. Tells apart accounts a bank reports under an identical name.
+  masked_number: string | null
   // Denormalized bank identity from the linked connection (null for manual
   // accounts). Used to render the institution logo next to the account.
   institution_name: string | null

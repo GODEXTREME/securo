@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getAccountName } from '@/lib/account-utils'
+import { formatAccountMask, getAccountLabel, getAccountName } from '@/lib/account-utils'
 import { getConnectionName } from '@/lib/connection-utils'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -599,6 +599,7 @@ export default function AccountsPage() {
                       : dueIn === 0 ? t('accounts.dueToday')
                       : t('accounts.dueIn', { count: dueIn })
                   const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
+                  const accountMask = formatAccountMask(acc)
                   return (
                     <div key={acc.id} className="group flex items-center px-5 py-3 hover:bg-muted/50 transition-colors">
                       <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
@@ -607,6 +608,7 @@ export default function AccountsPage() {
                           <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
                           <p className="text-xs text-muted-foreground">
                             {t(cfg.label)}
+                            {accountMask && <> · <span className="tabular-nums">{accountMask}</span></>}
                             {dueText && <> · <span className={dueClass}>{dueText}</span></>}
                           </p>
                         </div>
@@ -757,6 +759,7 @@ export default function AccountsPage() {
                               : dueIn === 0 ? t('accounts.dueToday')
                               : t('accounts.dueIn', { count: dueIn })
                           const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
+                          const accountMask = formatAccountMask(acc)
                           return (
                             <div key={acc.id} className="group flex items-center px-5 py-3 hover:bg-muted/50 transition-colors">
                               <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
@@ -765,6 +768,7 @@ export default function AccountsPage() {
                                   <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
                                   <p className="text-xs text-muted-foreground">
                                     {t(cfg.label)}
+                                    {accountMask && <> · <span className="tabular-nums">{accountMask}</span></>}
                                     {dueText && <> · <span className={dueClass}>{dueText}</span></>}
                                   </p>
                                 </div>
@@ -832,7 +836,7 @@ export default function AccountsPage() {
                     <div key={acc.id} className="flex items-center px-5 py-3">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <AccountIcon account={acc} />
-                        <p className="text-sm font-medium text-muted-foreground truncate">{getAccountName(acc)}</p>
+                        <p className="text-sm font-medium text-muted-foreground truncate">{getAccountLabel(acc)}</p>
                       </div>
                       {canWrite && (
                         <Button
