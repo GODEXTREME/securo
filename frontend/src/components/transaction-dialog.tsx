@@ -912,7 +912,7 @@ function TransactionForm({
             <div className="flex items-center h-9 px-3 py-2 border border-border rounded-md bg-muted/30">
               <p className="text-sm text-foreground">
                 {transaction?.account_id
-                  ? getAccountName(accounts.find(a => a.id === transaction.account_id) ?? { name: '', display_name: null })
+                  ? getAccountLabel(accounts.find(a => a.id === transaction.account_id) ?? { name: '', display_name: null })
                   : '—'}
               </p>
             </div>
