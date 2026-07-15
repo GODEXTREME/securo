@@ -34,6 +34,7 @@ from app.providers.base import (
     ProviderUserActionRequired,
     SessionExpiredError,
     TransactionData,
+    mask_last4,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,28 @@ def _map_cash_account_type(eb_type: Optional[str]) -> str:
         "OTHR": "checking",
     }
     return mapping.get(eb_type.upper(), "checking")
+
+
+def _account_identifier(raw: dict) -> Optional[str]:
+    """Pull the bank's own identifier for an account out of an EB details payload.
+
+    EB reports it in three places, in descending order of usefulness: the IBAN
+    on `account_id`, a non-IBAN scheme (BBAN, sort-code-and-account) on
+    `account_id.other`, and the `all_account_ids` list. Banks outside SEPA only
+    populate the latter two, so we fall through rather than assuming an IBAN.
+    """
+    account_id = raw.get("account_id") or {}
+    if isinstance(account_id, dict):
+        iban = account_id.get("iban")
+        if iban:
+            return str(iban)
+        other = account_id.get("other") or {}
+        if isinstance(other, dict) and other.get("identification"):
+            return str(other["identification"])
+    for entry in raw.get("all_account_ids") or []:
+        if isinstance(entry, dict) and entry.get("identification"):
+            return str(entry["identification"])
+    return None
 
 
 def _pick_balance(balances: list[dict]) -> Optional[dict]:
@@ -180,7 +203,7 @@ class EnableBankingProvider(BankProvider):
         if key_file:
             cls._cached_private_key = Path(key_file).read_text(encoding="utf-8")
             return cls._cached_private_key
-        raw = settings.enable_banking_private_key or ""
+        raw = settings.enable_banking_private_key.get_secret_value() or ""
         if "\\n" in raw and "\n" not in raw:
             raw = raw.replace("\\n", "\n")
         cls._cached_private_key = raw
@@ -448,6 +471,7 @@ class EnableBankingProvider(BankProvider):
             type=_map_cash_account_type(raw.get("cash_account_type")),
             balance=balance,
             currency=currency,
+            masked_number=mask_last4(_account_identifier(raw)),
         )
 
     # ----- account / transaction fetches -----

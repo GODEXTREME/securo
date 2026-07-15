@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { getAccountName } from '@/lib/account-utils'
+import { getAccountLabel } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
 import { useDateLocale } from '@/hooks/use-display-locale'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -927,7 +927,7 @@ function TransactionForm({
               required
             >
               {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>{getAccountName(acc)}</option>
+                <option key={acc.id} value={acc.id}>{getAccountLabel(acc)}</option>
               ))}
             </select>
           </div>
