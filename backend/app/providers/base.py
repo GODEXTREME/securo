@@ -49,6 +49,9 @@ class AccountData:
     credit_limit: Optional[Decimal] = None
     statement_close_day: Optional[int] = None
     payment_due_day: Optional[int] = None
+    # Provider's actual next close/due dates (full dates, not just the day).
+    next_close_date: Optional[date] = None
+    next_due_date: Optional[date] = None
     minimum_payment: Optional[Decimal] = None
     card_brand: Optional[str] = None
     card_level: Optional[str] = None

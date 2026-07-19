@@ -1,9 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, SmallInteger, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, SmallInteger, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +37,13 @@ class Account(Base):
     credit_limit: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
     statement_close_day: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     payment_due_day: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
+    # The provider's actual next close/due DATES (Pluggy balanceCloseDate /
+    # balanceDueDate). Unlike the nominal *_day above, these reflect the bank's
+    # real cycle — which shifts for weekends/holidays — so the open cycle's
+    # boundary buckets exactly right before the bill links (issue: nominal day
+    # misbucketed a boundary tx when the bank closed a day early/late).
+    next_close_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    next_due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     minimum_payment: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
     # Annual percentage rate (e.g. 24.900 for 24.9%). Optional; feeds the debt
     # payoff planner. Numeric(6,3) covers rates up to 999.999%.

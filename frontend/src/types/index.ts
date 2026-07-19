@@ -159,6 +159,7 @@ export interface CreditCardBill {
   account_id: string
   external_id: string
   due_date: string // YYYY-MM-DD
+  close_date: string | null // YYYY-MM-DD — statement close for this cycle
   total_amount: number
   currency: string
   minimum_payment: number | null

@@ -175,8 +175,10 @@ def serialize_account(
         available = compute_available_credit(acc.credit_limit, Decimal(str(resolved_balance)))
         payload["available_credit"] = float(available) if available is not None else None
         cycle = get_cycle_dates(acc.statement_close_day, acc.payment_due_day)
-        payload["next_close_date"] = cycle["next_close_date"]
-        payload["next_due_date"] = cycle["next_due_date"]
+        # Prefer the provider's real next close/due dates (which reflect the
+        # bank's weekend/holiday shift) over the nominal-day cycle math.
+        payload["next_close_date"] = acc.next_close_date or cycle["next_close_date"]
+        payload["next_due_date"] = acc.next_due_date or cycle["next_due_date"]
 
     return payload
 

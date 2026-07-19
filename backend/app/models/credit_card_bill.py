@@ -36,6 +36,13 @@ class CreditCardBill(Base):
     )
     external_id: Mapped[str] = mapped_column(String(255), nullable=False)
     due_date: Mapped[_date] = mapped_column(Date, nullable=False, index=True)
+    # The statement close date for this bill's cycle. Pluggy's /bills payload
+    # doesn't carry it, so we snapshot the account's real next_close_date when
+    # a bill's due_date matches the account's current cycle, and otherwise
+    # derive it from the close day relative to the due_date. Nullable: older
+    # rows backfill on the next sync, and the read path still falls back to
+    # cycle math when it's absent.
+    close_date: Mapped[Optional[_date]] = mapped_column(Date, nullable=True)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(precision=15, scale=2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="BRL")
     minimum_payment: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)

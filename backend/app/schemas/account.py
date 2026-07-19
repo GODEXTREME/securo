@@ -84,6 +84,7 @@ class CreditCardBillRead(BaseModel):
     account_id: uuid.UUID
     external_id: str
     due_date: date
+    close_date: Optional[date] = None
     total_amount: float
     currency: str
     minimum_payment: Optional[float] = None

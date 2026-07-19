@@ -55,6 +55,30 @@ def get_cycle_dates(
     }
 
 
+def close_date_for_bill(
+    bill_due_date: date,
+    statement_close_day: Optional[int],
+) -> Optional[date]:
+    """Derive a bill's statement close date from the account's close day.
+
+    Pluggy's /bills payload doesn't expose the close date, but it's recoverable:
+    the close is the most recent occurrence of ``statement_close_day`` on or
+    before the bill's due date. Returns None when the close day isn't
+    configured (nothing to derive from).
+
+    This is only an approximation when the bank shifts the close for
+    weekends/holidays on a specific cycle — the exact date is snapshotted from
+    the provider's ``next_close_date`` at sync time when available; this covers
+    the historical bills that never got such a snapshot."""
+    if not statement_close_day:
+        return None
+    same_month = _clamp_day(bill_due_date.year, bill_due_date.month, statement_close_day)
+    if same_month <= bill_due_date:
+        return same_month
+    py, pm = (bill_due_date.year - 1, 12) if bill_due_date.month == 1 else (bill_due_date.year, bill_due_date.month - 1)
+    return _clamp_day(py, pm, statement_close_day)
+
+
 def compute_available_credit(
     credit_limit: Optional[Decimal],
     current_balance: Decimal,
@@ -75,7 +99,10 @@ def apply_effective_date(transaction, account, *, bill_due_date: Optional[date] 
        disagree with (issue #92's LucasFidelis suggestion).
     2. `bill_due_date` — bank-truth from Pluggy /bills (passed in by the
        sync layer when a bill is linked).
-    3. Cycle math from `account.statement_close_day` / `payment_due_day`.
+    3. The provider's real `next_close_date` / `next_due_date` when the tx is
+       in that still-open cycle (handles the bank shifting the close for
+       weekends/holidays before a bill is linked).
+    4. Cycle math from `account.statement_close_day` / `payment_due_day`.
 
     For non-CC accounts, effective_date is always equal to `date`.
 
@@ -90,12 +117,26 @@ def apply_effective_date(transaction, account, *, bill_due_date: Optional[date] 
     if account is not None and getattr(account, "type", None) == "credit_card":
         if bill_due_date is not None:
             transaction.effective_date = bill_due_date
-        else:
-            transaction.effective_date = compute_effective_date(
-                transaction.date,
-                getattr(account, "statement_close_day", None),
-                getattr(account, "payment_due_day", None),
-            )
+            return
+        # The provider's actual next close/due dates capture the bank's real
+        # cycle boundary, which shifts for weekends/holidays (the nominal
+        # close_day can't). When the tx falls in that still-open cycle — after
+        # the previous close, on/before the next close — bucket it by the real
+        # due date instead of the nominal-day math. Older txns fall through to
+        # the cycle math (and get the bank's bill link once the fatura closes).
+        ncd = getattr(account, "next_close_date", None)
+        ndd = getattr(account, "next_due_date", None)
+        if ncd is not None and ndd is not None:
+            py, pm = (ncd.year, ncd.month - 1) if ncd.month > 1 else (ncd.year - 1, 12)
+            prev_close = _clamp_day(py, pm, ncd.day)
+            if prev_close < transaction.date <= ncd:
+                transaction.effective_date = ndd
+                return
+        transaction.effective_date = compute_effective_date(
+            transaction.date,
+            getattr(account, "statement_close_day", None),
+            getattr(account, "payment_due_day", None),
+        )
     else:
         transaction.effective_date = transaction.date
 

@@ -32,8 +32,31 @@ from app.services import (
 )
 from app.services.credit_card_service import (
     apply_effective_date,
+    close_date_for_bill,
     compute_effective_date,
 )
+
+
+class TestCloseDateForBill:
+    """Derive a bill's statement close date from the account's close day."""
+
+    def test_close_day_before_due_same_month(self):
+        # Nubank: due 16/06, close day 9 → cycle closed 09/06.
+        assert close_date_for_bill(date(2026, 6, 16), 9) == date(2026, 6, 9)
+
+    def test_close_day_after_due_walks_back_a_month(self):
+        # due 05/06, close day 20 → most recent 20th on/before is 20/05.
+        assert close_date_for_bill(date(2026, 6, 5), 20) == date(2026, 5, 20)
+
+    def test_close_day_after_due_january_wraps_year(self):
+        assert close_date_for_bill(date(2026, 1, 5), 20) == date(2025, 12, 20)
+
+    def test_close_day_clamps_to_short_month(self):
+        # close day 31, due 10/03 → Feb has no 31 → clamps to 28/02.
+        assert close_date_for_bill(date(2026, 3, 10), 31) == date(2026, 2, 28)
+
+    def test_no_close_day_returns_none(self):
+        assert close_date_for_bill(date(2026, 6, 16), None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +177,93 @@ class TestApplyEffectiveDate:
         )
         apply_effective_date(tx, account)
         assert tx.effective_date == date(2026, 4, 16)
+
+    def test_cc_provider_next_dates_bucket_current_cycle(self):
+        """When the provider reports the real next close/due DATES (which the
+        bank shifts for weekends/holidays), a purchase in that still-open cycle
+        buckets by the real due date, overriding the nominal-day cycle math.
+
+        Real case: Nubank's June cycle closed 09/06 (nominal close day is 8).
+        An Amazon purchase re-dated to 09/06 sits in the June cycle
+        (prev close 09/05 < 09/06 <= 09/06) → due 16/06, not the 16/07 the
+        nominal close-day-8 math would give (09/06 is after day 8 → July)."""
+        tx = Transaction(
+            user_id=uuid.uuid4(),
+            account_id=uuid.uuid4(),
+            description="Amazon",
+            amount=Decimal("100"),
+            date=date(2026, 6, 9),
+            type="debit",
+            source="sync",
+        )
+        account = Account(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            name="nubank",
+            type="credit_card",
+            balance=Decimal("0"),
+            statement_close_day=8,
+            payment_due_day=16,
+            next_close_date=date(2026, 6, 9),
+            next_due_date=date(2026, 6, 16),
+        )
+        apply_effective_date(tx, account)
+        assert tx.effective_date == date(2026, 6, 16)
+
+    def test_cc_provider_next_dates_ignored_outside_current_cycle(self):
+        """A purchase older than the current open cycle falls through to the
+        nominal cycle math (and later gets the bank's bill link once its
+        fatura closes) — the provider next-dates only speak for the open cycle."""
+        tx = Transaction(
+            user_id=uuid.uuid4(),
+            account_id=uuid.uuid4(),
+            description="old buy",
+            amount=Decimal("50"),
+            date=date(2026, 4, 20),
+            type="debit",
+            source="sync",
+        )
+        account = Account(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            name="nubank",
+            type="credit_card",
+            balance=Decimal("0"),
+            statement_close_day=8,
+            payment_due_day=16,
+            next_close_date=date(2026, 6, 9),
+            next_due_date=date(2026, 6, 16),
+        )
+        apply_effective_date(tx, account)
+        # 20/04 is before the open cycle (prev close 09/05) → nominal math:
+        # next close after 20/04 is 08/05, due 16/05.
+        assert tx.effective_date == date(2026, 5, 16)
+
+    def test_cc_provider_bill_due_date_still_wins_over_next_dates(self):
+        """A linked Pluggy bill_due_date is bank truth and outranks the
+        provider next-close/due heuristic."""
+        tx = Transaction(
+            user_id=uuid.uuid4(),
+            account_id=uuid.uuid4(),
+            description="linked",
+            amount=Decimal("10"),
+            date=date(2026, 6, 9),
+            type="debit",
+            source="sync",
+        )
+        account = Account(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            name="nubank",
+            type="credit_card",
+            balance=Decimal("0"),
+            statement_close_day=8,
+            payment_due_day=16,
+            next_close_date=date(2026, 6, 9),
+            next_due_date=date(2026, 6, 16),
+        )
+        apply_effective_date(tx, account, bill_due_date=date(2026, 7, 16))
+        assert tx.effective_date == date(2026, 7, 16)
 
     def test_manual_effective_bill_date_override_wins(self):
         """User-set effective_bill_date beats both Pluggy bill_due_date and
