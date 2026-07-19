@@ -2073,6 +2073,8 @@
     "projectedTitle": "Rate previste",
     "undetailed": "Non dettagliato dalla banca",
     "undetailedHint": "Addebiti che il fornitore non ha inviato come righe separate.",
-    "reconcileNote": "Il fornitore non ha fornito tutte le righe di questo estratto chiuso; questo importo completa il totale ufficiale."
+    "reconcileNote": "Il fornitore non ha fornito tutte le righe di questo estratto chiuso; questo importo completa il totale ufficiale.",
+    "monthSpend": "Speso a {{month}}",
+    "monthSpendHint": "Mese di calendario, per data di acquisto"
   }
 }

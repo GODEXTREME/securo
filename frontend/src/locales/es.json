@@ -2073,6 +2073,8 @@
     "projectedTitle": "Cuotas previstas",
     "undetailed": "No detallado por el banco",
     "undetailedHint": "Cargos que el proveedor no envió como líneas separadas.",
-    "reconcileNote": "El proveedor no entregó todas las líneas de esta factura cerrada; este importe completa el total oficial."
+    "reconcileNote": "El proveedor no entregó todas las líneas de esta factura cerrada; este importe completa el total oficial.",
+    "monthSpend": "Gasto en {{month}}",
+    "monthSpendHint": "Mes natural, por fecha de compra"
   }
 }

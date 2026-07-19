@@ -2073,6 +2073,8 @@
     "projectedTitle": "Projected installments",
     "undetailed": "Not itemised by the bank",
     "undetailedHint": "Charges the provider didn't send as separate lines.",
-    "reconcileNote": "The provider didn't deliver every line of this closed statement; this amount completes the official invoice total."
+    "reconcileNote": "The provider didn't deliver every line of this closed statement; this amount completes the official invoice total.",
+    "monthSpend": "Spent in {{month}}",
+    "monthSpendHint": "Calendar month, by purchase date"
   }
 }

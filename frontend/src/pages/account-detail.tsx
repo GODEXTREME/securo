@@ -660,6 +660,22 @@ export default function AccountDetailPage() {
   )
   const projectedTotal = projectedInstallments.reduce((s, p) => s + Math.abs(Number(p.amount_primary ?? p.amount)), 0)
 
+  // Calendar-month spend (by purchase date), independent of the fatura cycle
+  // being viewed — answers "how much have I spent this month" separately from
+  // the statement total. accounts.summary buckets by COALESCE(effective_bill_
+  // date, date), so with no bill_id and a calendar-month window it nets to the
+  // month's raw-date spending (refunds subtracted, payments excluded).
+  const nowRef = new Date()
+  const monthStart = format(new Date(nowRef.getFullYear(), nowRef.getMonth(), 1), 'yyyy-MM-dd')
+  const monthEnd = format(nowRef, 'yyyy-MM-dd')
+  const { data: monthSpend } = useQuery({
+    queryKey: ['accounts', id, 'month-spend', monthStart, monthEnd],
+    queryFn: () => accounts.summary(id!, monthStart, monthEnd),
+    enabled: isCreditCard && !!id,
+  })
+  const monthSpendValue = (showPrimary ? monthSpend?.monthly_expenses_primary : undefined) ?? monthSpend?.monthly_expenses ?? 0
+  const monthLabel = format(nowRef, 'MMMM', { locale: resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language) })
+
   // For a closed fatura the provider's bill total is the reconciled truth, but
   // the synced rows + projected parcels can still fall short of it (the bank
   // didn't itemise every line via the provider — e.g. Nubank's day-9 batch,
@@ -1247,6 +1263,17 @@ export default function AccountDetailPage() {
               ))}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Calendar-month spend, separate from the statement total. */}
+      {isCreditCard && (
+        <div className="bg-card rounded-xl border border-border shadow-sm p-3 sm:p-4 mb-6 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] sm:text-xs font-medium text-muted-foreground capitalize">{t('cards.monthSpend', { month: monthLabel })}</p>
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground">{t('cards.monthSpendHint')}</p>
+          </div>
+          <p className="text-base sm:text-2xl font-bold tabular-nums text-foreground shrink-0">{mask(formatCurrency(monthSpendValue, displayCurrency, locale))}</p>
         </div>
       )}
 

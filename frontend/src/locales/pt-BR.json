@@ -2073,6 +2073,8 @@
     "projectedTitle": "Parcelas previstas",
     "undetailed": "Não detalhado pelo banco",
     "undetailedHint": "Lançamentos que o provedor não enviou como linhas separadas.",
-    "reconcileNote": "O provedor não enviou todas as linhas desta fatura fechada; este valor completa o total oficial."
+    "reconcileNote": "O provedor não enviou todas as linhas desta fatura fechada; este valor completa o total oficial.",
+    "monthSpend": "Gasto em {{month}}",
+    "monthSpendHint": "Mês-calendário, por data da compra"
   }
 }

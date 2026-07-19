@@ -2073,6 +2073,8 @@
     "projectedTitle": "Voraussichtliche Raten",
     "undetailed": "Nicht von der Bank aufgeschlüsselt",
     "undetailedHint": "Buchungen, die der Anbieter nicht als Einzelposten gesendet hat.",
-    "reconcileNote": "Der Anbieter hat nicht jede Zeile dieser abgeschlossenen Rechnung geliefert; dieser Betrag ergänzt den offiziellen Rechnungsbetrag."
+    "reconcileNote": "Der Anbieter hat nicht jede Zeile dieser abgeschlossenen Rechnung geliefert; dieser Betrag ergänzt den offiziellen Rechnungsbetrag.",
+    "monthSpend": "Ausgaben im {{month}}",
+    "monthSpendHint": "Kalendermonat, nach Kaufdatum"
   }
 }
