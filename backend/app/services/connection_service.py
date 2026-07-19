@@ -1295,6 +1295,21 @@ async def sync_connection(
                         continue
                     if existing_tx.status == "pending" and txn_data.status == "posted":
                         existing_tx.status = "posted"
+                    # The provider can re-date a transaction after we first
+                    # stored it: a card purchase often posts a day or two after
+                    # it was made, and the bank buckets it into the *next*
+                    # fatura by that posting date (e.g. bought 08/06, posted
+                    # 09/06 → lands on the July invoice, not June). Follow the
+                    # new date — it's provider-owned for synced rows — and
+                    # recompute the cycle. Skipped when the user manually pinned
+                    # the bill (effective_bill_date); the bill-linkage block
+                    # below then refines effective_date from the bank's bill.
+                    if (
+                        existing_tx.date != txn_data.date
+                        and existing_tx.effective_bill_date is None
+                    ):
+                        existing_tx.date = txn_data.date
+                        apply_effective_date(existing_tx, account)
                     # Self-heal bill linkage: a tx that pre-dates the bills
                     # feature (or whose bill we hadn't ingested last time)
                     # picks up bill_id + bank-truth effective_date on the

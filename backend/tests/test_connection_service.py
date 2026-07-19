@@ -1327,6 +1327,56 @@ async def test_sync_falls_back_to_cycle_math_when_bill_missing(
 
 
 @pytest.mark.asyncio
+async def test_sync_follows_provider_redate_across_fatura_boundary(
+    session: AsyncSession, test_user, test_workspace,
+):
+    """A card purchase posts a day later and the bank re-dates it across the
+    statement close (bought 08/06 → posted 09/06). On re-sync we must follow
+    the provider's new date and re-bucket it into the next fatura — a stale
+    date used to leave it on the wrong invoice."""
+    conn = await _make_connection(session, test_user.id, "Redate Bank")
+    cc_acc = AccountData(
+        external_id="cc-redate", name="CC", type="credit_card",
+        balance=Decimal("0"), currency="BRL",
+        statement_close_day=9, payment_due_day=16,
+    )
+
+    def _tx(d):
+        return TransactionData(
+            external_id="tx-amz", description="AMAZON", amount=Decimal("70.52"),
+            date=d, type="debit", currency="BRL",
+        )
+
+    mock = AsyncMock()
+    mock.refresh_credentials = AsyncMock(return_value={"token": "t"})
+    mock.get_accounts = AsyncMock(return_value=[cc_acc])
+    mock.get_bills = AsyncMock(return_value=[])
+    mock.get_transactions = AsyncMock(return_value=[_tx(date(2026, 6, 8))])
+
+    p1, p2, p3 = _patch_sync_helpers()
+    with patch("app.services.connection_service.get_provider", return_value=mock), p1, p2, p3:
+        await sync_connection(session, conn.id, test_workspace.id, test_user.id)
+
+    tx = (await session.execute(
+        select(Transaction).where(Transaction.external_id == "tx-amz")
+    )).scalar_one()
+    # 08/06 with close=9 → still the June fatura (due 16/06)
+    assert tx.date == date(2026, 6, 8)
+    assert tx.effective_date == date(2026, 6, 16)
+
+    # Provider re-dates it to the posting date 09/06.
+    mock.get_transactions = AsyncMock(return_value=[_tx(date(2026, 6, 9))])
+    q1, q2, q3 = _patch_sync_helpers()
+    with patch("app.services.connection_service.get_provider", return_value=mock), q1, q2, q3:
+        await sync_connection(session, conn.id, test_workspace.id, test_user.id)
+
+    await session.refresh(tx)
+    # 09/06 is on/after the close → rolls into the July fatura (due 16/07)
+    assert tx.date == date(2026, 6, 9)
+    assert tx.effective_date == date(2026, 7, 16)
+
+
+@pytest.mark.asyncio
 async def test_sync_swallows_get_bills_error(
     session: AsyncSession, test_user, test_workspace,
 ):
