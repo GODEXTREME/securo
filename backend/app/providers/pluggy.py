@@ -200,6 +200,8 @@ def _build_account_data(acc: dict, type_mapper) -> AccountData:
     credit_limit: Optional[Decimal] = None
     statement_close_day: Optional[int] = None
     payment_due_day: Optional[int] = None
+    next_close_date: Optional[date] = None
+    next_due_date: Optional[date] = None
     minimum_payment: Optional[Decimal] = None
     card_brand: Optional[str] = None
     card_level: Optional[str] = None
@@ -210,6 +212,8 @@ def _build_account_data(acc: dict, type_mapper) -> AccountData:
             credit_limit = Decimal(str(raw_limit))
         statement_close_day = _parse_day(credit_data.get("balanceCloseDate"))
         payment_due_day = _parse_day(credit_data.get("balanceDueDate"))
+        next_close_date = _date_or_none(credit_data.get("balanceCloseDate"))
+        next_due_date = _date_or_none(credit_data.get("balanceDueDate"))
         raw_min = credit_data.get("minimumPayment")
         if raw_min is not None:
             minimum_payment = Decimal(str(raw_min))
@@ -225,6 +229,8 @@ def _build_account_data(acc: dict, type_mapper) -> AccountData:
         credit_limit=credit_limit,
         statement_close_day=statement_close_day,
         payment_due_day=payment_due_day,
+        next_close_date=next_close_date,
+        next_due_date=next_due_date,
         minimum_payment=minimum_payment,
         card_brand=card_brand,
         card_level=card_level,

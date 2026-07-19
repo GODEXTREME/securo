@@ -591,6 +591,8 @@ async def handle_oauth_callback(
             credit_limit=acc_data.credit_limit if is_cc else None,
             statement_close_day=acc_data.statement_close_day if is_cc else None,
             payment_due_day=acc_data.payment_due_day if is_cc else None,
+            next_close_date=acc_data.next_close_date if is_cc else None,
+            next_due_date=acc_data.next_due_date if is_cc else None,
             minimum_payment=acc_data.minimum_payment if is_cc else None,
             card_brand=acc_data.card_brand if is_cc else None,
             card_level=acc_data.card_level if is_cc else None,
@@ -1229,6 +1231,10 @@ async def sync_connection(
                         account.statement_close_day = acc_data.statement_close_day
                     if acc_data.payment_due_day is not None:
                         account.payment_due_day = acc_data.payment_due_day
+                    if acc_data.next_close_date is not None:
+                        account.next_close_date = acc_data.next_close_date
+                    if acc_data.next_due_date is not None:
+                        account.next_due_date = acc_data.next_due_date
                     if acc_data.minimum_payment is not None:
                         account.minimum_payment = acc_data.minimum_payment
                     if acc_data.card_brand is not None:
@@ -1249,6 +1255,8 @@ async def sync_connection(
                     credit_limit=acc_data.credit_limit if is_cc else None,
                     statement_close_day=acc_data.statement_close_day if is_cc else None,
                     payment_due_day=acc_data.payment_due_day if is_cc else None,
+                    next_close_date=acc_data.next_close_date if is_cc else None,
+                    next_due_date=acc_data.next_due_date if is_cc else None,
                     minimum_payment=acc_data.minimum_payment if is_cc else None,
                     card_brand=acc_data.card_brand if is_cc else None,
                     card_level=acc_data.card_level if is_cc else None,

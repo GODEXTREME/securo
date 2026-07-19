@@ -75,7 +75,10 @@ def apply_effective_date(transaction, account, *, bill_due_date: Optional[date] 
        disagree with (issue #92's LucasFidelis suggestion).
     2. `bill_due_date` — bank-truth from Pluggy /bills (passed in by the
        sync layer when a bill is linked).
-    3. Cycle math from `account.statement_close_day` / `payment_due_day`.
+    3. The provider's real `next_close_date` / `next_due_date` when the tx is
+       in that still-open cycle (handles the bank shifting the close for
+       weekends/holidays before a bill is linked).
+    4. Cycle math from `account.statement_close_day` / `payment_due_day`.
 
     For non-CC accounts, effective_date is always equal to `date`.
 
@@ -90,12 +93,26 @@ def apply_effective_date(transaction, account, *, bill_due_date: Optional[date] 
     if account is not None and getattr(account, "type", None) == "credit_card":
         if bill_due_date is not None:
             transaction.effective_date = bill_due_date
-        else:
-            transaction.effective_date = compute_effective_date(
-                transaction.date,
-                getattr(account, "statement_close_day", None),
-                getattr(account, "payment_due_day", None),
-            )
+            return
+        # The provider's actual next close/due dates capture the bank's real
+        # cycle boundary, which shifts for weekends/holidays (the nominal
+        # close_day can't). When the tx falls in that still-open cycle — after
+        # the previous close, on/before the next close — bucket it by the real
+        # due date instead of the nominal-day math. Older txns fall through to
+        # the cycle math (and get the bank's bill link once the fatura closes).
+        ncd = getattr(account, "next_close_date", None)
+        ndd = getattr(account, "next_due_date", None)
+        if ncd is not None and ndd is not None:
+            py, pm = (ncd.year, ncd.month - 1) if ncd.month > 1 else (ncd.year - 1, 12)
+            prev_close = _clamp_day(py, pm, ncd.day)
+            if prev_close < transaction.date <= ncd:
+                transaction.effective_date = ndd
+                return
+        transaction.effective_date = compute_effective_date(
+            transaction.date,
+            getattr(account, "statement_close_day", None),
+            getattr(account, "payment_due_day", None),
+        )
     else:
         transaction.effective_date = transaction.date
 
