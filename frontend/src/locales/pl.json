@@ -2190,6 +2190,9 @@
     "closesOn": "Zamyka {{date}}",
     "openStatementNote": "Wyciąg wciąż otwarty — jednorazowe zakupy z tego cyklu mogą jeszcze wpłynąć. Prognozowane są tylko przyszłe raty.",
     "missingCycle": "Ustaw dzień zamknięcia i płatności tej karty, aby zakupy trafiały na właściwy wyciąg — w przeciwnym razie są grupowane wg miesiąca zakupu. Ustaw w ustawieniach konta.",
-    "projectedTitle": "Prognozowane raty"
+    "projectedTitle": "Prognozowane raty",
+    "undetailed": "Niewyszczególnione przez bank",
+    "undetailedHint": "Obciążenia, których dostawca nie przesłał jako osobne pozycje.",
+    "reconcileNote": "Dostawca nie dostarczył wszystkich pozycji tego zamkniętego wyciągu; ta kwota uzupełnia oficjalną sumę faktury."
   }
 }

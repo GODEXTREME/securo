@@ -660,10 +660,25 @@ export default function AccountDetailPage() {
   )
   const projectedTotal = projectedInstallments.reduce((s, p) => s + Math.abs(Number(p.amount_primary ?? p.amount)), 0)
 
+  // For a closed fatura the provider's bill total is the reconciled truth, but
+  // the synced rows + projected parcels can still fall short of it (the bank
+  // didn't itemise every line via the provider — e.g. Nubank's day-9 batch,
+  // whose à-vista charges aren't projectable). Surface the remainder as a
+  // single "undetailed" amount so the list + projections + this = the official
+  // total. Only when not converting currencies (bill total is account-currency).
+  const summedCycleTotal = (showPrimary ? summary?.monthly_expenses_primary : undefined) ?? summary?.monthly_expenses ?? 0
+  const officialBillTotal = (activeBill && Number(activeBill.total_amount) > 0 && account?.currency === displayCurrency)
+    ? Number(activeBill.total_amount)
+    : null
+  const undetailedTotal = officialBillTotal != null
+    ? Math.round(Math.max(0, officialBillTotal - summedCycleTotal - projectedTotal) * 100) / 100
+    : 0
+
   // Category breakdown for the viewed statement, derived from the same rows the
-  // list shows (real debits + projected installments) so the chart always
-  // covers the whole invoice. Uses the primary-currency amount so a foreign
-  // purchase counts at its charged value, not its raw foreign number.
+  // list shows (real debits + projected installments) plus the undetailed
+  // remainder, so the chart total reconciles to the official fatura total.
+  // Uses the primary-currency amount so a foreign purchase counts at its
+  // charged value, not its raw foreign number.
   const cycleCatSlices = useMemo(() => {
     const m = new Map<string, { name: string; color: string; value: number }>()
     const add = (name: string | null, color: string | null, value: number) => {
@@ -679,8 +694,9 @@ export default function AccountDetailPage() {
     for (const p of projectedInstallments) {
       add(p.category_name, p.category_color, Math.abs(Number(p.amount_primary ?? p.amount)))
     }
+    if (undetailedTotal > 0) add(t('cards.undetailed'), '#9ca3af', undetailedTotal)
     return [...m.values()].sort((a, b) => b.value - a.value)
-  }, [txData, projectedInstallments, t])
+  }, [txData, projectedInstallments, undetailedTotal, t])
   const cycleCatTotal = cycleCatSlices.reduce((s, c) => s + c.value, 0)
 
   // Chart data:
@@ -1022,7 +1038,12 @@ export default function AccountDetailPage() {
           // filtered by bill_id when the cycle has a bill (handles dynamic
           // close days) or by [start, end] otherwise. Same number whether
           // the bar is active or not — clicking doesn't shift the value.
-          const total = Number(q.data?.monthly_expenses ?? 0)
+          // A closed cycle's bill carries the reconciled official total; use it
+          // so a bar isn't understated when the provider hadn't delivered every
+          // line yet (e.g. Nubank's day-9 installment batch). Same rule as the
+          // "Total da fatura" stat. In-progress cycle (no bill) → live sum.
+          const summed = Number(q.data?.monthly_expenses ?? 0)
+          const total = (c.bill && Number(c.bill.total_amount) > 0) ? Number(c.bill.total_amount) : summed
           return {
             ...c,
             total,
@@ -1079,12 +1100,20 @@ export default function AccountDetailPage() {
 
       {/* Compact stat bar */}
       {isCreditCard ? (() => {
-        // Total da fatura. When a real bill is active, sum debits from the
-        // bill_id-filtered tx list (matches the bank app — bills' total_amount
-        // can lag any charges added since the last sync). Otherwise use the
-        // summary endpoint's monthly_expenses now nets refund credits against
-        // debits for CC accounts (matches the bank's bill total).
-        const billTotal = (showPrimary ? summary?.monthly_expenses_primary : undefined) ?? summary?.monthly_expenses ?? 0
+        // Total da fatura. A closed statement has a provider bill whose
+        // total_amount is the reconciled, official value — verified against
+        // real data: it matches the bill_id-linked debit sum to the cent for
+        // every past Nubank fatura, because at close the provider backfills the
+        // lines it hadn't sent yet (e.g. Nubank's day-9 installment batch) and
+        // links them. So trust it over the summed transactions, which can be
+        // short (lines not yet delivered) or slightly over (bucketing noise).
+        // The in-progress cycle has no bill yet → fall back to the live sum.
+        // Only trust the bill total when not converting currencies (it's stored
+        // in the account currency).
+        const summedTotal = (showPrimary ? summary?.monthly_expenses_primary : undefined) ?? summary?.monthly_expenses ?? 0
+        const billTotal = (activeBill && Number(activeBill.total_amount) > 0 && account.currency === displayCurrency)
+          ? Number(activeBill.total_amount)
+          : summedTotal
         // "Default cycle" = the bill the user is here to pay (next due). The
         // AGORA tag on Limite disponível only shows when viewing a different cycle.
         const isDefaultCycle =
@@ -1569,12 +1598,14 @@ export default function AccountDetailPage() {
         </div>
       </div>
 
-      {/* Unbilled installments projected onto this (still-open) statement. */}
-      {isCreditCard && projectedInstallments.length > 0 && (
+      {/* Lines the provider didn't deliver: projected installments plus an
+          "undetailed" remainder, so real + these reconcile to the official
+          fatura total. */}
+      {isCreditCard && (projectedInstallments.length > 0 || undetailedTotal > 0) && (
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden mt-6">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-2 flex-wrap">
             <p className="font-semibold text-foreground">{t('cards.projectedTitle')}</p>
-            <span className="text-[11px] text-indigo-600 dark:text-indigo-300">{t('cards.projectedTotal', { amount: mask(formatCurrency(projectedTotal, userCurrency, locale)) })}</span>
+            <span className="text-[11px] text-indigo-600 dark:text-indigo-300">{t('cards.projectedTotal', { amount: mask(formatCurrency(projectedTotal + undetailedTotal, userCurrency, locale)) })}</span>
           </div>
           <div className="divide-y divide-muted">
             {projectedInstallments.map((p, i) => (
@@ -1594,9 +1625,19 @@ export default function AccountDetailPage() {
                 <span className="text-sm font-semibold tabular-nums shrink-0 text-muted-foreground">{mask(formatCurrency(Math.abs(Number(p.amount_primary ?? p.amount)), userCurrency, locale))}</span>
               </div>
             ))}
+            {undetailedTotal > 0 && (
+              <div className="flex items-center gap-3 px-5 py-3 opacity-90">
+                <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0"><HelpCircle size={13} className="text-muted-foreground" /></span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium">{t('cards.undetailed')}</span>
+                  <p className="text-xs text-muted-foreground">{t('cards.undetailedHint')}</p>
+                </div>
+                <span className="text-sm font-semibold tabular-nums shrink-0 text-muted-foreground">{mask(formatCurrency(undetailedTotal, userCurrency, locale))}</span>
+              </div>
+            )}
           </div>
           <div className="px-5 py-2.5 border-t border-border text-[11px] text-muted-foreground bg-muted/30">
-            {t('cards.openStatementNote')}
+            {t(undetailedTotal > 0 ? 'cards.reconcileNote' : 'cards.openStatementNote')}
           </div>
         </div>
       )}

@@ -2070,6 +2070,9 @@
     "closesOn": "Fecha em {{date}}",
     "openStatementNote": "Fatura em aberto — compras à vista deste ciclo ainda podem entrar. Só as parcelas futuras estão previstas.",
     "missingCycle": "Defina o dia de fechamento e vencimento deste cartão para as compras entrarem na fatura certa — sem isso, elas são agrupadas pelo mês da compra. Configure nos ajustes da conta.",
-    "projectedTitle": "Parcelas previstas"
+    "projectedTitle": "Parcelas previstas",
+    "undetailed": "Não detalhado pelo banco",
+    "undetailedHint": "Lançamentos que o provedor não enviou como linhas separadas.",
+    "reconcileNote": "O provedor não enviou todas as linhas desta fatura fechada; este valor completa o total oficial."
   }
 }
