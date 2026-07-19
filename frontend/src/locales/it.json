@@ -2070,6 +2070,9 @@
     "closesOn": "Chiude il {{date}}",
     "openStatementNote": "Estratto ancora aperto — gli acquisti singoli di questo ciclo possono ancora arrivare. Sono previste solo le rate future.",
     "missingCycle": "Imposta il giorno di chiusura e scadenza di questa carta così gli acquisti finiscono nell'estratto giusto — altrimenti sono raggruppati per mese di acquisto. Impostalo nelle impostazioni del conto.",
-    "projectedTitle": "Rate previste"
+    "projectedTitle": "Rate previste",
+    "undetailed": "Non dettagliato dalla banca",
+    "undetailedHint": "Addebiti che il fornitore non ha inviato come righe separate.",
+    "reconcileNote": "Il fornitore non ha fornito tutte le righe di questo estratto chiuso; questo importo completa il totale ufficiale."
   }
 }

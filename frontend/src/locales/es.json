@@ -2070,6 +2070,9 @@
     "closesOn": "Cierra el {{date}}",
     "openStatementNote": "Factura aún abierta — las compras únicas de este ciclo aún pueden entrar. Solo se proyectan las cuotas futuras.",
     "missingCycle": "Define el día de cierre y vencimiento de esta tarjeta para que las compras entren en la factura correcta; de lo contrario se agrupan por mes de compra. Configúralo en los ajustes de la cuenta.",
-    "projectedTitle": "Cuotas previstas"
+    "projectedTitle": "Cuotas previstas",
+    "undetailed": "No detallado por el banco",
+    "undetailedHint": "Cargos que el proveedor no envió como líneas separadas.",
+    "reconcileNote": "El proveedor no entregó todas las líneas de esta factura cerrada; este importe completa el total oficial."
   }
 }
