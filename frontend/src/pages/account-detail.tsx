@@ -771,12 +771,11 @@ export default function AccountDetailPage() {
       }
       if (!rangeStart || !rangeEnd) return []
       const series: { label: string; date: string; balance: number }[] = []
-      // Synthetic zero baseline (day before cycle start) so the line always
-      // anchors at 0 even when the cycle's first day already has charges.
+      // The axis starts on the cycle's first day (the previous close date) —
+      // no synthetic day-before anchor. The line still reads from zero because
+      // the running total is 0 until the first charge, and the Y axis floor is
+      // pinned at 0.
       const startDate = parseISO(rangeStart + 'T00:00:00')
-      const baseline = new Date(startDate.getTime() - 86400000)
-      const baselineKey = format(baseline, 'yyyy-MM-dd')
-      series.push({ label: formatDateStr(baselineKey, dateLocale), date: baselineKey, balance: 0 })
       const cur = new Date(startDate)
       const end = new Date(rangeEnd + 'T00:00:00')
       let running = 0
