@@ -55,6 +55,30 @@ def get_cycle_dates(
     }
 
 
+def close_date_for_bill(
+    bill_due_date: date,
+    statement_close_day: Optional[int],
+) -> Optional[date]:
+    """Derive a bill's statement close date from the account's close day.
+
+    Pluggy's /bills payload doesn't expose the close date, but it's recoverable:
+    the close is the most recent occurrence of ``statement_close_day`` on or
+    before the bill's due date. Returns None when the close day isn't
+    configured (nothing to derive from).
+
+    This is only an approximation when the bank shifts the close for
+    weekends/holidays on a specific cycle — the exact date is snapshotted from
+    the provider's ``next_close_date`` at sync time when available; this covers
+    the historical bills that never got such a snapshot."""
+    if not statement_close_day:
+        return None
+    same_month = _clamp_day(bill_due_date.year, bill_due_date.month, statement_close_day)
+    if same_month <= bill_due_date:
+        return same_month
+    py, pm = (bill_due_date.year - 1, 12) if bill_due_date.month == 1 else (bill_due_date.year, bill_due_date.month - 1)
+    return _clamp_day(py, pm, statement_close_day)
+
+
 def compute_available_credit(
     credit_limit: Optional[Decimal],
     current_balance: Decimal,

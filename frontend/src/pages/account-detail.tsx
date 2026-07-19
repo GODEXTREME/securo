@@ -745,19 +745,20 @@ export default function AccountDetailPage() {
       let rangeStart: string | null = null
       let rangeEnd: string | null = null
       if (activeBill) {
-        // Clamp the axis to the real billing cycle: previous close date →
-        // (this close − 1). The bill's due_date sits ~a week after close, so
-        // ranging to it drew a flat tail past the cycle; the purchase window
-        // ends at close. Derive the close from the card's close day.
-        const closeDay = account?.statement_close_day
-        if (closeDay) {
-          const thisClose = closeDateForBill(activeBill.due_date, closeDay)
-          // Anchor one day before close (inside the cycle) so the helper
-          // returns [prevClose, thisClose − 1].
-          const anchor = addDays(parseISO(thisClose + 'T00:00:00'), -1)
-          const b = creditCardCycleBoundaries(closeDay, anchor)
-          rangeStart = b.start
-          rangeEnd = b.end
+        // Clamp the axis to the real billing cycle. The bill's due_date sits
+        // ~a week after close, so ranging to it drew a flat tail past the
+        // cycle; the purchase window ends at close. Prefer the exact close the
+        // backend snapshotted/derived onto the bill (handles the bank shifting
+        // the close for weekends/holidays); the previous cycle's close is one
+        // month earlier on the same day (a day's approximation on the far
+        // edge, while the near edge — where the tail was — is now exact).
+        if (activeBill.close_date) {
+          const close = parseISO(activeBill.close_date + 'T00:00:00')
+          rangeEnd = format(addDays(close, -1), 'yyyy-MM-dd')
+          const py = close.getMonth() === 0 ? close.getFullYear() - 1 : close.getFullYear()
+          const pmo = close.getMonth() === 0 ? 11 : close.getMonth() - 1
+          const prevClose = new Date(py, pmo, Math.min(close.getDate(), daysInMonth(py, pmo)))
+          rangeStart = format(prevClose, 'yyyy-MM-dd')
         } else {
           const dates = Array.from(byDay.keys()).sort()
           if (dates.length === 0) return []
@@ -1372,16 +1373,17 @@ export default function AccountDetailPage() {
                 </p>
               </div>
               <div>
-                {/* Closing date. For bill-driven cycles we derive it from the
-                    bill's due_date + account.statement_close_day (handles
-                    dynamic close days). For cycle-math cycles, filterTo is
-                    the day before the close, so close = filterTo + 1. */}
+                {/* Closing date. Bill-driven cycles use the exact close the
+                    backend stored on the bill (a provider snapshot when
+                    available, else derived from due_date + close day — handles
+                    dynamic close days). For cycle-math cycles, filterTo is the
+                    day before the close, so close = filterTo + 1. */}
                 <p className="text-[10px] sm:text-xs font-medium text-muted-foreground mb-0.5">
                   {t('accounts.statementCloseDay')}
                 </p>
                 <p className="text-sm sm:text-base font-semibold tabular-nums text-foreground">
                   {activeBill
-                    ? formatDateStr(closeDateForBill(activeBill.due_date, account.statement_close_day), dateLocale)
+                    ? formatDateStr(activeBill.close_date ?? closeDateForBill(activeBill.due_date, account.statement_close_day), dateLocale)
                     : (account.statement_close_day && filterTo
                         ? formatDateStr(format(addDays(parseISO(filterTo), 1), 'yyyy-MM-dd'), dateLocale)
                         : '—')}

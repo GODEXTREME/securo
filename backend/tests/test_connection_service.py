@@ -1242,6 +1242,54 @@ async def test_sync_persists_bills_for_credit_card_account(
 
 
 @pytest.mark.asyncio
+async def test_sync_snapshots_and_derives_bill_close_date(
+    session: AsyncSession, test_user, test_workspace,
+):
+    """Each bill gets a close_date: the exact provider next_close_date when the
+    bill's due matches the account's current cycle (capturing a weekend/holiday
+    shift the nominal day would miss), and a derived close for the rest."""
+    from app.models.credit_card_bill import CreditCardBill
+
+    conn = await _make_connection(session, test_user.id, "Close Date Bank")
+    # Nominal close day 8, but the provider's live cycle actually closed on the
+    # 9th (weekend shift) and is due the 16th.
+    cc_acc = AccountData(
+        external_id="cc-close", name="CC", type="credit_card",
+        balance=Decimal("0"), currency="BRL",
+        statement_close_day=8, payment_due_day=16,
+        next_close_date=date(2026, 7, 9), next_due_date=date(2026, 7, 16),
+    )
+    bills = [
+        # Matches the account's current cycle → exact snapshot (09, not 08).
+        BillData(external_id="bill-cur", due_date=date(2026, 7, 16),
+                 total_amount=Decimal("100"), currency="BRL"),
+        # Older bill, no snapshot → derived from close day 8 → 08/05.
+        BillData(external_id="bill-old", due_date=date(2026, 5, 16),
+                 total_amount=Decimal("50"), currency="BRL"),
+    ]
+    mock_provider = AsyncMock()
+    mock_provider.refresh_credentials = AsyncMock(return_value={"token": "t"})
+    mock_provider.get_accounts = AsyncMock(return_value=[cc_acc])
+    mock_provider.get_transactions = AsyncMock(return_value=[])
+    mock_provider.get_bills = AsyncMock(return_value=bills)
+
+    p1, p2, p3 = _patch_sync_helpers()
+    with patch("app.services.connection_service.get_provider", return_value=mock_provider), \
+         p1, p2, p3:
+        await sync_connection(session, conn.id, test_workspace.id, test_user.id)
+
+    by_ext = {
+        b.external_id: b for b in (await session.execute(
+            select(CreditCardBill).where(CreditCardBill.user_id == test_user.id)
+        )).scalars().all()
+    }
+    # Exact provider snapshot — captures the shift to the 9th.
+    assert by_ext["bill-cur"].close_date == date(2026, 7, 9)
+    # Derived from the nominal close day for the historical bill.
+    assert by_ext["bill-old"].close_date == date(2026, 5, 8)
+
+
+@pytest.mark.asyncio
 async def test_sync_links_transaction_to_matching_bill(
     session: AsyncSession, test_user, test_workspace,
 ):

@@ -32,8 +32,31 @@ from app.services import (
 )
 from app.services.credit_card_service import (
     apply_effective_date,
+    close_date_for_bill,
     compute_effective_date,
 )
+
+
+class TestCloseDateForBill:
+    """Derive a bill's statement close date from the account's close day."""
+
+    def test_close_day_before_due_same_month(self):
+        # Nubank: due 16/06, close day 9 → cycle closed 09/06.
+        assert close_date_for_bill(date(2026, 6, 16), 9) == date(2026, 6, 9)
+
+    def test_close_day_after_due_walks_back_a_month(self):
+        # due 05/06, close day 20 → most recent 20th on/before is 20/05.
+        assert close_date_for_bill(date(2026, 6, 5), 20) == date(2026, 5, 20)
+
+    def test_close_day_after_due_january_wraps_year(self):
+        assert close_date_for_bill(date(2026, 1, 5), 20) == date(2025, 12, 20)
+
+    def test_close_day_clamps_to_short_month(self):
+        # close day 31, due 10/03 → Feb has no 31 → clamps to 28/02.
+        assert close_date_for_bill(date(2026, 3, 10), 31) == date(2026, 2, 28)
+
+    def test_no_close_day_returns_none(self):
+        assert close_date_for_bill(date(2026, 6, 16), None) is None
 
 
 # ---------------------------------------------------------------------------

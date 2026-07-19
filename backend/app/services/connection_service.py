@@ -34,7 +34,7 @@ from app.services.account_service import (
     sync_opening_balance_for_connected_account,
 )
 from app.services.asset_group_service import ensure_group_for_connection
-from app.services.credit_card_service import apply_effective_date
+from app.services.credit_card_service import apply_effective_date, close_date_for_bill
 from app.services.rule_service import apply_rules_to_transaction
 from app.services.transfer_detection_service import detect_transfer_pairs
 from app.services.fx_rate_service import stamp_primary_amount
@@ -1086,6 +1086,16 @@ async def _sync_credit_card_bills(
     by_external_id: dict[str, CreditCardBill] = {b.external_id: b for b in existing}
 
     for bd in bills_data:
+        # Exact close date when the provider's current cycle points at this
+        # bill (its due matches the account's live next_due_date) — then the
+        # account's real next_close_date IS this bill's close. Otherwise derive
+        # it from the close day; either way it's the day-of-cycle boundary the
+        # chart and bucketing want.
+        snapshot_close = (
+            account.next_close_date
+            if account.next_due_date is not None and bd.due_date == account.next_due_date
+            else None
+        )
         bill = by_external_id.get(bd.external_id)
         if bill is None:
             bill = CreditCardBill(
@@ -1096,6 +1106,7 @@ async def _sync_credit_card_bills(
                 total_amount=bd.total_amount,
                 currency=bd.currency,
                 minimum_payment=bd.minimum_payment,
+                close_date=snapshot_close or close_date_for_bill(bd.due_date, account.statement_close_day),
                 raw_data=bd.raw_data,
             )
             session.add(bill)
@@ -1106,6 +1117,12 @@ async def _sync_credit_card_bills(
             bill.currency = bd.currency
             bill.minimum_payment = bd.minimum_payment
             bill.raw_data = bd.raw_data
+            # Prefer an exact provider snapshot; never downgrade one we already
+            # captured to a derived value. Backfill derived only when empty.
+            if snapshot_close is not None:
+                bill.close_date = snapshot_close
+            elif bill.close_date is None:
+                bill.close_date = close_date_for_bill(bd.due_date, account.statement_close_day)
 
     await session.flush()
 
