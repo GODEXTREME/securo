@@ -2193,6 +2193,8 @@
     "projectedTitle": "Prognozowane raty",
     "undetailed": "Niewyszczególnione przez bank",
     "undetailedHint": "Obciążenia, których dostawca nie przesłał jako osobne pozycje.",
-    "reconcileNote": "Dostawca nie dostarczył wszystkich pozycji tego zamkniętego wyciągu; ta kwota uzupełnia oficjalną sumę faktury."
+    "reconcileNote": "Dostawca nie dostarczył wszystkich pozycji tego zamkniętego wyciągu; ta kwota uzupełnia oficjalną sumę faktury.",
+    "monthSpend": "Wydatki w {{month}}",
+    "monthSpendHint": "Miesiąc kalendarzowy, wg daty zakupu"
   }
 }
