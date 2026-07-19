@@ -660,21 +660,29 @@ export default function AccountDetailPage() {
   )
   const projectedTotal = projectedInstallments.reduce((s, p) => s + Math.abs(Number(p.amount_primary ?? p.amount)), 0)
 
-  // Calendar-month spend (by purchase date), independent of the fatura cycle
-  // being viewed — answers "how much have I spent this month" separately from
-  // the statement total. accounts.summary buckets by COALESCE(effective_bill_
-  // date, date), so with no bill_id and a calendar-month window it nets to the
-  // month's raw-date spending (refunds subtracted, payments excluded).
+  // Calendar-month spend (by purchase date) for the month of the fatura being
+  // viewed — so the card tracks the stepper instead of being frozen on "now".
+  // Anchored on the viewed cycle's due month (its Brazilian bill-name month),
+  // it answers "how much did I spend that month" separately from the statement
+  // total. accounts.summary buckets by COALESCE(effective_bill_date, date), so
+  // with no bill_id and a calendar-month window it nets to the month's raw-date
+  // spending (refunds subtracted, payments excluded). The current calendar
+  // month is capped at today; past months use the whole month.
   const nowRef = new Date()
-  const monthStart = format(new Date(nowRef.getFullYear(), nowRef.getMonth(), 1), 'yyyy-MM-dd')
-  const monthEnd = format(nowRef, 'yyyy-MM-dd')
+  const monthAnchor = cycleMonth
+    ? parseISO(cycleMonth + '-01T00:00:00')
+    : new Date(nowRef.getFullYear(), nowRef.getMonth(), 1)
+  const monthStart = format(monthAnchor, 'yyyy-MM-dd')
+  const lastOfMonth = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 0)
+  const cappedEnd = lastOfMonth > nowRef ? nowRef : lastOfMonth
+  const monthEnd = format(cappedEnd < monthAnchor ? monthAnchor : cappedEnd, 'yyyy-MM-dd')
   const { data: monthSpend } = useQuery({
     queryKey: ['accounts', id, 'month-spend', monthStart, monthEnd],
     queryFn: () => accounts.summary(id!, monthStart, monthEnd),
     enabled: isCreditCard && !!id,
   })
   const monthSpendValue = (showPrimary ? monthSpend?.monthly_expenses_primary : undefined) ?? monthSpend?.monthly_expenses ?? 0
-  const monthLabel = format(nowRef, 'MMMM', { locale: resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language) })
+  const monthLabel = format(monthAnchor, 'MMMM', { locale: resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language) })
 
   // For a closed fatura the provider's bill total is the reconciled truth, but
   // the synced rows + projected parcels can still fall short of it (the bank
@@ -737,10 +745,25 @@ export default function AccountDetailPage() {
       let rangeStart: string | null = null
       let rangeEnd: string | null = null
       if (activeBill) {
-        const dates = Array.from(byDay.keys()).sort()
-        if (dates.length === 0) return []
-        rangeStart = dates[0]
-        rangeEnd = activeBill.due_date < dates[dates.length - 1] ? dates[dates.length - 1] : activeBill.due_date
+        // Clamp the axis to the real billing cycle: previous close date →
+        // (this close − 1). The bill's due_date sits ~a week after close, so
+        // ranging to it drew a flat tail past the cycle; the purchase window
+        // ends at close. Derive the close from the card's close day.
+        const closeDay = account?.statement_close_day
+        if (closeDay) {
+          const thisClose = closeDateForBill(activeBill.due_date, closeDay)
+          // Anchor one day before close (inside the cycle) so the helper
+          // returns [prevClose, thisClose − 1].
+          const anchor = addDays(parseISO(thisClose + 'T00:00:00'), -1)
+          const b = creditCardCycleBoundaries(closeDay, anchor)
+          rangeStart = b.start
+          rangeEnd = b.end
+        } else {
+          const dates = Array.from(byDay.keys()).sort()
+          if (dates.length === 0) return []
+          rangeStart = dates[0]
+          rangeEnd = activeBill.due_date < dates[dates.length - 1] ? dates[dates.length - 1] : activeBill.due_date
+        }
       } else if (filterFrom && filterTo) {
         rangeStart = filterFrom
         rangeEnd = filterTo
@@ -770,7 +793,7 @@ export default function AccountDetailPage() {
       date: p.date,
       balance: usePrimary ? (p.balance_primary ?? p.balance) : p.balance,
     }))
-  }, [isCreditCard, txData, filterFrom, filterTo, balanceHistory, locale, dateLocale, usePrimary, activeBill])
+  }, [isCreditCard, txData, filterFrom, filterTo, balanceHistory, locale, dateLocale, usePrimary, activeBill, account])
 
   // Running balance computation for transaction table
   const txWithRunningBalance = useMemo((): TxWithBalance[] => {
