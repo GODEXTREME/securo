@@ -1022,12 +1022,12 @@ export default function AccountDetailPage() {
           // filtered by bill_id when the cycle has a bill (handles dynamic
           // close days) or by [start, end] otherwise. Same number whether
           // the bar is active or not — clicking doesn't shift the value.
-          // Prefer the higher of the provider's official bill total and the
-          // summed debits — same rule as the "Total da fatura" stat, so a bar
-          // isn't understated when the provider dropped some lines (e.g.
-          // Nubank's day-9 installment batch).
+          // A closed cycle's bill carries the reconciled official total; use it
+          // so a bar isn't understated when the provider hadn't delivered every
+          // line yet (e.g. Nubank's day-9 installment batch). Same rule as the
+          // "Total da fatura" stat. In-progress cycle (no bill) → live sum.
           const summed = Number(q.data?.monthly_expenses ?? 0)
-          const total = c.bill ? Math.max(Number(c.bill.total_amount), summed) : summed
+          const total = (c.bill && Number(c.bill.total_amount) > 0) ? Number(c.bill.total_amount) : summed
           return {
             ...c,
             total,
@@ -1084,17 +1084,19 @@ export default function AccountDetailPage() {
 
       {/* Compact stat bar */}
       {isCreditCard ? (() => {
-        // Total da fatura. Prefer the HIGHER of the provider's official bill
-        // total (credit_card_bills.total_amount) and the summed synced debits.
-        // The bill total is authoritative for a closed fatura but can lag
-        // charges added after the provider computed it; the summed total can
-        // fall short when the provider never delivered every line (e.g. Nubank
-        // via Pluggy drops the day-9 installment batch). max() gives the right
-        // answer in both directions. Only trust the bill total when we're not
-        // converting currencies (its amount is in the account currency).
+        // Total da fatura. A closed statement has a provider bill whose
+        // total_amount is the reconciled, official value — verified against
+        // real data: it matches the bill_id-linked debit sum to the cent for
+        // every past Nubank fatura, because at close the provider backfills the
+        // lines it hadn't sent yet (e.g. Nubank's day-9 installment batch) and
+        // links them. So trust it over the summed transactions, which can be
+        // short (lines not yet delivered) or slightly over (bucketing noise).
+        // The in-progress cycle has no bill yet → fall back to the live sum.
+        // Only trust the bill total when not converting currencies (it's stored
+        // in the account currency).
         const summedTotal = (showPrimary ? summary?.monthly_expenses_primary : undefined) ?? summary?.monthly_expenses ?? 0
-        const billTotal = (activeBill && account.currency === displayCurrency)
-          ? Math.max(Number(activeBill.total_amount), summedTotal)
+        const billTotal = (activeBill && Number(activeBill.total_amount) > 0 && account.currency === displayCurrency)
+          ? Number(activeBill.total_amount)
           : summedTotal
         // "Default cycle" = the bill the user is here to pay (next due). The
         // AGORA tag on Limite disponível only shows when viewing a different cycle.
