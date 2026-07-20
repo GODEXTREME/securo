@@ -808,17 +808,20 @@ async def _find_synced_duplicate(
                 continue
             return candidate
 
-    # Path 2: pending↔posted twin on the same account/date/amount/type. The
-    # status differential is the load-bearing signal — without it we'd risk
-    # collapsing two genuinely separate transactions that happen to share a
-    # day and amount. A light description-similarity check guards against
-    # the residual false positive of two different merchants charging the
-    # same amount the same day where one is pending and one is posted.
+    # Path 2: pending↔posted twin on the same account/amount/type. The status
+    # differential is the load-bearing signal — without it we'd risk collapsing
+    # two genuinely separate transactions that share a day and amount. The date
+    # is matched within a small window rather than exactly: a card purchase
+    # often posts a day or two after it was made and the bank re-dates it to
+    # the posting day (bought 08/06, posts 09/06), so the posted twin arrives
+    # under a new id AND a new date. A tight window plus the amount/type match
+    # and the description-similarity check below keep this specific.
     result = await session.execute(
         select(Transaction).where(
             Transaction.account_id == account_id,
             Transaction.source == "sync",
-            Transaction.date == txn_data.date,
+            Transaction.date >= txn_data.date - timedelta(days=4),
+            Transaction.date <= txn_data.date + timedelta(days=4),
             Transaction.amount == txn_data.amount,
             Transaction.type == txn_data.type,
             Transaction.status != txn_data.status,
@@ -1385,6 +1388,17 @@ async def sync_connection(
                         synced_dup.status = "posted"
                         synced_dup.external_id = txn_data.external_id
                         synced_dup.raw_data = txn_data.raw_data
+                        # Follow the provider's posting-date re-date (the twin
+                        # can arrive dated a day or two later, moving it to the
+                        # next fatura) — same as the by-external-id path above.
+                        # The bill-link block just below still overrides with
+                        # bank truth when a bill is available.
+                        if (
+                            synced_dup.date != txn_data.date
+                            and synced_dup.effective_bill_date is None
+                        ):
+                            synced_dup.date = txn_data.date
+                            apply_effective_date(synced_dup, account)
                         if (
                             txn_data.bill_external_id
                             and synced_dup.effective_bill_date is None
