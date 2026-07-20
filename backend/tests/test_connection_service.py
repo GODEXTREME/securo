@@ -1242,6 +1242,74 @@ async def test_sync_persists_bills_for_credit_card_account(
 
 
 @pytest.mark.asyncio
+async def test_pending_reposts_under_new_id_and_new_date_moves_fatura(
+    session: AsyncSession, test_user, test_workspace,
+):
+    """An à-vista purchase that posts a day later under a NEW external id (the
+    twin path, not the same-id re-date) must collapse onto the pending row,
+    follow the new date, and re-bucket — not spawn a duplicate. Real case:
+    Amazon bought 08/06 (pending) posts 09/06 → June fatura → July."""
+    conn = await _make_connection(session, test_user.id, "Repost Bank")
+    cc_acc = AccountData(
+        external_id="cc-repost", name="CC", type="credit_card",
+        balance=Decimal("0"), currency="BRL",
+        statement_close_day=9, payment_due_day=16,
+    )
+
+    def _provider(txns):
+        m = AsyncMock()
+        m.refresh_credentials = AsyncMock(return_value={"token": "t"})
+        m.get_accounts = AsyncMock(return_value=[cc_acc])
+        m.get_transactions = AsyncMock(return_value=txns)
+        m.get_bills = AsyncMock(return_value=[])
+        return m
+
+    pending = TransactionData(
+        external_id="amz-pending", description="Amazon Br *Amazon",
+        amount=Decimal("70.52"), date=date(2026, 6, 8), type="debit",
+        currency="BRL", status="pending",
+    )
+    p1, p2, p3 = _patch_sync_helpers()
+    with patch("app.services.connection_service.get_provider", return_value=_provider([pending])), \
+         p1, p2, p3:
+        await sync_connection(session, conn.id, test_workspace.id, test_user.id)
+
+    row = (await session.execute(
+        select(Transaction).where(
+            Transaction.description == "Amazon Br *Amazon",
+        )
+    )).scalar_one()
+    # close=9 > 08/06 → June fatura (due 16/06).
+    assert row.date == date(2026, 6, 8)
+    assert row.effective_date == date(2026, 6, 16)
+
+    # Posts the next day under a new id.
+    posted = TransactionData(
+        external_id="amz-posted", description="Amazon Br *Amazon",
+        amount=Decimal("70.52"), date=date(2026, 6, 9), type="debit",
+        currency="BRL", status="posted",
+    )
+    p1, p2, p3 = _patch_sync_helpers()
+    with patch("app.services.connection_service.get_provider", return_value=_provider([posted])), \
+         p1, p2, p3:
+        await sync_connection(session, conn.id, test_workspace.id, test_user.id)
+
+    rows = (await session.execute(
+        select(Transaction).where(
+            Transaction.description == "Amazon Br *Amazon",
+        )
+    )).scalars().all()
+    # No duplicate — the twin collapsed onto the pending row.
+    assert len(rows) == 1
+    twin = rows[0]
+    assert twin.status == "posted"
+    assert twin.external_id == "amz-posted"
+    # Followed the posting date 09/06 → moved to the July fatura (due 16/07).
+    assert twin.date == date(2026, 6, 9)
+    assert twin.effective_date == date(2026, 7, 16)
+
+
+@pytest.mark.asyncio
 async def test_sync_snapshots_and_derives_bill_close_date(
     session: AsyncSession, test_user, test_workspace,
 ):
