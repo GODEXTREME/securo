@@ -613,6 +613,39 @@ async def test_list_transactions_exclude_transfers(
 
 
 @pytest.mark.asyncio
+async def test_list_transactions_user_pnl_only(
+    client: AsyncClient,
+    auth_headers,
+    session: AsyncSession,
+    test_transactions_with_transfers,
+):
+    """user_pnl_only returns only rows that count toward dashboard/user P&L."""
+    for txn in test_transactions_with_transfers:
+        if txn.description == "GROCERIES":
+            txn.is_ignored = True
+    settlement = Transaction(
+        id=uuid.uuid4(),
+        user_id=test_transactions_with_transfers[0].user_id,
+        account_id=test_transactions_with_transfers[0].account_id,
+        description="Settlement credit",
+        amount=Decimal("75.00"),
+        date=date.today(),
+        type="credit",
+        source="settlement",
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(settlement)
+    await session.commit()
+
+    response = await client.get("/api/transactions?user_pnl_only=true", headers=auth_headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert [item["description"] for item in data["items"]] == ["SALARY"]
+
+
+@pytest.mark.asyncio
 async def test_exclude_transfers_false_includes_all(
     client: AsyncClient, auth_headers, test_transactions_with_transfers,
 ):

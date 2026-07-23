@@ -344,7 +344,11 @@ export default function RulesPage() {
                   variant="outline"
                   size="sm"
                   className="gap-1.5 h-8"
-                  onClick={() => applyAllMutation.mutate()}
+                  onClick={() => {
+                    if (window.confirm(t('rules.confirmReapplyAll', 'Reapply all rules to all transactions? This can change existing transaction fields.'))) {
+                      applyAllMutation.mutate()
+                    }
+                  }}
                   disabled={applyAllMutation.isPending}
                 >
                   <RefreshCw size={12} />

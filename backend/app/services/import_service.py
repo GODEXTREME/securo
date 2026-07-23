@@ -184,7 +184,7 @@ def parse_qif(content: bytes) -> list[TransactionImport]:
 
 
 def parse_camt(content: bytes) -> list[TransactionImport]:
-    """Parse CAMT.053 (ISO 20022) XML file content and return transactions."""
+    """Parse CAMT.052/CAMT.053 (ISO 20022) XML file content and return transactions."""
     root = ET.fromstring(content)
 
     # Detect namespace dynamically
@@ -213,9 +213,26 @@ def parse_camt(content: bytes) -> list[TransactionImport]:
 
     transactions = []
 
-    # Navigate: Document > BkToCstmrStmt > Stmt > Ntry
-    for stmt in findall(root, 'BkToCstmrStmt/Stmt'):
+    # Navigate: Document > BkToCstmrStmt > Stmt > Ntry (CAMT.053, end-of-day statement)
+    # Fallback: Document > BkToCstmrAcctRpt > Rpt > Ntry (CAMT.052, intraday report —
+    # same Ntry sub-schema, different root/container element). Several European banks,
+    # including German Volksbanken/Raiffeisenbanken, only offer CAMT.052 exports.
+    stmts = findall(root, 'BkToCstmrStmt/Stmt') or findall(root, 'BkToCstmrAcctRpt/Rpt')
+    for stmt in stmts:
         for ntry in findall(stmt, 'Ntry'):
+            # Entry status: BOOK (final) vs. PDNG/INFO (pending/informational).
+            # CAMT.052 intraday reports commonly include PDNG entries for
+            # transactions that haven't settled yet; the same transaction is
+            # reported again as BOOK once it settles. Skip anything that
+            # isn't BOOK to avoid importing it twice. Status is either a
+            # plain code (<Sts>BOOK</Sts>) or wrapped (<Sts><Cd>BOOK</Cd></Sts>)
+            # depending on the schema version. Check the wrapped form first:
+            # in pretty-printed XML the <Sts> element's own text is the
+            # whitespace before <Cd>, which would otherwise mask the real code.
+            status = find_text(ntry, 'Sts/Cd') or find_text(ntry, 'Sts')
+            if status and status.strip().upper() != 'BOOK':
+                continue
+
             # Amount
             amt_el = find(ntry, 'Amt')
             if amt_el is None:

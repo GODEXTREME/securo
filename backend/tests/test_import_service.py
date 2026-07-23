@@ -739,6 +739,91 @@ class TestParseCamt:
         assert transactions[0].description == "No NS"
         assert transactions[0].amount == Decimal("300.00")
 
+    def test_parse_camt052_bktocstmracctrpt(self):
+        """CAMT.052 (intraday report) uses BkToCstmrAcctRpt/Rpt instead of
+        BkToCstmrStmt/Stmt. Several European banks — including German
+        Volksbanken/Raiffeisenbanken — only offer CAMT.052 exports, not .053.
+        """
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08">'
+            '<BkToCstmrAcctRpt><Rpt>'
+            '<Ntry>'
+            '<Amt Ccy="EUR">42.50</Amt>'
+            '<CdtDbtInd>DBIT</CdtDbtInd>'
+            '<BookgDt><Dt>2026-07-14</Dt></BookgDt>'
+            '<NtryDtls><TxDtls><RmtInf><Ustrd>Supermarket</Ustrd></RmtInf></TxDtls></NtryDtls>'
+            '</Ntry>'
+            '</Rpt></BkToCstmrAcctRpt>'
+            '</Document>'
+        ).encode('utf-8')
+        transactions = parse_camt(xml)
+        assert len(transactions) == 1
+        assert transactions[0].description == "Supermarket"
+        assert transactions[0].amount == Decimal("42.50")
+        assert transactions[0].type == "debit"
+        assert transactions[0].date == date(2026, 7, 14)
+
+    def test_parse_camt052_skips_pending_entries(self):
+        """CAMT.052 intraday reports can include PDNG (pending) entries for
+        transactions that haven't settled yet. These must be skipped, since
+        the same transaction reappears as BOOK once it settles - importing
+        both would create a duplicate.
+        """
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08">'
+            '<BkToCstmrAcctRpt><Rpt>'
+            '<Ntry>'
+            '<Amt Ccy="EUR">42.50</Amt>'
+            '<CdtDbtInd>DBIT</CdtDbtInd>'
+            '<Sts>PDNG</Sts>'
+            '<BookgDt><Dt>2026-07-14</Dt></BookgDt>'
+            '<NtryDtls><TxDtls><RmtInf><Ustrd>Supermarket (pending)</Ustrd></RmtInf></TxDtls></NtryDtls>'
+            '</Ntry>'
+            '<Ntry>'
+            '<Amt Ccy="EUR">42.50</Amt>'
+            '<CdtDbtInd>DBIT</CdtDbtInd>'
+            '<Sts><Cd>BOOK</Cd></Sts>'
+            '<BookgDt><Dt>2026-07-15</Dt></BookgDt>'
+            '<NtryDtls><TxDtls><RmtInf><Ustrd>Supermarket (booked)</Ustrd></RmtInf></TxDtls></NtryDtls>'
+            '</Ntry>'
+            '</Rpt></BkToCstmrAcctRpt>'
+            '</Document>'
+        ).encode('utf-8')
+        transactions = parse_camt(xml)
+        assert len(transactions) == 1
+        assert transactions[0].description == "Supermarket (booked)"
+
+    def test_parse_camt_keeps_pretty_printed_booked_entries(self):
+        """A wrapped <Sts><Cd>BOOK</Cd></Sts> in pretty-printed (indented) XML
+        must still be recognized as BOOK. The <Sts> element's own text is the
+        whitespace before <Cd>, so the status lookup has to prefer Sts/Cd -
+        otherwise the whitespace masks the code and booked entries get skipped.
+        """
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">\n'
+            '  <BkToCstmrStmt>\n'
+            '    <Stmt>\n'
+            '      <Ntry>\n'
+            '        <Amt Ccy="EUR">42.50</Amt>\n'
+            '        <CdtDbtInd>DBIT</CdtDbtInd>\n'
+            '        <Sts>\n'
+            '          <Cd>BOOK</Cd>\n'
+            '        </Sts>\n'
+            '        <BookgDt><Dt>2026-07-15</Dt></BookgDt>\n'
+            '        <NtryDtls><TxDtls><RmtInf><Ustrd>Booked</Ustrd></RmtInf></TxDtls></NtryDtls>\n'
+            '      </Ntry>\n'
+            '    </Stmt>\n'
+            '  </BkToCstmrStmt>\n'
+            '</Document>\n'
+        ).encode('utf-8')
+        transactions = parse_camt(xml)
+        assert len(transactions) == 1
+        assert transactions[0].description == "Booked"
+        assert transactions[0].amount == Decimal("42.50")
+
 
 class TestParseOfx:
     """Tests for the parse_ofx function."""
