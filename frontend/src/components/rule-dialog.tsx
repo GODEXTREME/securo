@@ -54,6 +54,10 @@ function getOpsForField(field: string) {
   return STRING_OPS
 }
 
+function defaultValueForField(field: string) {
+  return field === 'type' ? 'debit' : ''
+}
+
 export interface RuleDialogInitialData {
   name?: string
   conditions?: RuleCondition[]
@@ -93,7 +97,16 @@ export function RuleDialog({
   const selectClass = 'border border-border rounded-lg px-2 py-1.5 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
 
   function updateCondition(i: number, field: keyof RuleCondition, val: string | number) {
-    setConditions(prev => prev.map((c, idx) => idx === i ? { ...c, [field]: val } : c))
+    setConditions(prev => prev.map((c, idx) => {
+      if (idx !== i) return c
+      if (field !== 'field') return { ...c, [field]: val }
+      return {
+        ...c,
+        field: String(val),
+        op: getOpsForField(String(val))[0].value,
+        value: defaultValueForField(String(val)),
+      }
+    }))
   }
 
   function removeCondition(i: number) {

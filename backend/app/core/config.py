@@ -1,7 +1,6 @@
 from functools import lru_cache
 from os import getenv
 from pathlib import Path
-from urllib.parse import urlparse
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,22 +48,14 @@ class Settings(BaseSettings):
 
     # WebAuthn / passkeys
     webauthn_rp_name: str = "Securo"
-    # Empty means derive from frontend_url host, e.g. localhost for http://localhost:5173.
+    # Empty means the RP ID follows the domain the browser is on, which is what
+    # most deployments want. Set it to pin passkeys to one domain (e.g.
+    # securo.example.com); requests from other origins are then rejected.
     webauthn_rp_id: str = ""
-    # Empty means use frontend_url. Must match the browser origin exactly.
+    # Empty means the expected origin follows the browser. Only set this when the
+    # app is reached at exactly one origin and you want it enforced.
     webauthn_origin: str = ""
     webauthn_challenge_ttl_seconds: int = 300
-
-    @property
-    def resolved_webauthn_origin(self) -> str:
-        return self.webauthn_origin or self.frontend_url
-
-    @property
-    def resolved_webauthn_rp_id(self) -> str:
-        if self.webauthn_rp_id:
-            return self.webauthn_rp_id
-        parsed = urlparse(self.frontend_url)
-        return parsed.hostname or "localhost"
 
     # Defaults
     default_currency: str = "USD"  # fallback currency when user preference is unavailable

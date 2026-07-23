@@ -21,7 +21,7 @@ from app.services import split_service
 from app.services.credit_card_service import apply_effective_date
 from app.services.rule_service import apply_rules_to_transaction
 from app.services.fx_rate_service import stamp_primary_amount, convert as fx_convert
-from app.services._query_filters import counts_as_pnl, reporting_date_col
+from app.services._query_filters import counts_as_pnl, counts_as_user_pnl, reporting_date_col
 
 
 def _apply_fx_override(transaction, amount, amount_primary=None, fx_rate_used=None):
@@ -82,6 +82,7 @@ async def get_transactions(
     max_amount: Optional[float] = None,
     account_types: Optional[list[str]] = None,
     include_summary: bool = False,
+    user_pnl_only: bool = False,
 ) -> tuple[list[Transaction], int, Optional[dict]]:
     """List transactions for a workspace.
 
@@ -214,6 +215,8 @@ async def get_transactions(
         )
     if exclude_transfers:
         base_query = base_query.where(Transaction.transfer_pair_id.is_(None))
+    if user_pnl_only:
+        base_query = base_query.where(Account.is_closed == False, counts_as_user_pnl())
     if txn_type:
         base_query = base_query.where(Transaction.type == txn_type)
     if currency:
