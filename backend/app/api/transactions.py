@@ -213,9 +213,12 @@ async def bulk_categorize(
     ctx: WorkspaceContext = Depends(current_writable_workspace),
     session: AsyncSession = Depends(get_async_session),
 ):
-    count = await transaction_service.bulk_update_category(
-        session, ctx.workspace.id, data.transaction_ids, data.category_id
-    )
+    try:
+        count = await transaction_service.bulk_update_category(
+            session, ctx.workspace.id, data.transaction_ids, data.category_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return {"updated": count}
 
 
@@ -400,6 +403,7 @@ async def update_transaction(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     if not transaction:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+    transaction = await transaction_service.get_transaction(session, transaction.id, ctx.workspace.id)
     primary_currency = ctx.user.primary_currency
     return _tag_fx_fallback(TransactionRead.model_validate(transaction, from_attributes=True), primary_currency)
 

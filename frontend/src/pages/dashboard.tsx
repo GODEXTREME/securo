@@ -274,12 +274,18 @@ export default function DashboardPage() {
 
   const createRuleMutation = useMutation({
     mutationFn: (data: Omit<Rule, 'id' | 'user_id'>) => rulesApi.create(data),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['rules'] })
-      invalidateFinancialQueries(queryClient)
       setCreateRuleOpen(false)
       setCreateRuleInitialData(undefined)
-      toast.success(t('rules.created'))
+      const applied = result.applied_count ?? 0
+      if (applied > 0) {
+        invalidateFinancialQueries(queryClient)
+        queryClient.invalidateQueries({ queryKey: ['payees'] })
+        toast.success(t('rules.createdAndApplied', { count: applied }))
+      } else {
+        toast.success(t('rules.created'))
+      }
     },
     onError: (error: unknown) => {
       const err = error as { response?: { status?: number } }

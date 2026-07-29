@@ -252,6 +252,38 @@ async def test_get_transactions_summary_excludes_ignored(session, test_user, tes
     assert summary["excluded"] == Decimal("999")
 
 
+async def test_get_transactions_summary_excludes_ignored_category(
+    session, test_user, test_workspace, acct
+):
+    from app.models.category import Category
+
+    ignored = Category(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        name="Ignored",
+        is_ignored=True,
+    )
+    session.add(ignored)
+    await session.commit()
+
+    await _mk_txn(session, test_user, acct, description="Counted", amount=Decimal("100"), type="debit")
+    await _mk_txn(
+        session,
+        test_user,
+        acct,
+        description="Ignored by category",
+        amount=Decimal("999"),
+        type="debit",
+        category_id=ignored.id,
+    )
+    _, _, summary = await get_transactions(
+        session, test_workspace.id, test_user.id, include_summary=True
+    )
+    assert summary["expense"] == Decimal("100")
+    assert summary["excluded"] == Decimal("999")
+
+
 async def test_get_transactions_summary_excludes_transfers_and_treat_as_transfer(
     session, test_user, test_workspace, acct
 ):

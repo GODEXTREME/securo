@@ -1151,6 +1151,35 @@ class TestImportTransactionsFx:
         mock_provider.fetch_historical.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_import_raw_payee_uses_workspace(self, session: AsyncSession, test_user: User, test_workspace, test_account: Account):
+        from app.models.payee import Payee
+        from app.models.transaction import Transaction
+        from app.schemas.transaction import TransactionImport
+        from sqlalchemy import select
+
+        txns = [
+            TransactionImport(
+                description="Cafe memo",
+                amount=Decimal("12.00"),
+                date=date(2026, 1, 15),
+                type="debit",
+                currency=test_account.currency,
+                payee_raw="Cafe",
+            ),
+        ]
+
+        imported, skipped, _, _ = await import_transactions(
+            session, test_workspace.id, test_user.id, test_account.id, txns, "ofx",
+        )
+
+        assert imported == 1
+        assert skipped == 0
+        payee = (await session.execute(select(Payee).where(Payee.name == "Cafe"))).scalar_one()
+        tx = (await session.execute(select(Transaction).where(Transaction.payee_id == payee.id))).scalar_one()
+        assert payee.workspace_id == test_workspace.id
+        assert tx.workspace_id == test_workspace.id
+
+    @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")
     async def test_import_foreign_currency_without_fx_rate_auto_converts(
         self, mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
@@ -2158,3 +2187,46 @@ class TestForceUncategorized:
             select(Transaction).where(Transaction.import_id == import_log_id)
         )).scalar_one()
         assert tx.category_id == cat.id
+
+
+@pytest.mark.asyncio
+@patch("app.services.fx_rate_service._provider")
+async def test_import_tolerates_duplicate_external_id_rows(
+    mock_provider, session: AsyncSession, test_user: User, test_workspace, test_account: Account,
+):
+    """Two existing rows sharing (account_id, external_id, date) must not crash
+    the importer's duplicate check. Regression for the MultipleResultsFound
+    crash: the incoming charge is skipped as a duplicate, no exception raised.
+    """
+    from app.models.transaction import Transaction
+    from app.schemas.transaction import TransactionImport
+    from sqlalchemy import select
+
+    d = date(2026, 1, 15)
+    for _ in range(2):
+        session.add(Transaction(
+            id=uuid.uuid4(), user_id=test_user.id, account_id=test_account.id,
+            external_id="FITID-DUP", description="SPOTIFY", amount=Decimal("23.90"),
+            date=d, type="debit", source="ofx",
+        ))
+    await session.commit()
+
+    txns = [TransactionImport(
+        description="SPOTIFY", amount=Decimal("23.90"), date=d,
+        type="debit", external_id="FITID-DUP",
+    )]
+
+    imported, skipped, _, _ = await import_transactions(
+        session, test_workspace.id, test_user.id, test_account.id, txns, "ofx",
+        detected_format="ofx",
+    )
+
+    assert imported == 0
+    assert skipped == 1
+    remaining = (await session.execute(
+        select(Transaction).where(
+            Transaction.account_id == test_account.id,
+            Transaction.external_id == "FITID-DUP",
+        )
+    )).scalars().all()
+    assert len(remaining) == 2

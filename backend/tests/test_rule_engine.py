@@ -221,6 +221,36 @@ def test_lte_greater():
     assert evaluate_conditions("and", conditions, tx) is False
 
 
+def test_date_gt():
+    conditions = [{"field": "date", "op": "gt", "value": "2026-02-09"}]
+    tx = make_tx(date=date(2026, 2, 10))
+    assert evaluate_conditions("and", conditions, tx) is True
+
+
+def test_date_gte_equal():
+    conditions = [{"field": "date", "op": "gte", "value": "2026-02-10"}]
+    tx = make_tx(date=date(2026, 2, 10))
+    assert evaluate_conditions("and", conditions, tx) is True
+
+
+def test_date_lt():
+    conditions = [{"field": "date", "op": "lt", "value": "2026-02-11"}]
+    tx = make_tx(date=date(2026, 2, 10))
+    assert evaluate_conditions("and", conditions, tx) is True
+
+
+def test_date_lte_equal():
+    conditions = [{"field": "date", "op": "lte", "value": "2026-02-10"}]
+    tx = make_tx(date=date(2026, 2, 10))
+    assert evaluate_conditions("and", conditions, tx) is True
+
+
+def test_invalid_date_comparison_returns_false():
+    conditions = [{"field": "date", "op": "gte", "value": "not-a-date"}]
+    tx = make_tx(date=date(2026, 2, 10))
+    assert evaluate_conditions("and", conditions, tx) is False
+
+
 def test_empty_conditions_returns_false():
     tx = make_tx()
     assert evaluate_conditions("and", [], tx) is False

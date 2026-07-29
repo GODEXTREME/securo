@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.category import Category
+from app.models.payee import Payee
 from app.models.user import User
 
 
@@ -413,18 +414,26 @@ async def test_create_transaction_invalid_account(
 
 @pytest.mark.asyncio
 async def test_update_transaction(
-    client: AsyncClient, auth_headers, test_transactions: list[Transaction],
+    client: AsyncClient, auth_headers, session: AsyncSession, test_workspace,
+    test_user: User, test_transactions: list[Transaction],
     test_categories: list[Category],
 ):
+    payee = Payee(user_id=test_user.id, workspace_id=test_workspace.id, name="Netflix")
+    session.add(payee)
+    await session.commit()
+
     txn_id = str(test_transactions[4].id)  # NETFLIX, no category
     response = await client.patch(
         f"/api/transactions/{txn_id}",
         headers=auth_headers,
-        json={"category_id": str(test_categories[0].id)},
+        json={"category_id": str(test_categories[0].id), "payee_id": str(payee.id)},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["category_id"] == str(test_categories[0].id)
+    assert data["category"]["id"] == str(test_categories[0].id)
+    assert data["payee_id"] == str(payee.id)
+    assert data["payee_name"] == "Netflix"
 
 
 @pytest.mark.asyncio

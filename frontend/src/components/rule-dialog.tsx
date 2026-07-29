@@ -93,6 +93,8 @@ export function RuleDialog({
   )
   const [priority, setPriority] = useState(rule?.priority ?? 0)
   const [isActive, setIsActive] = useState(rule?.is_active ?? true)
+  const [applyToExisting, setApplyToExisting] = useState(!rule)
+  const [overwriteExistingCategories, setOverwriteExistingCategories] = useState(false)
 
   const selectClass = 'border border-border rounded-lg px-2 py-1.5 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
 
@@ -136,7 +138,16 @@ export function RuleDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    onSave({ name, conditions_op: conditionsOp, conditions, actions, priority, is_active: isActive })
+    onSave({
+      name,
+      conditions_op: conditionsOp,
+      conditions,
+      actions,
+      priority,
+      is_active: isActive,
+      apply_to_existing: applyToExisting,
+      overwrite_existing_categories: applyToExisting && overwriteExistingCategories,
+    })
   }
 
   return (
@@ -338,6 +349,32 @@ export function RuleDialog({
             />
             <span className="text-sm text-foreground">{t('rules.ruleActive')}</span>
           </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={applyToExisting}
+              onChange={(e) => setApplyToExisting(e.target.checked)}
+              className="h-4 w-4 rounded border-border"
+            />
+            <span className="text-sm text-foreground">
+              {t('rules.applyToExisting', 'Apply matching actions to existing transactions')}
+            </span>
+          </label>
+
+          {applyToExisting && (
+            <label className="flex items-center gap-2 cursor-pointer pl-6">
+              <input
+                type="checkbox"
+                checked={overwriteExistingCategories}
+                onChange={(e) => setOverwriteExistingCategories(e.target.checked)}
+                className="h-4 w-4 rounded border-border"
+              />
+              <span className="text-sm text-foreground">
+                {t('rules.overwriteExistingCategories', 'Also replace existing categories')}
+              </span>
+            </label>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>

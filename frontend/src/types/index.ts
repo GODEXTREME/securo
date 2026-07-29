@@ -361,6 +361,8 @@ export interface Rule {
   actions: RuleAction[]
   priority: number
   is_active: boolean
+  apply_to_existing?: boolean
+  overwrite_existing_categories?: boolean
 }
 
 export interface RuleExportItem {

@@ -24,6 +24,40 @@ from app.services.fx_rate_service import stamp_primary_amount, convert as fx_con
 from app.services._query_filters import counts_as_pnl, counts_as_user_pnl, reporting_date_col
 
 
+async def _ensure_category_in_workspace(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    category_id: Optional[uuid.UUID],
+) -> None:
+    if category_id is None:
+        return
+    result = await session.execute(
+        select(Category.id).where(
+            Category.id == category_id,
+            Category.workspace_id == workspace_id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise ValueError("Category not found")
+
+
+async def _ensure_payee_in_workspace(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    payee_id: Optional[uuid.UUID],
+) -> None:
+    if payee_id is None:
+        return
+    result = await session.execute(
+        select(Payee.id).where(
+            Payee.id == payee_id,
+            Payee.workspace_id == workspace_id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise ValueError("Payee not found")
+
+
 def _apply_fx_override(transaction, amount, amount_primary=None, fx_rate_used=None):
     """Apply manual FX override values to a transaction.
 
@@ -461,8 +495,6 @@ async def get_transactions(
         for tx in transactions:
             tx.attachment_count = counts.get(tx.id, 0)
             tx.payee_name = tx.payee_entity.name if tx.payee_entity else None
-            if not tx.is_ignored and tx.category and tx.category.is_ignored:
-                tx.is_ignored = True
         # Tag shared rows with the viewer's share + the source group.
         # Owned rows stay as-is. We pre-compute the viewer's linked
         # member ids → group ids once, then look up each transaction's
@@ -651,6 +683,9 @@ async def create_transaction(
     if not account:
         raise ValueError("Account not found")
 
+    await _ensure_category_in_workspace(session, workspace_id, data.category_id)
+    await _ensure_payee_in_workspace(session, workspace_id, data.payee_id)
+
     # Resolve currency: explicit value > account currency
     currency = data.currency or account.currency
 
@@ -667,7 +702,10 @@ async def create_transaction(
         type=data.type,
         source="manual",
         notes=data.notes,
+        effective_bill_date=data.effective_bill_date,
     )
+    if data.effective_bill_date is not None:
+        await _resync_bill_link_from_override(session, transaction, account)
     apply_effective_date(transaction, account)
     session.add(transaction)
     await session.flush()  # get ID without committing
@@ -1122,6 +1160,11 @@ async def update_transaction(
             if paired_tx and paired_tx.account_id == new_account_id:
                 raise ValueError("Cannot move transfer to the same account as its paired transaction")
 
+    if "category_id" in update_data:
+        await _ensure_category_in_workspace(session, workspace_id, update_data["category_id"])
+    if "payee_id" in update_data:
+        await _ensure_payee_in_workspace(session, workspace_id, update_data["payee_id"])
+
     # Pop FX override fields before generic setattr loop
     has_fx_override = "amount_primary" in update_data or "fx_rate_used" in update_data
     override_amount_primary = update_data.pop("amount_primary", None)
@@ -1192,7 +1235,7 @@ async def update_transaction(
         await split_service.replace_splits(session, transaction, splits_payload, user_id)
 
     await session.commit()
-    await session.refresh(transaction, ["splits"])
+    await session.refresh(transaction, ["category", "payee_entity", "splits"])
     return transaction
 
 
@@ -1202,6 +1245,7 @@ async def bulk_update_category(
     transaction_ids: list[uuid.UUID],
     category_id: Optional[uuid.UUID] = None,
 ) -> int:
+    await _ensure_category_in_workspace(session, workspace_id, category_id)
     result = await session.execute(
         update(Transaction)
         .where(
@@ -1341,6 +1385,7 @@ async def bulk_add_to_group(
     group_result = await session.execute(
         select(Group).where(
             Group.id == group_id,
+            Group.workspace_id == workspace_id,
             or_(Group.user_id == user_id, Group.id.in_(linked_group_ids)),
         )
     )

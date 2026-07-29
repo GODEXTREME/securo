@@ -626,6 +626,7 @@ export default function TransactionsPage() {
       const applied = result.applied_count ?? 0
       if (applied > 0) {
         invalidateAfterTxMutation()
+        queryClient.invalidateQueries({ queryKey: ['payees'] })
         toast.success(t('rules.createdAndApplied', { count: applied }))
       } else {
         toast.success(t('rules.created'))

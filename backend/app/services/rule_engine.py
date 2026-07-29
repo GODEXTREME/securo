@@ -2,6 +2,7 @@
 import re
 import unicodedata
 import uuid
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,19 @@ def _to_decimal(val) -> Decimal:
         return Decimal(str(val))
     except InvalidOperation:
         return Decimal("0")
+
+
+def _to_date(val) -> date | None:
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    if isinstance(val, str):
+        try:
+            return date.fromisoformat(val)
+        except ValueError:
+            return None
+    return None
 
 
 def _match_condition(condition: dict, tx: "Transaction") -> bool:
@@ -57,6 +71,20 @@ def _match_condition(condition: dict, tx: "Transaction") -> bool:
 
     # Numeric operators
     if op in ("gt", "gte", "lt", "lte"):
+        if field == "date":
+            tx_date = _to_date(tx_val)
+            val_date = _to_date(value)
+            if tx_date is None or val_date is None:
+                return False
+            if op == "gt":
+                return tx_date > val_date
+            if op == "gte":
+                return tx_date >= val_date
+            if op == "lt":
+                return tx_date < val_date
+            if op == "lte":
+                return tx_date <= val_date
+
         tx_num = _to_decimal(tx_val)
         val_num = _to_decimal(value)
         if op == "gt":
