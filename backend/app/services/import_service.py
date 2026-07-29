@@ -630,7 +630,12 @@ async def import_transactions(
                         Transaction.description == txn_data.description,
                     )
                 )
-            if existing.scalar_one_or_none():
+            # `.first()` rather than `.scalar_one_or_none()`: the dedup key can
+            # legitimately match more than one row (e.g. a prior sync/import race
+            # left a duplicate, or a bank reuses one FITID across statements),
+            # and we only need to know whether *any* match exists. Requiring
+            # exactly one would raise MultipleResultsFound and abort the import.
+            if existing.scalars().first() is not None:
                 skipped += 1
                 continue
 
@@ -638,7 +643,9 @@ async def import_transactions(
         import_payee_id = None
         import_payee_raw = getattr(txn_data, "payee_raw", None)
         if import_payee_raw:
-            import_payee_entity = await get_or_create_payee(session, user_id, import_payee_raw)
+            import_payee_entity = await get_or_create_payee(
+                session, user_id, import_payee_raw, workspace_id=workspace_id
+            )
             import_payee_id = import_payee_entity.id
 
         # Recurring bill reconciliation (issue #116): if this imported charge
