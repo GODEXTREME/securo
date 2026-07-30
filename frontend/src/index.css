@@ -129,6 +129,30 @@
   h1, h2, h3 {
     letter-spacing: -0.035em;
   }
+  /* iOS Safari auto-zooms the page whenever a focused form control computes to
+     a font smaller than 16px — which shifts the visual viewport and leaves
+     position:fixed elements adrift once the keyboard closes. Force the 16px
+     floor on touch devices instead of capping the viewport with
+     maximum-scale=1, which would kill pinch-zoom on Android (a11y regression).
+
+     (pointer: coarse) covers phones and tablets (iPad zooms too) and leaves
+     desktop untouched. !important is required because the size comes from
+     utility classes (text-sm / text-xs), which outrank a bare element
+     selector; inside @layer, !important also beats the utilities layer.
+
+     Caveat: `1em` resolves against the PARENT, not the control's own size, so
+     a control explicitly set larger than its parent (e.g. a text-2xl amount
+     field under a 16px parent) is clamped down to 16px on touch. No such field
+     exists today — every control here is 16px or smaller — but if you add one,
+     give it an explicit `@media (pointer: coarse)` size instead of assuming
+     this rule preserves it. */
+  @media (pointer: coarse) {
+    input,
+    select,
+    textarea {
+      font-size: max(16px, 1em) !important;
+    }
+  }
 }
 
 /* Recharts focuses its wrapper/surface on click; on macOS this draws a
