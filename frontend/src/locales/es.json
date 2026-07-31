@@ -507,7 +507,28 @@
     "bulkRemoveTags": "Eliminar etiquetas",
     "addTagsPlaceholder": "#etiqueta…",
     "clearOverride": "Borrar anulación",
-    "installmentBadge": "Installment"
+    "installmentBadge": "Installment",
+    "listView": "Lista",
+    "calendarView": "Calendario",
+    "calendar": "Calendario",
+    "calendarOneAccount": "1 cuenta",
+    "calendarAccountCount": "{{count}} cuentas",
+    "calendarAllAccounts": "Todas las cuentas",
+    "calendarEndBalance": "Saldo final",
+    "calendarItemCount": "{{count}} elemento",
+    "calendarItemCount_plural": "{{count}} elementos",
+    "calendarProjectedCount": "{{count}} previsto",
+    "calendarProjected": "Previsto",
+    "calendarBalanceTrend": "Tendencia del saldo",
+    "calendarLegend": "Leyenda",
+    "calendarDensity": "Vista",
+    "calendarCompact": "Compacta",
+    "calendarDetailed": "Detallada",
+    "calendarMoreItems": "+{{count}} más",
+    "calendarAddIncome": "Añadir ingreso",
+    "calendarAddExpense": "Añadir gasto",
+    "calendarSelectedDay": "Día seleccionado",
+    "calendarNoItems": "No hay transacciones en este día"
   },
   "accounts": {
     "title": "Cuentas",
@@ -1274,7 +1295,9 @@
     "showMore": "+{{count}} más",
     "previous": "Anterior",
     "next": "Siguiente",
-    "rowsPerPage": "Filas por página"
+    "rowsPerPage": "Filas por página",
+    "add": "Añadir",
+    "userMenu": "Menú de usuario"
   },
   "splitGroups": {
     "title": "Grupos",

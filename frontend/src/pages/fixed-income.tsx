@@ -158,7 +158,7 @@ export default function FixedIncomePage() {
                 <th className="text-right font-medium px-3 py-2.5 whitespace-nowrap">{t('fixedIncome.netAnnual')}</th>
                 <th className="text-right font-medium px-3 py-2.5 whitespace-nowrap">{t('fixedIncome.netEarnings')}</th>
                 <th className="text-right font-medium px-3 py-2.5 whitespace-nowrap">{t('fixedIncome.finalAmount')}</th>
-                <th className="px-3 py-2.5"></th>
+                <th className="px-3 py-2.5"><span className="sr-only">{t('common.delete')}</span></th>
               </tr>
             </thead>
             <tbody>

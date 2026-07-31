@@ -20,6 +20,7 @@ import type {
   PayeeSummary,
   RecurringTransaction,
   ProjectedTransaction,
+  TransactionCalendarResponse,
   Budget,
   BudgetVsActual,
   Rule,
@@ -449,6 +450,17 @@ export const transactions = {
     date_basis?: 'effective' | 'purchase'
   }): Promise<PaginatedTransactions> => {
     const { data } = await api.get('/transactions', {
+      params,
+      paramsSerializer: { indexes: null },
+    })
+    return data
+  },
+  calendar: async (params?: {
+    month?: string
+    account_id?: string
+    account_ids?: string[]
+  }): Promise<TransactionCalendarResponse> => {
+    const { data } = await api.get('/transactions/calendar', {
       params,
       paramsSerializer: { indexes: null },
     })

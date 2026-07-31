@@ -507,7 +507,28 @@
         "thisYear": "Cette année"
       }
     },
-    "installmentBadge": "Échelonné"
+    "installmentBadge": "Échelonné",
+    "listView": "Liste",
+    "calendarView": "Calendrier",
+    "calendar": "Calendrier",
+    "calendarOneAccount": "1 compte",
+    "calendarAccountCount": "{{count}} comptes",
+    "calendarAllAccounts": "Tous les comptes",
+    "calendarEndBalance": "Solde final",
+    "calendarItemCount": "{{count}} élément",
+    "calendarItemCount_plural": "{{count}} éléments",
+    "calendarProjectedCount": "{{count}} prévu(s)",
+    "calendarProjected": "Prévu",
+    "calendarBalanceTrend": "Évolution du solde",
+    "calendarLegend": "Légende",
+    "calendarDensity": "Affichage",
+    "calendarCompact": "Compact",
+    "calendarDetailed": "Détaillé",
+    "calendarMoreItems": "+{{count}} de plus",
+    "calendarAddIncome": "Ajouter un revenu",
+    "calendarAddExpense": "Ajouter une dépense",
+    "calendarSelectedDay": "Jour sélectionné",
+    "calendarNoItems": "Aucune transaction ce jour-là"
   },
   "accounts": {
     "title": "Comptes",
@@ -1274,7 +1295,9 @@
     "showMore": "+{{count}} de plus",
     "previous": "Précédent",
     "next": "Suivant",
-    "rowsPerPage": "Lignes par page"
+    "rowsPerPage": "Lignes par page",
+    "add": "Ajouter",
+    "userMenu": "Menu utilisateur"
   },
   "splitGroups": {
     "title": "Groupes",
