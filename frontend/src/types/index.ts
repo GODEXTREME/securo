@@ -461,6 +461,51 @@ export interface ProjectedTransaction {
   account_id?: string | null
 }
 
+export interface TransactionCalendarItem {
+  kind: 'actual' | 'projected'
+  id: string | null
+  recurring_id: string | null
+  date: string
+  description: string
+  amount: number
+  amount_primary: number | null
+  currency: string
+  type: 'debit' | 'credit'
+  account_id: string | null
+  account_name: string | null
+  category_id: string | null
+  category_name: string | null
+  category_icon: string | null
+  category_color: string | null
+  status: string | null
+  source: string | null
+  transfer_pair_id: string | null
+  is_transfer: boolean
+  is_ignored: boolean
+}
+
+export interface TransactionCalendarDay {
+  date: string
+  in_month: boolean
+  ending_balance: number
+  income: number
+  expense: number
+  transfer_net: number
+  actual_count: number
+  projected_count: number
+  has_income: boolean
+  has_expense: boolean
+  has_transfer: boolean
+  items: TransactionCalendarItem[]
+}
+
+export interface TransactionCalendarResponse {
+  month: string
+  currency: string
+  account_ids: string[] | null
+  days: TransactionCalendarDay[]
+}
+
 export interface DashboardSummary {
   total_balance: Record<string, number>
   total_balance_primary: number

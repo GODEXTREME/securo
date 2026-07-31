@@ -167,7 +167,7 @@ async def test_list_institutions_maps_and_dedupes_countries(eb_keys):
                         "logo": "https://l/revolut.png",
                         "bic": "REVOLT21",
                         "psu_types": ["personal"],
-                        "maximum_consent_validity": 180,
+                        "maximum_consent_validity": 15552000,
                     },
                     {"name": "Sparkasse", "country": "DE"},
                     {"name": "BNP Paribas", "country": "FR"},

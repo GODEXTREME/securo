@@ -507,7 +507,28 @@
         "thisYear": "Этот год"
       }
     },
-    "installmentBadge": "Installment"
+    "installmentBadge": "Installment",
+    "listView": "Список",
+    "calendarView": "Календарь",
+    "calendar": "Календарь",
+    "calendarOneAccount": "1 счет",
+    "calendarAccountCount": "{{count}} счетов",
+    "calendarAllAccounts": "Все счета",
+    "calendarEndBalance": "Итоговый баланс",
+    "calendarItemCount": "{{count}} запись",
+    "calendarItemCount_plural": "{{count}} записей",
+    "calendarProjectedCount": "{{count}} запланировано",
+    "calendarProjected": "Запланировано",
+    "calendarBalanceTrend": "Динамика баланса",
+    "calendarLegend": "Легенда",
+    "calendarDensity": "Вид",
+    "calendarCompact": "Компактно",
+    "calendarDetailed": "Подробно",
+    "calendarMoreItems": "ещё +{{count}}",
+    "calendarAddIncome": "Добавить доход",
+    "calendarAddExpense": "Добавить расход",
+    "calendarSelectedDay": "Выбранный день",
+    "calendarNoItems": "В этот день транзакций нет"
   },
   "accounts": {
     "title": "Счета",
@@ -1274,7 +1295,9 @@
     "showMore": "+{{count}} ещё",
     "previous": "Назад",
     "next": "Далее",
-    "rowsPerPage": "Строк на странице"
+    "rowsPerPage": "Строк на странице",
+    "add": "Добавить",
+    "userMenu": "Меню пользователя"
   },
   "splitGroups": {
     "title": "Группы",

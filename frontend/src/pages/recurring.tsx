@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { categories as categoriesApi, categoryGroups as categoryGroupsApi, recurring as recurringApi, accounts as accountsApi, currencies as currenciesApi } from '@/lib/api'
+import { localDateString } from '@/lib/date-utils'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -216,6 +217,7 @@ function RecurringTab() {
                         <button
                           className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
                           onClick={() => { setEditing(rt); setDialogOpen(true) }}
+                          aria-label={t('common.edit')}
                           title={t('common.edit')}
                         >
                           <Pencil size={13} />
@@ -224,6 +226,7 @@ function RecurringTab() {
                           className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
                           onClick={() => deleteMutation.mutate(rt.id)}
                           disabled={deleteMutation.isPending}
+                          aria-label={t('common.delete')}
                           title={t('common.delete')}
                         >
                           <Trash2 size={13} />
@@ -298,7 +301,7 @@ function RecurringForm({
   const [type, setType] = useState<'debit' | 'credit'>(recurring?.type ?? 'debit')
   const [frequency, setFrequency] = useState(recurring?.frequency ?? 'monthly')
   const [dayOfMonth, setDayOfMonth] = useState(recurring?.day_of_month?.toString() ?? '')
-  const [startDate, setStartDate] = useState(recurring?.start_date ?? new Date().toISOString().split('T')[0])
+  const [startDate, setStartDate] = useState(recurring?.start_date ?? localDateString())
   const [endDate, setEndDate] = useState(recurring?.end_date ?? '')
   const [categoryId, setCategoryId] = useState(recurring?.category_id ?? '')
   const [accountId, setAccountId] = useState(recurring?.account_id ?? accounts[0]?.id ?? '')

@@ -16,8 +16,10 @@ from app.core.workspace_context import (
     current_writable_workspace,
 )
 from app.schemas.transaction import BulkAddToGroupRequest, BulkCategorizeRequest, BulkTagsRequest, CreateCounterpartRequest, LinkTransferRequest, TransactionCreate, TransactionRead, TransactionUpdate, TransferCreate, TransferRead
+from app.schemas.transaction_calendar import TransactionCalendarResponse
 from app.services import transaction_service
 from app.services.admin_service import get_credit_card_accounting_mode
+from app.services.transaction_calendar_service import get_transaction_calendar
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -136,6 +138,23 @@ async def list_transactions(
         else None
     )
     return PaginatedTransactions(items=items, total=total, page=page, limit=limit, summary=summary_out)
+
+
+@router.get("/calendar", response_model=TransactionCalendarResponse)
+async def transaction_calendar(
+    month: Optional[date] = Query(None),
+    account_id: Optional[uuid.UUID] = Query(None),
+    account_ids: Optional[List[uuid.UUID]] = Query(None),
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    return await get_transaction_calendar(
+        session,
+        ctx.workspace.id,
+        ctx.user_id,
+        month,
+        account_ids=_merge_id_filters(account_id, account_ids),
+    )
 
 
 @router.get("/export")

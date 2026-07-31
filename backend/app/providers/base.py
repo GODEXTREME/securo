@@ -18,6 +18,20 @@ from typing import Literal, Optional
 RefreshOutcome = Literal["refreshed", "skipped", "needs_user_action", "failed"]
 
 
+def default_oauth_redirect_uri() -> str:
+    """The OAuth callback URL implied by where the frontend is served.
+
+    Providers fall back to this when their own ``*_OAUTH_REDIRECT_URI`` is
+    unset, so a deployment on a custom port or domain works without setting one
+    variable per provider. Deriving it here rather than in Compose also keeps
+    the compose files free of nested ``${VAR:-${OTHER:-x}}`` interpolation,
+    which podman-compose cannot parse (containers/podman-compose#1064).
+    """
+    from app.core.config import get_settings
+
+    return f"{get_settings().frontend_url.rstrip('/')}/oauth/callback"
+
+
 def mask_last4(value: Optional[str]) -> Optional[str]:
     """Reduce a bank-assigned account identifier to its last four characters.
 
@@ -243,11 +257,13 @@ class BankProvider(ABC):
         Each provider reads its own env var (e.g.
         ``PLUGGY_OAUTH_REDIRECT_URI``, ``ENABLE_BANKING_OAUTH_REDIRECT_URI``)
         so different providers can register different URLs in their
-        respective dashboards.
+        respective dashboards. When unset the URL is derived from
+        ``FRONTEND_URL`` so a non-default port or domain works out of the box.
         """
         from app.core.config import get_settings
 
-        return get_settings().pluggy_oauth_redirect_uri
+        settings = get_settings()
+        return settings.pluggy_oauth_redirect_uri or default_oauth_redirect_uri()
 
     async def create_connect_token(
         self, client_user_id: str, item_id: str | None = None

@@ -28,14 +28,17 @@ class Settings(BaseSettings):
     # Pluggy
     pluggy_client_id: str = ""
     pluggy_client_secret: SecretStr = SecretStr("")
-    pluggy_oauth_redirect_uri: str = "http://localhost:5173/oauth/callback"
+    # Empty means "derive from FRONTEND_URL" (see BankProvider.redirect_uri).
+    # Set explicitly only when the URL registered in the provider dashboard
+    # differs from where the app is served.
+    pluggy_oauth_redirect_uri: str = ""
 
     # Enable Banking (European PSD2 banks)
     enable_banking_app_id: str = ""
     enable_banking_private_key: SecretStr = SecretStr("")  # raw PEM; supports \n-escaped envs
     enable_banking_private_key_file: str = ""  # path to PEM file; takes precedence
     enable_banking_api_url: str = "https://api.enablebanking.com"
-    enable_banking_oauth_redirect_uri: str = "http://localhost:5173/oauth/callback"
+    enable_banking_oauth_redirect_uri: str = ""  # empty derives from FRONTEND_URL
 
     # SimpleFIN Bridge (US/intl banks, paste-a-token flow). Off by default.
     # The bridge URL defaults to the beta/sandbox host so users can test with

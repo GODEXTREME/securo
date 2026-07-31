@@ -253,6 +253,8 @@ function FundForm({ fund, defaultCurrency, loading, onSubmit }: {
         <div className="flex gap-2">
           {SWATCHES.map((s) => (
             <button key={s} type="button" onClick={() => setColor(s)}
+              aria-label={`${t('sinkingFunds.color')} ${s}`}
+              aria-pressed={color === s}
               className={`w-6 h-6 rounded-full border-2 ${color === s ? 'border-foreground' : 'border-transparent'}`}
               style={{ backgroundColor: s }} />
           ))}

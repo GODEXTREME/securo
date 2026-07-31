@@ -498,6 +498,7 @@ export default function AdminSettingsPage() {
             <p className="text-xs text-muted-foreground mt-0.5">{t('admin.settings.providerCategoriesDesc')}</p>
           </div>
           <button
+            aria-label={t('admin.settings.providerCategories')}
             onClick={() => updateProviderCatsMutation.mutate(useProviderCats ? 'false' : 'true')}
             disabled={updateProviderCatsMutation.isPending}
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${useProviderCats ? 'bg-primary' : 'bg-muted-foreground/20'}`}
@@ -667,6 +668,7 @@ export default function AdminSettingsPage() {
               <p className="text-xs text-muted-foreground mt-0.5">{t('admin.settings.registrationDesc')}</p>
             </div>
             <button
+              aria-label={t('admin.settings.registration')}
               onClick={() => updateSettingMutation.mutate(isEnabled ? 'false' : 'true')}
               disabled={updateSettingMutation.isPending}
               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isEnabled ? 'bg-primary' : 'bg-muted-foreground/20'}`}
@@ -717,6 +719,7 @@ export default function AdminSettingsPage() {
                     <option value="ru">Русский</option>
                     <option value="uk">Українська</option>
                     <option value="pt-BR">Português (BR)</option>
+                    <option value="pt-PT">Português (PT)</option>
                     <option value="es">Español</option>
                     <option value="pl">Polski</option>
                     <option value="it">Italiano</option>

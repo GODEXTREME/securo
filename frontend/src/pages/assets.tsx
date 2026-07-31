@@ -4,6 +4,7 @@ import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRegisterPageChatContext } from '@/lib/page-chat-context'
 import { assets, assetGroups, currencies as currenciesApi } from '@/lib/api'
+import { localDateString } from '@/lib/date-utils'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -2089,7 +2090,7 @@ function AssetDetail({ assetId, currency, locale: loc, dateLocale: dateLoc, purc
   const queryClient = useQueryClient()
 
   const [valueAmount, setValueAmount] = useState('')
-  const [valueDate, setValueDate] = useState(new Date().toISOString().slice(0, 10))
+  const [valueDate, setValueDate] = useState(localDateString)
 
   const { data: values, isLoading: valuesLoading } = useQuery({
     queryKey: ['asset-values', assetId],
@@ -2412,7 +2413,7 @@ function AssetTransactionsTab({
   const [formQuantity, setFormQuantity] = useState('')
   const [formPrice, setFormPrice] = useState('')
   const [formFee, setFormFee] = useState('')
-  const [formDate, setFormDate] = useState<string>(new Date().toISOString().slice(0, 10))
+  const [formDate, setFormDate] = useState<string>(localDateString)
 
   function afterChange() {
     queryClient.refetchQueries({ queryKey: ['asset-transactions'] })
@@ -2473,7 +2474,7 @@ function AssetTransactionsTab({
     setFormQuantity('')
     setFormPrice('')
     setFormFee('')
-    setFormDate(new Date().toISOString().slice(0, 10))
+    setFormDate(localDateString())
     setDialogOpen(true)
   }
 
@@ -2497,7 +2498,7 @@ function AssetTransactionsTab({
     setFormQuantity('')
     setFormPrice('')
     setFormFee('')
-    setFormDate(new Date().toISOString().slice(0, 10))
+    setFormDate(localDateString())
     setDialogOpen(true)
   }
 
@@ -2879,7 +2880,7 @@ function AddHoldingTransactionDialog({
   const [quantity, setQuantity] = useState('')
   const [price, setPrice] = useState('')
   const [fee, setFee] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(localDateString)
 
   useEffect(() => {
     if (assetId) {
@@ -2887,7 +2888,7 @@ function AddHoldingTransactionDialog({
       setQuantity('')
       setPrice('')
       setFee('')
-      setDate(new Date().toISOString().slice(0, 10))
+      setDate(localDateString())
     }
   }, [assetId])
 

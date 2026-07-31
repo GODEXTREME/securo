@@ -543,7 +543,28 @@
     "bulkAddToGroupTitle": "Add {{count}} transactions to a group",
     "bulkAddToGroupSuccess": "{{count}} transactions added to group",
     "installmentTooltip": "Installment plan — {{count}} charges totaling {{total}}",
-    "installmentBadge": "Installment"
+    "installmentBadge": "Installment",
+    "listView": "Lista",
+    "calendarView": "Kalendarz",
+    "calendar": "Kalendarz",
+    "calendarOneAccount": "1 konto",
+    "calendarAccountCount": "{{count}} konta",
+    "calendarAllAccounts": "Wszystkie konta",
+    "calendarEndBalance": "Saldo końcowe",
+    "calendarItemCount": "{{count}} pozycja",
+    "calendarItemCount_plural": "{{count}} pozycje",
+    "calendarProjectedCount": "{{count}} planowane",
+    "calendarProjected": "Planowane",
+    "calendarBalanceTrend": "Trend salda",
+    "calendarLegend": "Legenda",
+    "calendarDensity": "Widok",
+    "calendarCompact": "Kompaktowy",
+    "calendarDetailed": "Szczegółowy",
+    "calendarMoreItems": "+{{count}} więcej",
+    "calendarAddIncome": "Dodaj przychód",
+    "calendarAddExpense": "Dodaj wydatek",
+    "calendarSelectedDay": "Wybrany dzień",
+    "calendarNoItems": "Brak transakcji w tym dniu"
   },
   "accounts": {
     "title": "Konta",
@@ -1378,7 +1399,9 @@
     "previous": "Poprzedni",
     "next": "Następny",
     "showMore": "+{{count}} more",
-    "rowsPerPage": "Wierszy na stronę"
+    "rowsPerPage": "Wierszy na stronę",
+    "add": "Dodaj",
+    "userMenu": "Menu użytkownika"
   },
   "splitGroups": {
     "title": "Grupy",

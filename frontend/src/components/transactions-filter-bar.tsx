@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { getAccountName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
-import { format, startOfMonth, startOfYear, subDays } from 'date-fns'
+import { startOfMonth, startOfYear, subDays } from 'date-fns'
 import {
   ArrowUpDown,
   Calendar as CalendarIcon,
@@ -39,8 +39,13 @@ import {
 import { Calendar } from '@/components/ui/calendar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { localDateString } from '@/lib/date-utils'
 import { resolveDateFnsLocale } from '@/lib/date-fns-locale'
 import { CategoryFilterContent } from '@/components/category-filter-content'
+import {
+  MobileTransactionsFilterMenu,
+  type MobileFilterView,
+} from '@/components/mobile-transactions-filter-menu'
 import type { Account, Category, CategoryGroup, Group, Payee } from '@/types'
 
 interface TransactionsFilterBarProps {
@@ -49,6 +54,7 @@ interface TransactionsFilterBarProps {
   onSearchSubmit?: (value: string) => void
   filterAccountIds: string[]
   onAccountIdsChange: (value: string[]) => void
+  accountSelectionMode?: 'multiple' | 'single'
   filterCategoryIds: string[]
   onCategoryIdsChange: (value: string[]) => void
   filterUncategorized: boolean
@@ -73,10 +79,6 @@ interface TransactionsFilterBarProps {
   groups: Group[]
 }
 
-function toISODate(d: Date): string {
-  return format(d, 'yyyy-MM-dd')
-}
-
 function toggleInArray(arr: string[], id: string): string[] {
   return arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]
 }
@@ -87,6 +89,7 @@ export function TransactionsFilterBar({
   onSearchSubmit,
   filterAccountIds,
   onAccountIdsChange,
+  accountSelectionMode = 'multiple',
   filterCategoryIds,
   onCategoryIdsChange,
   filterUncategorized,
@@ -125,6 +128,7 @@ export function TransactionsFilterBar({
   const [amountSubOpen, setAmountSubOpen] = useState(false)
   const [draftMinAmount, setDraftMinAmount] = useState<string>(filterMinAmount)
   const [draftMaxAmount, setDraftMaxAmount] = useState<string>(filterMaxAmount)
+  const [mobileFilterView, setMobileFilterView] = useState<MobileFilterView>('root')
   const searchRef = useRef<HTMLInputElement>(null)
 
   // When a CheckRow is clicked inside a submenu, Radix tries to close the submenu
@@ -151,6 +155,7 @@ export function TransactionsFilterBar({
       setAccountSubOpen(false)
       setCategorySubOpen(false)
       setAmountSubOpen(false)
+      setMobileFilterView('root')
       keepAccountSubOpenRef.current = false
       keepCategorySubOpenRef.current = false
     }
@@ -259,38 +264,38 @@ export function TransactionsFilterBar({
       {
         key: 'today',
         label: t('transactions.filtersBar.datePresets.today'),
-        from: toISODate(today),
-        to: toISODate(today),
+        from: localDateString(today),
+        to: localDateString(today),
       },
       {
         key: 'last7',
         label: t('transactions.filtersBar.datePresets.last7'),
-        from: toISODate(subDays(today, 6)),
-        to: toISODate(today),
+        from: localDateString(subDays(today, 6)),
+        to: localDateString(today),
       },
       {
         key: 'last30',
         label: t('transactions.filtersBar.datePresets.last30'),
-        from: toISODate(subDays(today, 29)),
-        to: toISODate(today),
+        from: localDateString(subDays(today, 29)),
+        to: localDateString(today),
       },
       {
         key: 'thisMonth',
         label: t('transactions.filtersBar.datePresets.thisMonth'),
-        from: toISODate(startOfMonth(today)),
-        to: toISODate(today),
+        from: localDateString(startOfMonth(today)),
+        to: localDateString(today),
       },
       {
         key: 'last90',
         label: t('transactions.filtersBar.datePresets.last90'),
-        from: toISODate(subDays(today, 89)),
-        to: toISODate(today),
+        from: localDateString(subDays(today, 89)),
+        to: localDateString(today),
       },
       {
         key: 'thisYear',
         label: t('transactions.filtersBar.datePresets.thisYear'),
-        from: toISODate(startOfYear(today)),
-        to: toISODate(today),
+        from: localDateString(startOfYear(today)),
+        to: localDateString(today),
       },
     ]
   }, [t])
@@ -320,7 +325,6 @@ export function TransactionsFilterBar({
       return categoryById.get(filterCategoryIds[0])?.name ?? ''
     return ''
   })()
-
   return (
     <div className="mb-4">
       <Popover open={dateCustomOpen} onOpenChange={setDateCustomOpen} modal={true}>
@@ -375,17 +379,62 @@ export function TransactionsFilterBar({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              alignOffset={-10}
-              sideOffset={8}
-              side="bottom"
-              avoidCollisions={true}
-              className="w-[min(240px,_calc(100vw_-_32px))] p-1"
+              sideOffset={6}
+              className="w-[min(18rem,calc(100vw-2rem))] p-1 sm:w-[240px]"
             >
+              <MobileTransactionsFilterMenu
+                view={mobileFilterView}
+                setView={setMobileFilterView}
+                setMenuOpen={setMenuOpen}
+                accounts={accounts}
+                categories={categories}
+                categoryGroups={categoryGroups}
+                payees={payees}
+                groups={groups}
+                accountIds={filterAccountIds}
+                categoryIds={filterCategoryIds}
+                uncategorized={filterUncategorized}
+                payeeId={filterPayee}
+                groupId={filterGroupId}
+                type={filterType}
+                from={filterFrom}
+                to={filterTo}
+                minAmount={draftMinAmount}
+                maxAmount={draftMaxAmount}
+                appliedMinAmount={filterMinAmount}
+                appliedMaxAmount={filterMaxAmount}
+                setMinAmount={setDraftMinAmount}
+                setMaxAmount={setDraftMaxAmount}
+                summaries={{
+                  account: accountSummary,
+                  category: categorySummary,
+                  payee: selectedPayee?.name,
+                  group: selectedGroup?.name,
+                  type: typeLabel,
+                  date: dateLabel,
+                  amount: amountLabel,
+                }}
+                datePresets={datePresets}
+                hasAnyFilter={hasAnyFilter}
+                onAccountIdsChange={onAccountIdsChange}
+                onCategoryIdsChange={onCategoryIdsChange}
+                onUncategorizedChange={onUncategorizedChange}
+                onPayeeChange={onPayeeChange}
+                onGroupIdChange={onGroupIdChange}
+                onTypeChange={onTypeChange}
+                onDateRangeChange={onDateRangeChange}
+                onAmountRangeChange={onAmountRangeChange}
+                onApplyAmountRange={applyAmountRange}
+                onOpenCustomRange={openCustomRange}
+                onClearAll={onClearAll}
+              />
+
+              <div className="hidden sm:block">
               <DropdownMenuLabel className="px-2 py-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
                 {t('transactions.filtersBar.filterBy')}
               </DropdownMenuLabel>
               <DropdownMenuGroup>
-                {/* Account submenu (multi) */}
+                {/* Account submenu: calendar mode is all-or-one; list mode stays multi-select. */}
                 <DropdownMenuSub
                   open={accountSubOpen}
                   onOpenChange={handleAccountSubOpenChange}
@@ -402,13 +451,57 @@ export function TransactionsFilterBar({
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent
                       sideOffset={8}
-                      avoidCollisions={true}
-                      className="max-h-[320px] w-[min(240px,_calc(100vw_-_32px))] overflow-y-auto p-1"
+                      className="max-h-[320px] w-[240px] overflow-y-auto p-1"
                     >
+                      {accountSelectionMode === 'single' && (
+                        <>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              onAccountIdsChange([])
+                            }}
+                            className={cn(
+                              'gap-2 rounded-sm px-2 py-1.5 text-[13px]',
+                              filterAccountIds.length === 0 && 'bg-primary/5',
+                            )}
+                          >
+                            <span className="min-w-0 flex-1 truncate text-left">
+                              {t('transactions.all')}
+                            </span>
+                            {filterAccountIds.length === 0 && <Check size={13} className="text-primary" />}
+                          </DropdownMenuItem>
+                          <div className="my-1 h-px bg-border/60" />
+                        </>
+                      )}
                       {accounts.length === 0 ? (
                         <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">
                           {t('transactions.filtersBar.noOptions')}
                         </div>
+                      ) : accountSelectionMode === 'single' ? (
+                        accounts.map((a) => {
+                          const checked = filterAccountIds[0] === a.id
+                          return (
+                            <DropdownMenuItem
+                              key={a.id}
+                              onSelect={() => {
+                                onAccountIdsChange(checked ? [] : [a.id])
+                              }}
+                              className={cn(
+                                'gap-2 rounded-sm px-2 py-1.5 text-[13px]',
+                                checked && 'bg-primary/5',
+                              )}
+                            >
+                              <span className="min-w-0 flex-1 truncate text-left">
+                                {getAccountName(a)}
+                              </span>
+                              {a.currency && (
+                                <span className="text-[10.5px] uppercase tracking-wide text-muted-foreground/70">
+                                  {a.currency}
+                                </span>
+                              )}
+                              {checked && <Check size={13} className="text-primary" />}
+                            </DropdownMenuItem>
+                          )
+                        })
                       ) : (
                         accounts.map((a) => (
                           <DropdownMenuCheckboxItem
@@ -434,7 +527,7 @@ export function TransactionsFilterBar({
                           </DropdownMenuCheckboxItem>
                         ))
                       )}
-                      {filterAccountIds.length > 0 && (
+                      {accountSelectionMode === 'multiple' && filterAccountIds.length > 0 && (
                         <>
                           <div className="my-1 h-px bg-border/60" />
                           <DropdownMenuItem
@@ -471,8 +564,7 @@ export function TransactionsFilterBar({
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent
                       sideOffset={8}
-                      avoidCollisions={true}
-                      className="max-h-[320px] w-[min(240px,_calc(100vw_-_32px))] overflow-y-auto p-1"
+                      className="max-h-[320px] w-[240px] overflow-y-auto p-1"
                     >
                       <CategoryFilterContent
                         categoryIds={filterCategoryIds}
@@ -501,8 +593,7 @@ export function TransactionsFilterBar({
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent
                       sideOffset={8}
-                      avoidCollisions={true}
-                      className="max-h-[320px] w-[min(240px,_calc(100vw_-_32px))] overflow-y-auto p-1"
+                      className="max-h-[320px] w-[240px] overflow-y-auto p-1"
                     >
                       <DropdownMenuItem
                         onSelect={() => onPayeeChange('')}
@@ -662,8 +753,7 @@ export function TransactionsFilterBar({
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent
                       sideOffset={8}
-                      avoidCollisions={true}
-                      className="w-[min(220px,_calc(100vw_-_32px))] p-1"
+                      className="w-[220px] p-1"
                     >
                       <DropdownMenuItem
                         onSelect={() => onDateRangeChange('', '')}
@@ -829,6 +919,7 @@ export function TransactionsFilterBar({
                   </DropdownMenuItem>
                 </>
               )}
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -924,10 +1015,8 @@ export function TransactionsFilterBar({
         {/* Custom range popover — anchored to the filter bar above */}
         <PopoverContent
           align="end"
-          alignOffset={-10}
-          sideOffset={12}
-          avoidCollisions={true}
-          className="w-auto p-0 max-w-[calc(100vw_-_32px)]"
+          sideOffset={8}
+          className="w-auto p-0"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <div className="border-b border-border/70 px-4 py-3">
@@ -951,7 +1040,7 @@ export function TransactionsFilterBar({
                   draftFrom ? new Date(draftFrom + 'T00:00:00') : new Date()
                 }
                 locale={dateFnsLocale}
-                onSelect={(d) => setDraftFrom(d ? toISODate(d) : '')}
+                onSelect={(d) => setDraftFrom(d ? localDateString(d) : '')}
               />
             </div>
             <div className="sm:pl-2">
@@ -968,7 +1057,7 @@ export function TransactionsFilterBar({
                       : new Date()
                 }
                 locale={dateFnsLocale}
-                onSelect={(d) => setDraftTo(d ? toISODate(d) : '')}
+                onSelect={(d) => setDraftTo(d ? localDateString(d) : '')}
               />
             </div>
           </div>

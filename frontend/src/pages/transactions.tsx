@@ -3,12 +3,11 @@ import { useRegisterPageChatContext } from '@/lib/page-chat-context'
 import { getAccountName } from '@/lib/account-utils'
 import { AccountIcon } from '@/components/account-icon'
 import { currentMonth, monthRange, monthFromRange } from '@/lib/month-utils'
-import { MonthStepper } from '@/components/month-stepper'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi, recurring, payees as payeesApi, admin, groups as groupsApi, rules as rulesApi, savedSearches as savedSearchesApi } from '@/lib/api'
+import { transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi, recurring, payees as payeesApi, admin, groups as groupsApi, rules as rulesApi } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -35,13 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, Check, Copy, Download, HelpCircle, Info, MoreHorizontal, Paperclip, Users, X, EyeClosed, SlidersHorizontal } from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, CalendarDays, Check, HelpCircle, Info, List, Paperclip, Users, X, EyeClosed, SlidersHorizontal } from 'lucide-react'
 import type { Transaction, Rule } from '@/types'
 import { RuleDialog, type RuleDialogInitialData } from '@/components/rule-dialog'
 import { PageHeader } from '@/components/page-header'
@@ -50,11 +43,14 @@ import { CategoryIcon } from '@/components/category-icon'
 import { CategorySelect } from '@/components/category-select'
 import { TransactionDialog, extractApiError, type SaveAction } from '@/components/transaction-dialog'
 import { TransactionsColumnPicker } from '@/components/transactions-column-picker'
+import { TransactionsPageActions } from '@/components/transactions-page-actions'
+import { MobileBulkSelectionActions } from '@/components/mobile-bulk-selection-actions'
 import { type ColumnDef, type ColumnId, useTransactionsGridState } from '@/components/transactions-grid-columns'
 import { TransferDialog } from '@/components/transfer-dialog'
 import { LinkTransferDialog } from '@/components/link-transfer-dialog'
 import { BulkAddToGroupDialog, type BulkAddToGroupSubmission } from '@/components/bulk-add-to-group-dialog'
 import { TransactionsFilterBar } from '@/components/transactions-filter-bar'
+import { TransactionCalendarView } from '@/components/transaction-calendar-view'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
@@ -100,7 +96,10 @@ export default function TransactionsPage() {
       return 20
     }
   })
-  const [filterAccountIds, setFilterAccountIds] = useState<string[]>([])
+  const [filterAccountIds, setFilterAccountIds] = useState<string[]>(() => {
+    const initial = searchParams.get('account_id')
+    return initial ? initial.split(',') : []
+  })
   const [filterCategoryIds, setFilterCategoryIds] = useState<string[]>(() => {
     const initial = searchParams.get('category_id')
     return initial ? [initial] : []
@@ -136,6 +135,10 @@ export default function TransactionsPage() {
     useState<PendingTransferCategoryUpdate | null>(null)
   const [formResetKey, setFormResetKey] = useState(0)
   const [duplicateDraft, setDuplicateDraft] = useState<Partial<Transaction> | null>(null)
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>(() => (
+    searchParams.get('view') === 'calendar' ? 'calendar' : 'list'
+  ))
+  const [calendarSelectedDate, setCalendarSelectedDate] = useState<string>(() => searchParams.get('day') ?? '')
   const [filterPayee, setFilterPayee] = useState<string>(searchParams.get('payee_id') ?? '')
   const [filterGroupId, setFilterGroupId] = useState<string>(searchParams.get('group_id') ?? '')
   const [filterType, setFilterType] = useState<string>(searchParams.get('type') ?? '')
@@ -207,6 +210,8 @@ export default function TransactionsPage() {
     prevSearchRef.current = search
 
     const nextQ = searchParams.get('q') ?? ''
+    setViewMode(searchParams.get('view') === 'calendar' ? 'calendar' : 'list')
+    setCalendarSelectedDate(searchParams.get('day') ?? '')
     setSearchInput(nextQ)
     setSearchQuery(nextQ)
     const tags = searchParams.get('tags');
@@ -242,6 +247,8 @@ export default function TransactionsPage() {
     const params = new URLSearchParams(
       [
         ['q', searchQuery],
+        ['view', viewMode === 'calendar' ? 'calendar' : ''],
+        ['day', viewMode === 'calendar' ? calendarSelectedDate : ''],
         ['tags', tagFilters.join(',')],
         ['payee_id', filterPayee],
         ['group_id', filterGroupId],
@@ -263,6 +270,8 @@ export default function TransactionsPage() {
     );
   }, [
     searchQuery,
+    viewMode,
+    calendarSelectedDate,
     tagFilters,
     filterPayee,
     filterGroupId,
@@ -291,6 +300,15 @@ export default function TransactionsPage() {
     setLastSelectedId(null)
     setBulkCategory('')
   }, [page, filterAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterType, filterFrom, filterTo, filterMinAmount, filterMaxAmount, searchQuery])
+
+  useEffect(() => {
+    if (viewMode === 'calendar') {
+      setFilterAccountIds((prev) => prev.length > 1 ? [] : prev)
+      setSelectedIds(new Set())
+      setLastSelectedId(null)
+      setBulkCategory('')
+    }
+  }, [viewMode, filterAccountIds.length])
 
   // Reset bulk category when selection changes so the same category can be re-applied
   useEffect(() => {
@@ -353,6 +371,17 @@ export default function TransactionsPage() {
       }),
   })
 
+  const calendarMonth = steppedMonth
+  const calendarAccountIds = filterAccountIds.length === 1 ? filterAccountIds : []
+  const { data: calendarData, isLoading: calendarLoading } = useQuery({
+    queryKey: ['transactions', 'calendar', calendarMonth, calendarAccountIds],
+    enabled: viewMode === 'calendar',
+    queryFn: () => transactions.calendar({
+      month: `${calendarMonth}-01`,
+      account_ids: calendarAccountIds.length === 1 ? calendarAccountIds : undefined,
+    }),
+  })
+
   // Publish the active filters + result count to the global chat panel.
   // The agent uses this so "what about THIS list?" / "soma essas" /
   // "categorize these" resolve against the filtered view, not the user's
@@ -394,7 +423,7 @@ export default function TransactionsPage() {
   })
 
   const { data: categoryGroupsList } = useQuery({
-    queryKey: ['category-groups'],
+    queryKey: ['categoryGroups'],
     queryFn: categoryGroupsApi.list,
   })
 
@@ -794,6 +823,17 @@ export default function TransactionsPage() {
     setDialogOpen(true)
   }
 
+  const handleOpenCalendarTransaction = async (id: string) => {
+    try {
+      const tx = await transactions.get(id)
+      setEditingTx(tx)
+      setDuplicateDraft(null)
+      setDialogOpen(true)
+    } catch {
+      toast.error(t('common.error'))
+    }
+  }
+
   const handleExport = async () => {
     setExporting(true)
     try {
@@ -1152,86 +1192,49 @@ export default function TransactionsPage() {
         section={t('transactions.section')}
         title={t('transactions.title')}
         action={
-          // Single row at every width: [month stepper] [+ Add Transaction] [⋯].
-          // The stepper is compact and shrinks first so all three fit on a
-          // phone (#257). On desktop the secondary actions (Columns, Export,
-          // Duplicate, Transfer) are inline labelled buttons; on mobile they
-          // collapse into the overflow menu so the row stays uncrowded.
-          <div className="flex items-center gap-2 sm:flex-wrap sm:justify-end">
-            <MonthStepper
-              value={steppedMonth}
-              onChange={handleMonthChange}
-              locale={i18n.resolvedLanguage ?? i18n.language}
-              prevLabel={t('transactions.monthPrevious')}
-              nextLabel={t('transactions.monthNext')}
-            />
-
-            {/* Secondary actions: inline labelled buttons on desktop. */}
-            <div className="hidden sm:contents">
-              <TransactionsColumnPicker state={grid} />
-              <Button variant="outline" disabled={exporting} onClick={handleExport}>
-                <Download size={16} className="mr-1.5" />
-                {exportLabel}
-              </Button>
-              {/* Duplicate (issue #158): single non-shared, non-transfer row
-                  selected. Pre-fills Add Transaction from its fields. */}
-              {duplicableTx && (
-                <Button variant="outline" onClick={() => handleDuplicateTransaction(duplicableTx)}>
-                  <Copy size={16} className="mr-1.5" />
-                  {t('transactions.duplicate')}
-                </Button>
-              )}
-              {canWrite && (
-                <Button variant="outline" onClick={() => setTransferDialogOpen(true)}>
-                  <ArrowLeftRight size={16} className="mr-1.5" />
-                  {t('transactions.transfer')}
-                </Button>
-              )}
-            </div>
-
-            {/* Primary action: present at every width. */}
-            {canWrite && (
-              <Button onClick={() => { setEditingTx(null); setDialogOpen(true) }}>
-                + {t('transactions.addManual')}
-              </Button>
-            )}
-
-            {/* Secondary actions: overflow menu on mobile only. */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+          <TransactionsPageActions
+            month={{
+              value: steppedMonth,
+              onChange: handleMonthChange,
+              locale: i18n.resolvedLanguage ?? i18n.language,
+              prevLabel: t('transactions.monthPrevious'),
+              nextLabel: t('transactions.monthNext'),
+            }}
+            viewToggle={
+              <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
                 <Button
-                  variant="outline"
-                  size="icon"
-                  className="!size-9 sm:hidden"
-                  aria-label={t('common.more')}
+                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5"
+                  onClick={() => setViewMode('list')}
                 >
-                  <MoreHorizontal size={18} />
+                  <List size={14} />
+                  {t('transactions.listView')}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem disabled={exporting} onClick={handleExport}>
-                  <Download size={16} className="mr-2" />
-                  {exportLabel}
-                </DropdownMenuItem>
-                {duplicableTx && (
-                  <DropdownMenuItem onClick={() => handleDuplicateTransaction(duplicableTx)}>
-                    <Copy size={16} className="mr-2" />
-                    {t('transactions.duplicate')}
-                  </DropdownMenuItem>
-                )}
-                {canWrite && (
-                  <DropdownMenuItem onClick={() => setTransferDialogOpen(true)}>
-                    <ArrowLeftRight size={16} className="mr-2" />
-                    {t('transactions.transfer')}
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                <Button
+                  variant={viewMode === 'calendar' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5"
+                  onClick={() => {
+                    if (filterAccountIds.length > 1) setFilterAccountIds([])
+                    setViewMode('calendar')
+                  }}
+                >
+                  <CalendarDays size={14} />
+                  {t('transactions.calendarView')}
+                </Button>
+              </div>
+            }
+            columnPicker={viewMode === 'list' ? <TransactionsColumnPicker state={grid} /> : null}
+            exportLabel={exportLabel}
+            exporting={exporting}
+            onExport={handleExport}
+            onAdd={canWrite ? () => { setEditingTx(null); setDialogOpen(true) } : undefined}
+            onDuplicate={duplicableTx ? () => handleDuplicateTransaction(duplicableTx) : undefined}
+            onTransfer={canWrite ? () => setTransferDialogOpen(true) : undefined}
+          />
         }
       />
-
-      <SavedSearchesBar />
 
       {/* Filters */}
       <TransactionsFilterBar
@@ -1251,7 +1254,8 @@ export default function TransactionsPage() {
           setSearchQuery(text)
         }}
         filterAccountIds={filterAccountIds}
-        onAccountIdsChange={(v) => { setFilterAccountIds(v); setPage(1) }}
+        onAccountIdsChange={(v) => { setFilterAccountIds(viewMode === 'calendar' ? v.slice(0, 1) : v); setPage(1) }}
+        accountSelectionMode={viewMode === 'calendar' ? 'single' : 'multiple'}
         filterCategoryIds={filterCategoryIds}
         onCategoryIdsChange={(v) => { setFilterCategoryIds(v); setPage(1) }}
         filterUncategorized={filterUncategorized}
@@ -1330,7 +1334,21 @@ export default function TransactionsPage() {
         </div>
       )}
 
+      {viewMode === 'calendar' && (
+        <TransactionCalendarView
+          calendar={calendarData}
+          isLoading={calendarLoading}
+          locale={locale}
+          dateLocale={dateLocale}
+          mask={mask}
+          selectedDate={calendarSelectedDate}
+          onSelectedDateChange={setCalendarSelectedDate}
+          onOpenTransaction={handleOpenCalendarTransaction}
+        />
+      )}
+
       {/* Table */}
+      {viewMode === 'list' && (
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden mb-4">
         {isLoading ? (
           <div className="p-6 space-y-3">
@@ -1449,9 +1467,10 @@ export default function TransactionsPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Pagination */}
-      {data && data.total > 10 && (
+      {viewMode === 'list' && data && data.total > 10 && (
         <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 py-4 ${selectedIds.size > 0 ? 'pb-20' : ''}`}>
           <div className="hidden sm:block w-32" />
           {totalPages > 1 ? (
@@ -1508,16 +1527,42 @@ export default function TransactionsPage() {
           </div>
         </div>
       )}
-
       {/* Bulk Action Bar — aligned with the main content area: clears the
           fixed sidebar on lg+ and matches the page's max-w-7xl + p-6 wrapper
           so the bar visually sits over the transactions list, not the
           full viewport. */}
-      <div
-        className={`fixed bottom-0 left-0 right-0 lg:left-60 z-50 transition-transform duration-200 ease-out ${selectedIds.size > 0 ? 'translate-y-0' : 'translate-y-full'}`}
-      >
+      {viewMode === 'list' && selectedIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 lg:left-60 z-50">
         <div className="mx-auto max-w-7xl px-3 md:px-6 pb-4 md:pb-6">
           <div className="flex items-stretch gap-1.5 bg-card border border-border shadow-xl rounded-2xl p-2">
+            <MobileBulkSelectionActions
+              selectedCount={selectedIds.size}
+              categoryValue={bulkCategory}
+              categories={categoriesList ?? []}
+              categoryGroups={categoryGroupsList ?? []}
+              categoryPending={bulkCategorizeMutation.isPending}
+              groupPending={bulkAddToGroupMutation.isPending}
+              tagInput={bulkTagInput}
+              addTagsPending={bulkAddTagsMutation.isPending}
+              removeTagsPending={bulkRemoveTagsMutation.isPending}
+              transferDisabled={!canOpenLinkDialog}
+              transferTitle={linkDisabledTooltip ?? t('transactions.linkAsTransfer')}
+              onCategoryChange={(next) => {
+                setBulkCategory(next)
+                if (next) bulkCategorizeMutation.mutate({ ids: Array.from(selectedIds), categoryId: next })
+              }}
+              onOpenGroup={() => setBulkAddToGroupOpen(true)}
+              onOpenTransfer={() => setLinkTransferDialogOpen(true)}
+              onCreateRule={selectedSingleTx && !selectedSingleTx.is_shared
+                ? () => handleCreateRuleFromTransaction(selectedSingleTx)
+                : undefined}
+              onTagInputChange={setBulkTagInput}
+              onAddTags={(tags) => bulkAddTagsMutation.mutate({ ids: Array.from(selectedIds), tags })}
+              onRemoveTags={(tags) => bulkRemoveTagsMutation.mutate({ ids: Array.from(selectedIds), tags })}
+              onClear={() => { setSelectedIds(new Set()); setBulkCategory(''); setBulkTagInput('') }}
+            />
+
+            <div className="hidden w-full items-stretch gap-1.5 sm:flex">
             {/* Selection count + net total — stacked vertically so the
                 sum (issue #185) adds no horizontal width to an already
                 crowded bar. The sum is hidden below sm where only the
@@ -1550,7 +1595,7 @@ export default function TransactionsPage() {
 
             {/* Categorize — fires on selection, no separate Apply button */}
             <CategorySelect
-              className="w-44 md:w-56"
+              key={bulkCategory}
               value={bulkCategory}
               onChange={(next) => {
                 setBulkCategory(next)
@@ -1558,10 +1603,12 @@ export default function TransactionsPage() {
                   bulkCategorizeMutation.mutate({ ids: Array.from(selectedIds), categoryId: next })
                 }
               }}
-              disabled={bulkCategorizeMutation.isPending}
               categories={categoriesList ?? []}
               groups={categoryGroupsList ?? []}
               placeholder={t('transactions.selectCategory')}
+              disabled={bulkCategorizeMutation.isPending}
+              className="w-44 md:w-56 h-auto py-2 border-transparent bg-transparent hover:bg-muted/60 focus:bg-muted/60 focus-visible:ring-0"
+              contentProps={{ side: 'top', sideOffset: 8 }}
             />
 
             <div className="w-px bg-border/60 self-stretch" />
@@ -1673,9 +1720,11 @@ export default function TransactionsPage() {
             >
               <X size={16} />
             </button>
+            </div>
           </div>
         </div>
       </div>
+      )}
 
       {/* Bulk Add-to-Group Dialog */}
       <BulkAddToGroupDialog
@@ -1804,50 +1853,6 @@ export default function TransactionsPage() {
         loading={createRuleMutation.isPending}
         initialData={createRuleInitialData}
       />
-    </div>
-  )
-}
-
-// Saved searches: capture the current transaction filters (reflected in the
-// URL via replaceState) as a named favorite, and re-apply one in a click.
-function SavedSearchesBar() {
-  const { t } = useTranslation()
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const { data: searches } = useQuery({ queryKey: ['saved-searches'], queryFn: savedSearchesApi.list })
-
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['saved-searches'] })
-  const createMutation = useMutation({
-    mutationFn: ({ name, query }: { name: string; query: string }) => savedSearchesApi.create(name, { query }),
-    onSuccess: () => { invalidate(); toast.success(t('savedSearches.saved')) },
-    onError: () => toast.error(t('common.error')),
-  })
-  const removeMutation = useMutation({
-    mutationFn: (id: string) => savedSearchesApi.remove(id),
-    onSuccess: invalidate,
-  })
-
-  const apply = (query: string) => navigate(`/transactions${query ? `?${query}` : ''}`)
-  const saveCurrent = () => {
-    const name = window.prompt(t('savedSearches.namePrompt'))
-    if (!name) return
-    createMutation.mutate({ name: name.trim(), query: window.location.search.replace(/^\?/, '') })
-  }
-
-  return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {(searches ?? []).map((s) => {
-        const query = typeof s.filters_json?.query === 'string' ? s.filters_json.query : ''
-        return (
-          <span key={s.id} className="group inline-flex items-center gap-1 rounded-full border border-border bg-card pl-3 pr-1.5 py-1 text-xs hover:border-primary/40 transition-colors">
-            <button className="text-foreground hover:text-primary" onClick={() => apply(query)}>{s.name}</button>
-            <button className="text-muted-foreground/50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeMutation.mutate(s.id)}>×</button>
-          </span>
-        )
-      })}
-      <button onClick={saveCurrent} className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
-        + {t('savedSearches.saveCurrent')}
-      </button>
     </div>
   )
 }

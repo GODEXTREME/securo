@@ -96,3 +96,54 @@ def test_get_storage_provider_unsupported():
                 get_storage_provider()
     finally:
         providers_mod._storage_provider = original
+
+
+class TestOAuthRedirectDefaults:
+    """Redirect URIs fall back to FRONTEND_URL so a custom port/domain works.
+
+    Deriving here rather than in docker-compose keeps the compose files free of
+    nested `${VAR:-${OTHER:-x}}` interpolation, which podman-compose cannot
+    parse (containers/podman-compose#1064).
+    """
+
+    def _settings(self, **overrides):
+        from app.core.config import Settings
+
+        defaults = {
+            "frontend_url": "http://localhost:3000",
+            "pluggy_oauth_redirect_uri": "",
+            "enable_banking_oauth_redirect_uri": "",
+        }
+        return Settings(**{**defaults, **overrides})
+
+    def test_default_derives_from_frontend_url(self):
+        from app.providers.base import default_oauth_redirect_uri
+
+        with patch("app.core.config.get_settings", return_value=self._settings()):
+            assert default_oauth_redirect_uri() == "http://localhost:3000/oauth/callback"
+
+    def test_default_honours_custom_port_and_domain(self):
+        from app.providers.base import default_oauth_redirect_uri
+
+        settings = self._settings(frontend_url="https://securo.example.com/")
+        with patch("app.core.config.get_settings", return_value=settings):
+            assert default_oauth_redirect_uri() == "https://securo.example.com/oauth/callback"
+
+    def test_enable_banking_uses_derived_default_when_unset(self):
+        from app.providers.enable_banking import EnableBankingProvider
+
+        settings = self._settings(frontend_url="http://localhost:3132")
+        with patch("app.core.config.get_settings", return_value=settings), \
+             patch("app.providers.enable_banking.get_settings", return_value=settings):
+            assert EnableBankingProvider().redirect_uri == "http://localhost:3132/oauth/callback"
+
+    def test_explicit_value_still_wins(self):
+        from app.providers.enable_banking import EnableBankingProvider
+
+        settings = self._settings(
+            frontend_url="http://localhost:3000",
+            enable_banking_oauth_redirect_uri="https://registered.example.com/cb",
+        )
+        with patch("app.core.config.get_settings", return_value=settings), \
+             patch("app.providers.enable_banking.get_settings", return_value=settings):
+            assert EnableBankingProvider().redirect_uri == "https://registered.example.com/cb"
