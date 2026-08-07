@@ -14,10 +14,10 @@ import logging
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import httpx
-from sqlalchemy import func, select, update
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
@@ -321,7 +321,7 @@ async def mark_read(
         .values(is_read=True)
     )
     await session.commit()
-    return result.rowcount > 0
+    return cast(CursorResult, result).rowcount > 0
 
 
 async def mark_all_read(
@@ -337,7 +337,7 @@ async def mark_all_read(
         .values(is_read=True)
     )
     await session.commit()
-    return result.rowcount
+    return cast(CursorResult, result).rowcount
 
 
 async def delete_notification(

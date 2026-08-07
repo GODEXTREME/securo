@@ -7,7 +7,7 @@ import uuid
 from calendar import monthrange as _monthrange
 from collections import defaultdict
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -295,7 +295,7 @@ async def period_comparison(
         )
         names = {str(r[0]): r[1] for r in cres.all()}
 
-    rows = []
+    rows: list[dict[str, Any]] = []
     for cid in all_ids:
         c = cur.get(cid, 0.0)
         p = prev.get(cid, 0.0)

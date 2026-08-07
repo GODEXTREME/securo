@@ -8,7 +8,7 @@ spending stayed within the total budget (a light gamification signal).
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +44,7 @@ async def group_summary(
         if r.budget_amount:
             g["categories"] += 1
 
-    result = []
+    result: list[dict[str, Any]] = []
     for g in groups.values():
         if g["budget"] <= 0 and g["actual"] <= 0:
             continue

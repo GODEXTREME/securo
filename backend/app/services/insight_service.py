@@ -17,6 +17,7 @@ from app.core.config import get_settings
 from app.models.category import Category
 from app.models.transaction import Transaction
 from app.models.user import User
+from typing import Any
 
 MONTHS_BACK = 6
 
@@ -131,7 +132,7 @@ async def get_insights(
         else:
             expense[key] += float(total or 0)
 
-    savings_series = []
+    savings_series: list[dict[str, Any]] = []
     for k in range(MONTHS_BACK - 1, -1, -1):
         mk = _month_key(_shift_month(_first_of_month(today), k))
         inc = income.get(mk, 0.0)

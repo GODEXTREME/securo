@@ -10,7 +10,7 @@ import uuid
 from calendar import monthrange as _monthrange
 from collections import defaultdict
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -177,7 +177,7 @@ async def summary(
             cur = best.get(category_id)
             if cur is None or rate > cur[1]:
                 best[category_id] = (account_id, rate)
-    best_per_category = []
+    best_per_category: list[dict[str, Any]] = []
     for category_id, (account_id, rate) in best.items():
         acc = await session.get(Account, account_id)
         if category_id:

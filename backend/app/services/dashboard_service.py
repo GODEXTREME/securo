@@ -170,14 +170,17 @@ async def _get_installment_projections(
         numbered = [t for t in items if t.installment_number]
         if not numbered:
             continue
-        last = max(numbered, key=lambda t: t.installment_number)
+        last = max(numbered, key=lambda t: t.installment_number or 0)
         total = last.total_installments or 0
-        if total <= 1 or last.installment_number >= total:
+        # `numbered` only holds rows with a truthy installment_number, but that
+        # filter doesn't narrow the column type — bind it to an int local.
+        last_number = last.installment_number or 0
+        if total <= 1 or last_number >= total:
             continue  # plan finished or single parcel — nothing to project
         acc = accounts.get(last.account_id)
         per = round(abs(float(last.amount)), 2)
-        for k in range(last.installment_number + 1, total + 1):
-            charge_date = _add_months(last.date, k - last.installment_number)
+        for k in range(last_number + 1, total + 1):
+            charge_date = _add_months(last.date, k - last_number)
             if acc is not None and acc.type == "credit_card":
                 eff = compute_effective_date(charge_date, acc.statement_close_day, acc.payment_due_day)
             else:

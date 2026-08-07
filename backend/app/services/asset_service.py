@@ -1030,10 +1030,14 @@ async def get_asset_returns(
             if asset.sell_price is not None:
                 fl.append((asset.sell_date, -float(asset.sell_price)))
 
-        sold = asset.sell_date is not None and asset.sell_date <= today
+        # Keep the realized sell date as an Optional local rather than only a
+        # bool: the closure below compares against it, and a bool flag carries
+        # no narrowing, so `asset.sell_date` would still read as `date | None`.
+        sold_on = asset.sell_date if (asset.sell_date is not None and asset.sell_date <= today) else None
+        sold = sold_on is not None
 
         def gain_at(as_of: date) -> float:
-            v = 0.0 if (sold and as_of >= asset.sell_date) else value_at(vals, as_of)
+            v = 0.0 if (sold_on is not None and as_of >= sold_on) else value_at(vals, as_of)
             if not sold and vals[0][0] > as_of:
                 v = 0.0
             return v + cum(inc, as_of) - cum(fl, as_of)
