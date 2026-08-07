@@ -528,7 +528,16 @@
     "calendarAddIncome": "Add income",
     "calendarAddExpense": "Add expense",
     "calendarSelectedDay": "Selected day",
-    "calendarNoItems": "No transactions on this day"
+    "calendarNoItems": "No transactions on this day",
+    "transferLinkedTo": "Linked to:",
+    "calendarMetric": "Data",
+    "calendarBalanceMode": "Balance",
+    "calendarActivityMode": "Activity",
+    "calendarActivityTrend": "Daily activity",
+    "calendarNoActivity": "No activity this month",
+    "calendarNoMovements": "No movements",
+    "calendarActualNet": "Actual net",
+    "calendarTransfersExcluded": "Transfers are not counted as income or expenses"
   },
   "accounts": {
     "title": "Accounts",
@@ -827,7 +836,8 @@
     "generatePending": "Generate Pending",
     "autoGenerate": "Generate transactions automatically",
     "autoGenerateHelp": "Create a transaction each time this bill is due. Turn off to wait for the real charge (e.g. from bank sync) and only show it as upcoming until then.",
-    "fxEstimate": "Estimate based on latest exchange rate ({{rate}}). Final amount may change."
+    "fxEstimate": "Estimate based on latest exchange rate ({{rate}}). Final amount may change.",
+    "quarterly": "Quarterly"
   },
   "rules": {
     "section": "Automation",
@@ -907,7 +917,8 @@
     "importConfirmTitle": "Import categorization rules?",
     "importConfirmDescription": "File {{file}} contains {{count}} rules.",
     "importOverwriteWarning": "Importing will overwrite your current categorization rules. This cannot be undone.",
-    "confirmOverwriteImport": "Overwrite and import"
+    "confirmOverwriteImport": "Overwrite and import",
+    "blankConditionValue": "Every condition needs a value. A blank one would match every transaction."
   },
   "categories": {
     "title": "Categories",
@@ -1012,7 +1023,10 @@
     "balanceImpact": "Balance impact",
     "importedWithExcluded": "{{imported}} imported, {{skipped}} skipped, {{excluded}} excluded",
     "suggested": "Suggested",
-    "page": "Page {{current}} of {{total}}"
+    "page": "Page {{current}} of {{total}}",
+    "mapPayee": "Payee column",
+    "mapExternalId": "Transaction ID column",
+    "mapNotes": "Notes column"
   },
   "assets": {
     "title": "Assets",
@@ -1270,7 +1284,12 @@
     "typeCompany": "Company",
     "allTypes": "All Types",
     "filterByType": "Filter by Type",
-    "favoritesOnly": "Favorites Only"
+    "favoritesOnly": "Favorites Only",
+    "deleteTitle": "Delete Payee",
+    "deleteConfirm": "Are you sure you want to delete this payee? This will also remove the payee from any associated transactions.",
+    "deleteMultipleTitle": "Delete Payees",
+    "deleteMultipleConfirm": "Are you sure you want to delete the {{count}} selected payees? This will also remove them from any associated transactions.",
+    "deletedMultiple": "{{count}} payees deleted"
   },
   "common": {
     "view": "View",

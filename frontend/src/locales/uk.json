@@ -528,7 +528,16 @@
     "calendarAddIncome": "Додати дохід",
     "calendarAddExpense": "Додати витрату",
     "calendarSelectedDay": "Вибраний день",
-    "calendarNoItems": "Немає транзакцій у цей день"
+    "calendarNoItems": "Немає транзакцій у цей день",
+    "transferLinkedTo": "Пов'язана з:",
+    "calendarMetric": "Дані",
+    "calendarBalanceMode": "Баланс",
+    "calendarActivityMode": "Активність",
+    "calendarActivityTrend": "Щоденна активність",
+    "calendarNoActivity": "Цього місяця немає активності",
+    "calendarNoMovements": "Немає операцій",
+    "calendarActualNet": "Фактичний підсумок",
+    "calendarTransfersExcluded": "Перекази не враховуються як надходження чи витрати"
   },
   "accounts": {
     "title": "Рахунки",
@@ -827,7 +836,8 @@
     "generatePending": "Створити очікувані",
     "autoGenerate": "Створювати транзакції автоматично",
     "autoGenerateHelp": "Створює транзакцію щоразу, коли настає термін оплати. Вимкніть, щоб дочекатися реального списання (наприклад, із банківської синхронізації) і до того часу показувати її лише як майбутню.",
-    "fxEstimate": "Оцінка на основі останнього курсу ({{rate}}). Підсумкова сума може змінитися."
+    "fxEstimate": "Оцінка на основі останнього курсу ({{rate}}). Підсумкова сума може змінитися.",
+    "quarterly": "Щоквартально"
   },
   "rules": {
     "section": "Автоматизація",
@@ -907,7 +917,8 @@
     "importConfirmTitle": "Імпортувати правила категоризації?",
     "importConfirmDescription": "Файл {{file}} містить правил: {{count}}.",
     "importOverwriteWarning": "Імпорт перезапише поточні правила категоризації. Ця дія незворотна.",
-    "confirmOverwriteImport": "Перезаписати та імпортувати"
+    "confirmOverwriteImport": "Перезаписати та імпортувати",
+    "blankConditionValue": "Кожна умова потребує значення. Порожня умова збігатиметься з усіма транзакціями."
   },
   "categories": {
     "title": "Категорії",
@@ -1012,7 +1023,10 @@
     "balanceImpact": "Вплив на баланс",
     "importedWithExcluded": "{{imported}} імпортовано, {{skipped}} пропущено, {{excluded}} виключено",
     "suggested": "Запропоновано",
-    "page": "Сторінка {{current}} із {{total}}"
+    "page": "Сторінка {{current}} із {{total}}",
+    "mapPayee": "Стовпець одержувача",
+    "mapExternalId": "Стовпець ID транзакції",
+    "mapNotes": "Стовпець приміток"
   },
   "assets": {
     "title": "Активи",
@@ -1270,7 +1284,12 @@
     "typeCompany": "Компанія",
     "allTypes": "Всі типи",
     "filterByType": "Фільтрувати за типом",
-    "favoritesOnly": "Тільки обрані"
+    "favoritesOnly": "Тільки обрані",
+    "deletedMultiple": "Видалено {{count}} одержувачів",
+    "deleteTitle": "Видалити одержувача",
+    "deleteConfirm": "Ви впевнені, що хочете видалити цього одержувача? Це також видалить його з усіх пов'язаних транзакцій.",
+    "deleteMultipleTitle": "Видалити одержувачів",
+    "deleteMultipleConfirm": "Ви впевнені, що хочете видалити {{count}} вибраних одержувачів? Це також видалить їх з усіх пов'язаних транзакцій."
   },
   "common": {
     "view": "Переглянути",

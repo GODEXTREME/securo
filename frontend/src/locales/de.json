@@ -528,7 +528,16 @@
     "calendarAddIncome": "Einnahme hinzufügen",
     "calendarAddExpense": "Ausgabe hinzufügen",
     "calendarSelectedDay": "Ausgewählter Tag",
-    "calendarNoItems": "Keine Transaktionen an diesem Tag"
+    "calendarNoItems": "Keine Transaktionen an diesem Tag",
+    "transferLinkedTo": "Verknüpft mit:",
+    "calendarMetric": "Daten",
+    "calendarBalanceMode": "Saldo",
+    "calendarActivityMode": "Aktivität",
+    "calendarActivityTrend": "Tägliche Aktivität",
+    "calendarNoActivity": "Keine Aktivität in diesem Monat",
+    "calendarNoMovements": "Keine Bewegungen",
+    "calendarActualNet": "Tatsächliches Netto",
+    "calendarTransfersExcluded": "Umbuchungen zählen nicht als Einnahmen oder Ausgaben"
   },
   "accounts": {
     "title": "Konten",
@@ -827,7 +836,8 @@
     "generatePending": "Ausstehende erstellen",
     "autoGenerate": "Transaktionen automatisch erstellen",
     "autoGenerateHelp": "Erstellt bei jeder Fälligkeit dieser Rechnung eine Transaktion. Deaktivieren, um auf die tatsächliche Belastung (z. B. aus der Banksynchronisierung) zu warten und sie bis dahin nur als anstehend anzuzeigen.",
-    "fxEstimate": "Schätzung basierend auf dem aktuellsten Wechselkurs ({{rate}}). Der endgültige Betrag kann abweichen."
+    "fxEstimate": "Schätzung basierend auf dem aktuellsten Wechselkurs ({{rate}}). Der endgültige Betrag kann abweichen.",
+    "quarterly": "Vierteljährlich"
   },
   "rules": {
     "section": "Automatisierung",
@@ -907,7 +917,8 @@
     "importConfirmTitle": "Kategorisierungsregeln importieren?",
     "importConfirmDescription": "Die Datei {{file}} enthält {{count}} Regeln.",
     "importOverwriteWarning": "Der Import überschreibt deine aktuellen Kategorisierungsregeln. Dies kann nicht rückgängig gemacht werden.",
-    "confirmOverwriteImport": "Überschreiben und importieren"
+    "confirmOverwriteImport": "Überschreiben und importieren",
+    "blankConditionValue": "Jede Bedingung benötigt einen Wert. Eine leere Bedingung würde auf alle Transaktionen zutreffen."
   },
   "categories": {
     "title": "Kategorien",
@@ -1012,7 +1023,10 @@
     "balanceImpact": "Auswirkung auf den Saldo",
     "importedWithExcluded": "{{imported}} importiert, {{skipped}} übersprungen, {{excluded}} ausgeschlossen",
     "suggested": "Vorgeschlagen",
-    "page": "Seite {{current}} von {{total}}"
+    "page": "Seite {{current}} von {{total}}",
+    "mapPayee": "Spalte Zahlungsempfänger",
+    "mapExternalId": "Spalte Transaktions-ID",
+    "mapNotes": "Spalte Notizen"
   },
   "assets": {
     "title": "Vermögenswerte",
@@ -1270,7 +1284,12 @@
     "typeCompany": "Unternehmen",
     "allTypes": "Alle Typen",
     "filterByType": "Nach Typ filtern",
-    "favoritesOnly": "Nur Favoriten"
+    "favoritesOnly": "Nur Favoriten",
+    "deletedMultiple": "{{count}} Zahlungsempfänger gelöscht",
+    "deleteTitle": "Zahlungsempfänger löschen",
+    "deleteConfirm": "Möchten Sie diesen Zahlungsempfänger wirklich löschen? Dadurch wird der Zahlungsempfänger auch aus allen zugehörigen Transaktionen entfernt.",
+    "deleteMultipleTitle": "Zahlungsempfänger löschen",
+    "deleteMultipleConfirm": "Möchten Sie die {{count}} ausgewählten Zahlungsempfänger wirklich löschen? Dadurch werden sie auch aus allen zugehörigen Transaktionen entfernt."
   },
   "common": {
     "view": "Ansehen",

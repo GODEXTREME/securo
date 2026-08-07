@@ -19,6 +19,7 @@ from app.services.payee_service import (
     get_payee_summary,
     merge_payees,
     update_payee,
+    bulk_delete_payees,
 )
 
 
@@ -54,7 +55,7 @@ async def test_create_payee(session: AsyncSession, test_user, test_workspace):
     assert payee.name == "Starbucks"
     assert payee.type == "merchant"
     assert payee.is_favorite is False
-    assert payee.transaction_count == 0
+    assert payee.transaction_count == 0  # type: ignore[attr-defined]
     assert payee.user_id == test_user.id
 
 
@@ -138,8 +139,8 @@ async def test_get_payees_with_transaction_counts(session: AsyncSession, test_us
     payees = await get_payees(session, test_workspace.id)
     payees_by_name = {p.name: p for p in payees}
 
-    assert payees_by_name["Payee A"].transaction_count == 2
-    assert payees_by_name["Payee B"].transaction_count == 1
+    assert payees_by_name["Payee A"].transaction_count == 2  # type: ignore[attr-defined]
+    assert payees_by_name["Payee B"].transaction_count == 1  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -174,8 +175,8 @@ async def test_get_payees_includes_zero_transaction_payees(session: AsyncSession
     assert orphan.id in ids
 
     payees_by_id = {p.id: p for p in payees}
-    assert payees_by_id[active.id].transaction_count == 1
-    assert payees_by_id[orphan.id].transaction_count == 0
+    assert payees_by_id[active.id].transaction_count == 1  # type: ignore[attr-defined]
+    assert payees_by_id[orphan.id].transaction_count == 0  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +281,75 @@ async def test_delete_payee_nulls_transaction_refs(session: AsyncSession, test_u
 
     await session.refresh(tx)
     assert tx.payee_id is None
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_payees(session: AsyncSession, test_user, test_workspace):
+    p1 = await create_payee(session, test_workspace.id, test_user.id, PayeeCreate(name="Bulk1"))
+    p2 = await create_payee(session, test_workspace.id, test_user.id, PayeeCreate(name="Bulk2"))
+    p3 = await create_payee(session, test_workspace.id, test_user.id, PayeeCreate(name="Bulk3"))
+
+    account = await _make_account(session, test_user)
+
+    tx = Transaction(
+        id=uuid.uuid4(), user_id=test_user.id, account_id=account.id,
+        description="Linked Tx", amount=Decimal("50"), date=date.today(),
+        type="debit", source="manual", payee_id=p1.id,
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(tx)
+    await session.commit()
+
+    deleted = await bulk_delete_payees(session, test_workspace.id, [p1.id, p2.id])
+    assert deleted == 2
+
+    assert await get_payee(session, p1.id, test_workspace.id) is None
+    assert await get_payee(session, p2.id, test_workspace.id) is None
+    assert await get_payee(session, p3.id, test_workspace.id) is not None
+
+    await session.refresh(tx)
+    assert tx.payee_id is None
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_payees_invalid_ids(session: AsyncSession, test_user, test_workspace):
+    deleted = await bulk_delete_payees(session, test_workspace.id, [uuid.uuid4(), uuid.uuid4()])
+    assert deleted == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_payees_workspace_isolation(session: AsyncSession, test_user, test_workspace):
+    from app.models.workspace import Workspace
+    
+    other_workspace = Workspace(id=uuid.uuid4(), name="Other")
+    session.add(other_workspace)
+    await session.commit()
+
+    p = await create_payee(session, other_workspace.id, test_user.id, PayeeCreate(name="OtherWS"))
+    deleted = await bulk_delete_payees(session, test_workspace.id, [p.id])
+    assert deleted == 0
+
+    assert await get_payee(session, p.id, other_workspace.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_payee_cleans_up_mappings(session: AsyncSession, test_user, test_workspace):
+    from sqlalchemy import select
+
+    p = await create_payee(session, test_workspace.id, test_user.id, PayeeCreate(name="Mapped"))
+    mapping = PayeeMapping(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        target_id=p.id,
+    )
+    session.add(mapping)
+    await session.commit()
+
+    await delete_payee(session, p.id, test_workspace.id)
+
+    result = await session.execute(select(PayeeMapping).where(PayeeMapping.target_id == p.id))
+    assert result.scalar_one_or_none() is None
 
 
 # ---------------------------------------------------------------------------

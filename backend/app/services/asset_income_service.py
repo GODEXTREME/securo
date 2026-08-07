@@ -6,7 +6,7 @@ asset, the monthly series and the yield on the amount invested.
 import uuid
 from collections import defaultdict
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -116,7 +116,7 @@ async def summary(
         per_asset[inc.asset_id] += amt
         per_month[inc.date.strftime("%Y-%m")] += amt
 
-    by_asset = []
+    by_asset: list[dict[str, Any]] = []
     for asset_id, asset_total in per_asset.items():
         asset = await session.get(Asset, asset_id)
         invested = 0.0

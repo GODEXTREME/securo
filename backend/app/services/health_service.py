@@ -21,6 +21,7 @@ from app.models.transaction import Transaction
 from app.models.user import User
 from app.services import dashboard_service
 from app.services.fx_rate_service import convert
+from typing import Any
 
 LIQUID_TYPES = ("checking", "savings", "wallet")
 
@@ -108,7 +109,7 @@ async def get_health_score(
     ratio = monthly_expense / monthly_income if monthly_income > 0 else 1.5
     s_cashflow = _clamp((1.2 - ratio) / 1.2 * 100)
 
-    components = [
+    components: list[dict[str, Any]] = [
         {"key": "savings_rate", "label": "Savings rate", "score": round(s_savings),
          "detail": f"{savings_rate:.0f}% of income saved"},
         {"key": "emergency_fund", "label": "Emergency fund", "score": round(s_emergency),

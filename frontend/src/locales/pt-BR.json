@@ -528,7 +528,16 @@
     "calendarAddIncome": "Adicionar receita",
     "calendarAddExpense": "Adicionar despesa",
     "calendarSelectedDay": "Dia selecionado",
-    "calendarNoItems": "Nenhuma transação neste dia"
+    "calendarNoItems": "Nenhuma transação neste dia",
+    "transferLinkedTo": "Vinculada a:",
+    "calendarMetric": "Dados",
+    "calendarBalanceMode": "Saldo",
+    "calendarActivityMode": "Atividade",
+    "calendarActivityTrend": "Atividade diária",
+    "calendarNoActivity": "Sem atividade neste mês",
+    "calendarNoMovements": "Sem movimentações",
+    "calendarActualNet": "Líquido real",
+    "calendarTransfersExcluded": "Transferências não contam como receitas ou despesas"
   },
   "accounts": {
     "title": "Contas",
@@ -827,7 +836,8 @@
     "generatePending": "Gerar Pendentes",
     "autoGenerate": "Gerar transações automaticamente",
     "autoGenerateHelp": "Cria uma transação sempre que esta conta vence. Desative para aguardar o lançamento real (por exemplo, da sincronização bancária) e mostrá-la apenas como prevista até lá.",
-    "fxEstimate": "Estimativa baseada na última taxa de câmbio ({{rate}}). O valor final pode mudar."
+    "fxEstimate": "Estimativa baseada na última taxa de câmbio ({{rate}}). O valor final pode mudar.",
+    "quarterly": "Trimestral"
   },
   "rules": {
     "section": "Automação",
@@ -907,7 +917,8 @@
     "importConfirmTitle": "Import categorization rules?",
     "importConfirmDescription": "File {{file}} contains {{count}} rules.",
     "importOverwriteWarning": "Importing will overwrite your current categorization rules. This cannot be undone.",
-    "confirmOverwriteImport": "Overwrite and import"
+    "confirmOverwriteImport": "Overwrite and import",
+    "blankConditionValue": "Toda condição precisa de um valor. Uma condição em branco corresponderia a todas as transações."
   },
   "categories": {
     "title": "Categorias",
@@ -1012,7 +1023,10 @@
     "balanceImpact": "Impacto no saldo",
     "importedWithExcluded": "{{imported}} importadas, {{skipped}} ignoradas, {{excluded}} excluídas",
     "suggested": "Sugerida",
-    "page": "Página {{current}} de {{total}}"
+    "page": "Página {{current}} de {{total}}",
+    "mapPayee": "Coluna de beneficiário",
+    "mapExternalId": "Coluna de ID da transação",
+    "mapNotes": "Coluna de notas"
   },
   "assets": {
     "title": "Patrimônio",
@@ -1270,7 +1284,12 @@
     "typeCompany": "Empresa",
     "allTypes": "Todos os tipos",
     "filterByType": "Filtrar por tipo",
-    "favoritesOnly": "Apenas favoritos"
+    "favoritesOnly": "Apenas favoritos",
+    "deletedMultiple": "{{count}} beneficiários excluídos",
+    "deleteTitle": "Excluir beneficiário",
+    "deleteConfirm": "Tem certeza de que deseja excluir este beneficiário? Isso também o removerá de todas as transações associadas.",
+    "deleteMultipleTitle": "Excluir beneficiários",
+    "deleteMultipleConfirm": "Tem certeza de que deseja excluir os {{count}} beneficiários selecionados? Isso também os removerá de todas as transações associadas."
   },
   "common": {
     "view": "Ver",

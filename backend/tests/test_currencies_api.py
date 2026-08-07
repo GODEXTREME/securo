@@ -46,3 +46,15 @@ async def test_currencies_include_dop_with_metadata(client: AsyncClient):
     assert dop["symbol"] == "RD$"
     assert dop["name"] == "Peso Dominicano"
     assert dop["flag"] == "🇩🇴"
+
+
+@pytest.mark.asyncio
+async def test_currencies_include_uah_with_metadata(client: AsyncClient):
+    response = await client.get("/api/currencies")
+    data = response.json()
+    uah = next((currency for currency in data if currency["code"] == "UAH"), None)
+
+    assert uah is not None
+    assert uah["symbol"] == "₴"
+    assert uah["name"] == "Ukrainian Hryvnia"
+    assert uah["flag"] == "🇺🇦"

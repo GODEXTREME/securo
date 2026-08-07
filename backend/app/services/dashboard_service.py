@@ -170,14 +170,17 @@ async def _get_installment_projections(
         numbered = [t for t in items if t.installment_number]
         if not numbered:
             continue
-        last = max(numbered, key=lambda t: t.installment_number)
+        last = max(numbered, key=lambda t: t.installment_number or 0)
         total = last.total_installments or 0
-        if total <= 1 or last.installment_number >= total:
+        # `numbered` only holds rows with a truthy installment_number, but that
+        # filter doesn't narrow the column type — bind it to an int local.
+        last_number = last.installment_number or 0
+        if total <= 1 or last_number >= total:
             continue  # plan finished or single parcel — nothing to project
         acc = accounts.get(last.account_id)
         per = round(abs(float(last.amount)), 2)
-        for k in range(last.installment_number + 1, total + 1):
-            charge_date = _add_months(last.date, k - last.installment_number)
+        for k in range(last_number + 1, total + 1):
+            charge_date = _add_months(last.date, k - last_number)
             if acc is not None and acc.type == "credit_card":
                 eff = compute_effective_date(charge_date, acc.statement_close_day, acc.payment_due_day)
             else:
@@ -267,6 +270,8 @@ async def get_summary(
     # don't inflate the month's income figure. counts_as_user_pnl() skips
     # paired transfers, transfer-like categories AND settlement movements
     # (whose offset is already in the owner's share, see share-only model).
+    # Only posted (settled) transactions count; pending entries stay out of
+    # the period totals until they post.
     monthly_result = await session.execute(
         select(
             func.sum(case((Transaction.type == "credit", Transaction.amount), else_=0)),
@@ -279,6 +284,7 @@ async def get_summary(
             report_date >= month_start,
             report_date < month_end,
             Transaction.source != "opening_balance",
+            Transaction.status == "posted",
             counts_as_user_pnl(),
             *acct_filter,
         )
@@ -390,7 +396,8 @@ async def get_summary(
     monthly_income_primary = real_monthly_income
     monthly_expenses_primary = abs(real_monthly_expenses)
 
-    # Use amount_primary sums for more accurate multi-currency income/expenses
+    # Use amount_primary sums for more accurate multi-currency income/expenses.
+    # Same posted-only rule as the native-currency totals above.
     primary_result = await session.execute(
         select(
             func.sum(case((Transaction.type == "credit", Transaction.amount_primary), else_=0)),
@@ -403,6 +410,7 @@ async def get_summary(
             report_date >= month_start,
             report_date < month_end,
             Transaction.source != "opening_balance",
+            Transaction.status == "posted",
             counts_as_user_pnl(),
             Transaction.amount_primary.isnot(None),
             *acct_filter,

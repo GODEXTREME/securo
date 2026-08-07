@@ -37,21 +37,25 @@ async def test_sinking_fund_crud_and_contribute(session: AsyncSession, test_user
 
     # Contribute 500 → 25%.
     updated = await sinking_fund_service.contribute(session, created.id, test_workspace.id, Decimal("500"))
+    assert updated is not None
     assert updated.current_amount == Decimal("500")
     assert updated.percentage == 25.0
 
     # Withdraw more than balance clamps to 0.
     updated = await sinking_fund_service.contribute(session, created.id, test_workspace.id, Decimal("-1000"))
+    assert updated is not None
     assert updated.current_amount == Decimal("0")
 
     # Fully fund → completed.
     updated = await sinking_fund_service.contribute(session, created.id, test_workspace.id, Decimal("2000"))
+    assert updated is not None
     assert updated.status == "completed"
     assert updated.percentage == 100.0
 
     # Update name.
     renamed = await sinking_fund_service.update_fund(
         session, created.id, test_workspace.id, SinkingFundUpdate(name="Trip 2026"))
+    assert renamed is not None
     assert renamed.name == "Trip 2026"
 
     summary = await sinking_fund_service.summary(session, test_workspace.id)

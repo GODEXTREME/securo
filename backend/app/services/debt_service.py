@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import dashboard_service
+from typing import Any
 
 DEBT_TYPES = ("credit_card",)
 MAX_MONTHS = 600  # 50-year guard against never-amortizing inputs
@@ -48,7 +49,7 @@ async def get_debt_accounts(session: AsyncSession, workspace_id: uuid.UUID) -> l
 def _simulate(debts: list[dict], extra_payment: float, strategy: str) -> dict:
     """Simulate payoff. ``debts`` items need name/balance/apr/min_payment."""
     # Working copies.
-    work = [
+    work: list[dict[str, Any]] = [
         {"name": d["name"], "balance": Decimal(str(d["balance"])),
          "rate": Decimal(str(d["apr"])) / Decimal("1200"),
          "min": Decimal(str(d["min_payment"]))}

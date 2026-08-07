@@ -564,7 +564,16 @@
     "calendarAddIncome": "Dodaj przychód",
     "calendarAddExpense": "Dodaj wydatek",
     "calendarSelectedDay": "Wybrany dzień",
-    "calendarNoItems": "Brak transakcji w tym dniu"
+    "calendarNoItems": "Brak transakcji w tym dniu",
+    "transferLinkedTo": "Powiązana z:",
+    "calendarMetric": "Dane",
+    "calendarBalanceMode": "Saldo",
+    "calendarActivityMode": "Aktywność",
+    "calendarActivityTrend": "Dzienna aktywność",
+    "calendarNoActivity": "Brak aktywności w tym miesiącu",
+    "calendarNoMovements": "Brak operacji",
+    "calendarActualNet": "Rzeczywiste netto",
+    "calendarTransfersExcluded": "Transfery nie liczą się jako przychody ani wydatki"
   },
   "accounts": {
     "title": "Konta",
@@ -887,7 +896,8 @@
     "fxEstimate": "Szacunek na podstawie najnowszego kursu wymiany ({{rate}}). Ostateczna kwota może się zmienić.",
     "generated": "{{count}} transactions generated",
     "autoGenerate": "Automatycznie generuj transakcje",
-    "autoGenerateHelp": "Tworzy transakcję za każdym razem, gdy ten rachunek jest wymagalny. Wyłącz, aby poczekać na rzeczywiste obciążenie (np. z synchronizacji bankowej) i do tego czasu pokazywać je tylko jako nadchodzące."
+    "autoGenerateHelp": "Tworzy transakcję za każdym razem, gdy ten rachunek jest wymagalny. Wyłącz, aby poczekać na rzeczywiste obciążenie (np. z synchronizacji bankowej) i do tego czasu pokazywać je tylko jako nadchodzące.",
+    "quarterly": "Kwartalnie"
   },
   "rules": {
     "section": "Automatyzacja",
@@ -979,7 +989,8 @@
     "confirmOverwriteImport": "Overwrite and import",
     "packRuleCount": "{{count}} rules",
     "packInstalled": "{{count}} rules installed",
-    "applied": "Rules applied to {{count}} transactions"
+    "applied": "Rules applied to {{count}} transactions",
+    "blankConditionValue": "Każdy warunek wymaga wartości. Pusty warunek pasowałby do wszystkich transakcji."
   },
   "categories": {
     "title": "Kategorie",
@@ -1104,7 +1115,10 @@
     "expenseCount": "{{count}} expenses",
     "importButton": "Import {{count}} transactions",
     "undoDescription": "This will delete {{count}} imported transactions from {{filename}}. This action cannot be undone.",
-    "previewInfo": "{{count}} transactions · format {{format}}"
+    "previewInfo": "{{count}} transactions · format {{format}}",
+    "mapPayee": "Kolumna odbiorcy",
+    "mapExternalId": "Kolumna ID transakcji",
+    "mapNotes": "Kolumna notatek"
   },
   "assets": {
     "title": "Aktywa",
@@ -1370,7 +1384,12 @@
     "filterByType": "Filtruj według typu",
     "favoritesOnly": "Tylko ulubione",
     "viewAllTransactions": "View all {{count}} transactions",
-    "merged": "Payees merged ({{count}} transactions reassigned)"
+    "merged": "Payees merged ({{count}} transactions reassigned)",
+    "deletedMultiple": "Usunięto {{count}} odbiorców",
+    "deleteTitle": "Usuń odbiorcę",
+    "deleteConfirm": "Czy na pewno chcesz usunąć tego odbiorcę? Usunie to również odbiorcę ze wszystkich powiązanych transakcji.",
+    "deleteMultipleTitle": "Usuń odbiorców",
+    "deleteMultipleConfirm": "Czy na pewno chcesz usunąć {{count}} wybranych odbiorców? Usunie to ich również ze wszystkich powiązanych transakcji."
   },
   "common": {
     "view": "Zobacz",

@@ -109,6 +109,8 @@ async def test_create_rule_does_not_overwrite_existing_category(
 
     items = (await client.get("/api/transactions", headers=auth_headers)).json()["items"]
     ifood = {t["description"]: t for t in items}.get("IFOOD RESTAURANTE")
+
+    assert ifood is not None
     assert ifood["category_id"] == original
 
 
@@ -133,6 +135,8 @@ async def test_create_rule_can_overwrite_existing_category_when_requested(
 
     items = (await client.get("/api/transactions", headers=auth_headers)).json()["items"]
     ifood = {t["description"]: t for t in items}.get("IFOOD RESTAURANTE")
+
+    assert ifood is not None
     assert ifood["category_id"] != original
     assert ifood["category_id"] == other
 
@@ -309,6 +313,8 @@ async def test_update_rule_can_overwrite_existing_category_when_requested(
 
     items = (await client.get("/api/transactions", headers=auth_headers)).json()["items"]
     ifood = {t["description"]: t for t in items}.get("IFOOD RESTAURANTE")
+
+    assert ifood is not None
     assert ifood["category_id"] != original
     assert ifood["category_id"] == other
 
@@ -409,6 +415,8 @@ async def test_apply_all_resets_before_reapply(
     by_desc = {t["description"]: t for t in items}
 
     uber = by_desc.get("UBER TRIP")
+
+    assert uber is not None
     assert uber["category_id"] == str(test_categories[1].id)
 
 
@@ -751,3 +759,63 @@ async def test_import_rules_with_overwrite_preserves_existing_when_every_rule_is
     assert response.json() == {"imported": 0, "skipped": 1, "overwritten": 0}
     after_response = await client.get("/api/rules", headers=auth_headers)
     assert [rule["name"] for rule in after_response.json()] == before_names
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blank", ["", "   ", None])
+async def test_create_rule_rejects_blank_condition_value(
+    client: AsyncClient, auth_headers, test_categories, blank
+):
+    """A blank condition value matches every transaction, so it must be rejected
+    rather than silently recategorising the whole ledger (issue #438)."""
+    payload = {
+        "name": "Blank condition",
+        "conditions_op": "and",
+        "conditions": [{"field": "description", "op": "contains", "value": blank}],
+        "actions": [{"op": "set_category", "value": str(test_categories[0].id)}],
+    }
+    response = await client.post("/api/rules", json=payload, headers=auth_headers)
+    assert response.status_code == 422
+
+    # And nothing was persisted.
+    listed = await client.get("/api/rules", headers=auth_headers)
+    assert all(r["name"] != "Blank condition" for r in listed.json())
+
+
+@pytest.mark.asyncio
+async def test_update_rule_rejects_blank_condition_value(
+    client: AsyncClient, auth_headers, test_categories
+):
+    created = await client.post(
+        "/api/rules",
+        json={
+            "name": "Ifood",
+            "conditions_op": "and",
+            "conditions": [{"field": "description", "op": "contains", "value": "IFOOD"}],
+            "actions": [{"op": "set_category", "value": str(test_categories[0].id)}],
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+
+    response = await client.patch(
+        f"/api/rules/{created.json()['id']}",
+        json={"conditions": [{"field": "description", "op": "contains", "value": ""}]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_rule_allows_zero_value(
+    client: AsyncClient, auth_headers, test_categories
+):
+    """0 is a real value, not a blank one."""
+    payload = {
+        "name": "Positive amounts",
+        "conditions_op": "and",
+        "conditions": [{"field": "amount", "op": "gt", "value": 0}],
+        "actions": [{"op": "set_category", "value": str(test_categories[0].id)}],
+    }
+    response = await client.post("/api/rules", json=payload, headers=auth_headers)
+    assert response.status_code == 201

@@ -528,7 +528,16 @@
     "calendarAddIncome": "Ajouter un revenu",
     "calendarAddExpense": "Ajouter une dépense",
     "calendarSelectedDay": "Jour sélectionné",
-    "calendarNoItems": "Aucune transaction ce jour-là"
+    "calendarNoItems": "Aucune transaction ce jour-là",
+    "transferLinkedTo": "Liée à :",
+    "calendarMetric": "Données",
+    "calendarBalanceMode": "Solde",
+    "calendarActivityMode": "Activité",
+    "calendarActivityTrend": "Activité quotidienne",
+    "calendarNoActivity": "Aucune activité ce mois-ci",
+    "calendarNoMovements": "Aucun mouvement",
+    "calendarActualNet": "Net réel",
+    "calendarTransfersExcluded": "Les virements ne comptent pas comme revenus ou dépenses"
   },
   "accounts": {
     "title": "Comptes",
@@ -827,7 +836,8 @@
     "generatePending": "Générer les transactions en attente",
     "autoGenerate": "Générer les transactions automatiquement",
     "autoGenerateHelp": "Créer une transaction à chaque échéance de cette facture. Désactivez pour attendre le prélèvement réel (ex. via la synchronisation bancaire) et l'afficher uniquement comme à venir jusque-là.",
-    "fxEstimate": "Estimation basée sur le dernier taux de change ({{rate}}). Le montant final peut varier."
+    "fxEstimate": "Estimation basée sur le dernier taux de change ({{rate}}). Le montant final peut varier.",
+    "quarterly": "Trimestrielle"
   },
   "rules": {
     "section": "Automatisation",
@@ -907,7 +917,8 @@
     "importConfirmTitle": "Importer les règles de catégorisation ?",
     "importConfirmDescription": "Le fichier {{file}} contient {{count}} règles.",
     "importOverwriteWarning": "L'importation écrasera vos règles de catégorisation actuelles. Cette action est irréversible.",
-    "confirmOverwriteImport": "Écraser et importer"
+    "confirmOverwriteImport": "Écraser et importer",
+    "blankConditionValue": "Chaque condition nécessite une valeur. Une condition vide correspondrait à toutes les transactions."
   },
   "categories": {
     "title": "Catégories",
@@ -1012,7 +1023,10 @@
     "balanceImpact": "Impact sur le solde",
     "importedWithExcluded": "{{imported}} importées, {{skipped}} ignorées, {{excluded}} exclues",
     "suggested": "Suggérée",
-    "page": "Page {{current}} sur {{total}}"
+    "page": "Page {{current}} sur {{total}}",
+    "mapPayee": "Colonne du bénéficiaire",
+    "mapExternalId": "Colonne d'ID de transaction",
+    "mapNotes": "Colonne des notes"
   },
   "assets": {
     "title": "Actifs",
@@ -1270,7 +1284,12 @@
     "typeCompany": "Entreprise",
     "allTypes": "Tous les types",
     "filterByType": "Filtrer par type",
-    "favoritesOnly": "Favoris uniquement"
+    "favoritesOnly": "Favoris uniquement",
+    "deletedMultiple": "{{count}} bénéficiaires supprimés",
+    "deleteTitle": "Supprimer le bénéficiaire",
+    "deleteConfirm": "Êtes-vous sûr de vouloir supprimer ce bénéficiaire ? Cela le supprimera également de toutes les transactions associées.",
+    "deleteMultipleTitle": "Supprimer les bénéficiaires",
+    "deleteMultipleConfirm": "Êtes-vous sûr de vouloir supprimer les {{count}} bénéficiaires sélectionnés ? Cela les supprimera également de toutes les transactions associées."
   },
   "common": {
     "view": "Voir",
