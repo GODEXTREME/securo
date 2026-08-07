@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +56,9 @@ async def get_transaction_calendar(
 
     requested_account_ids = account_ids
     if requested_account_ids is not None and len(requested_account_ids) == 0:
-        return _empty_calendar(month_start, grid_start, grid_end, primary_currency, requested_account_ids)
+        return _empty_calendar(
+            month_start, grid_start, grid_end, primary_currency, requested_account_ids
+        )
 
     days = {
         d: TransactionCalendarDay(
@@ -94,18 +96,24 @@ async def get_transaction_calendar(
             session, tx.amount, tx.currency, primary_currency, tx.amount_primary
         )
 
-        is_transfer = bool(tx.transfer_pair_id) or bool(tx.category and tx.category.treat_as_transfer)
+        is_transfer = bool(tx.transfer_pair_id) or bool(
+            tx.category and tx.category.treat_as_transfer
+        )
         ignored = bool(tx.is_ignored or (tx.category and tx.category.is_ignored))
         if not ignored:
             if is_transfer or tx.source == "transfer":
-                day.transfer_net += await _signed_balance_delta_primary(session, tx, primary_currency)
+                transfer_delta = await _signed_balance_delta_primary(session, tx, primary_currency)
+                day.transfer_net += transfer_delta
+                day.actual_transfer_net += transfer_delta
                 day.has_transfer = True
             elif tx.source != "opening_balance":
                 if tx.type == "credit":
                     day.income += amount_primary
+                    day.actual_income += amount_primary
                     day.has_income = True
                 else:
                     day.expense += amount_primary
+                    day.actual_expense += amount_primary
                     day.has_expense = True
 
         day.actual_count += 1
@@ -122,15 +130,23 @@ async def get_transaction_calendar(
     for item, signed_delta in projected_items:
         day = days[item.date]
         amount_primary = abs(signed_delta)
-        if item.is_transfer:
-            day.transfer_net += signed_delta
-            day.has_transfer = True
-        elif item.type == "credit":
-            day.income += amount_primary
-            day.has_income = True
-        else:
-            day.expense += amount_primary
-            day.has_expense = True
+        # Ignored projections stay out of every aggregate, exactly like ignored
+        # actuals: out of the activity buckets here, and out of the balance deltas
+        # built in _project_recurring_items. A recurring the user chose to ignore
+        # must not move a projected balance that will not move once it posts.
+        if not item.is_ignored:
+            if item.is_transfer:
+                day.transfer_net += signed_delta
+                day.projected_transfer_net += signed_delta
+                day.has_transfer = True
+            elif item.type == "credit":
+                day.income += amount_primary
+                day.projected_income += amount_primary
+                day.has_income = True
+            else:
+                day.expense += amount_primary
+                day.projected_expense += amount_primary
+                day.has_expense = True
         day.projected_count += 1
         day.items.append(item)
 
@@ -146,6 +162,12 @@ async def get_transaction_calendar(
         day.income = round(day.income, 2)
         day.expense = round(day.expense, 2)
         day.transfer_net = round(day.transfer_net, 2)
+        day.actual_income = round(day.actual_income, 2)
+        day.actual_expense = round(day.actual_expense, 2)
+        day.actual_transfer_net = round(day.actual_transfer_net, 2)
+        day.projected_income = round(day.projected_income, 2)
+        day.projected_expense = round(day.projected_expense, 2)
+        day.projected_transfer_net = round(day.projected_transfer_net, 2)
         day.items.sort(key=lambda item: (item.kind != "actual", item.type, item.description.lower()))
         response_days.append(day)
 
@@ -243,7 +265,11 @@ async def _signed_balance_delta_primary(
     primary_currency: str,
 ) -> float:
     account_currency = tx.account.currency if tx.account else tx.currency
-    effective = tx.amount if tx.currency == account_currency else Decimal(str(tx.amount_primary or tx.amount))
+    effective = (
+        tx.amount
+        if tx.currency == account_currency
+        else Decimal(str(tx.amount_primary or tx.amount))
+    )
     amount = abs(Decimal(str(effective)))
     if account_currency != primary_currency:
         amount, _ = await fx_convert(session, amount, account_currency, primary_currency)
@@ -251,7 +277,9 @@ async def _signed_balance_delta_primary(
     return float(signed)
 
 
-def _actual_item(tx: Transaction, amount_primary: float, is_transfer: bool, ignored: bool) -> TransactionCalendarItem:
+def _actual_item(
+    tx: Transaction, amount_primary: float, is_transfer: bool, ignored: bool
+) -> TransactionCalendarItem:
     category = tx.category
     account = tx.account
     return TransactionCalendarItem(
@@ -262,7 +290,7 @@ def _actual_item(tx: Transaction, amount_primary: float, is_transfer: bool, igno
         amount=float(tx.amount),
         amount_primary=amount_primary,
         currency=tx.currency,
-        type=tx.type,
+        type=cast(Literal["debit", "credit"], tx.type),
         account_id=tx.account_id,
         account_name=account.display_name or account.name if account else None,
         category_id=tx.category_id,
@@ -325,6 +353,7 @@ async def _project_recurring_items(
         )
         signed_delta = amount_primary if rec.type == "credit" else -amount_primary
         is_transfer = bool(category and category.treat_as_transfer)
+        is_ignored = bool(category and category.is_ignored)
         for occ_date in occurrences:
             item = TransactionCalendarItem(
                 kind="projected",
@@ -334,7 +363,7 @@ async def _project_recurring_items(
                 amount=float(rec.amount),
                 amount_primary=amount_primary,
                 currency=rec.currency,
-                type=rec.type,
+                type=cast(Literal["debit", "credit"], rec.type),
                 account_id=rec.account_id,
                 account_name=account.display_name or account.name if account else None,
                 category_id=rec.category_id,
@@ -343,7 +372,13 @@ async def _project_recurring_items(
                 category_color=category.color if category else None,
                 source="recurring",
                 is_transfer=is_transfer,
+                is_ignored=is_ignored,
             )
             items.append((item, signed_delta))
-            deltas[occ_date] = deltas.get(occ_date, 0.0) + signed_delta
+            # The row is still listed, but an ignored occurrence never moves the
+            # projected balance: _daily_balance_deltas_by_date already leaves the
+            # posted version out, so counting the projection here would promise a
+            # balance that reverts the day the recurring actually posts.
+            if not is_ignored:
+                deltas[occ_date] = deltas.get(occ_date, 0.0) + signed_delta
     return items, deltas

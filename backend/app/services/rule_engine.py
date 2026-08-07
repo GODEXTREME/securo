@@ -48,6 +48,15 @@ def _match_condition(condition: dict, tx: "Transaction") -> bool:
 
     tx_val = getattr(tx, field, None)
 
+    # A blank value matches everything: "" is a substring of any string, every
+    # string starts/ends with it, an empty regex always matches, and numeric
+    # comparisons fall back to 0. Creation now rejects these, but rules saved
+    # before that validation existed are still in users' databases — refuse to
+    # match rather than recategorizing their whole ledger. Explicit 0/False
+    # are real values and pass through.
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return False
+
     # String operators
     if op in ("contains", "not_contains", "starts_with", "ends_with", "equals", "not_equals", "regex"):
         tx_str = _normalize(str(tx_val or ""))

@@ -1160,6 +1160,8 @@ async def sync_connection(
     connection = await get_connection(session, connection_id, workspace_id)
     if not connection:
         raise ValueError("Connection not found")
+    if not connection.credentials:
+        raise ValueError("Credentials not found")
 
     conn_settings = connection.settings or {}
     payee_source = conn_settings.get("payee_source", "auto")
@@ -1578,8 +1580,11 @@ async def sync_connection(
             conn = await session.get(BankConnection, connection_id)
             if conn and conn.status != "expired":
                 conn.status = "active"
+        # The row can vanish if the connection was deleted mid-sync. Fall back
+        # to the one we already hold rather than raising: re-raising here would
+        # escape as a 500, which is exactly what this handler exists to avoid.
         refreshed = await session.get(BankConnection, connection_id)
-        return refreshed, 0
+        return refreshed or connection, 0
     except Exception:
         # Mark connection as errored so UI shows reconnect banner
         await session.rollback()

@@ -1,9 +1,9 @@
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, cast
 
-from sqlalchemy import case, select, func, update, delete
+from sqlalchemy import CursorResult, case, select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.payee import Payee, PayeeMapping
@@ -80,6 +80,9 @@ async def get_or_create_payee(
     name = name.strip()
     if not name:
         raise ValueError("Payee name cannot be empty")
+
+    if len(name) > 255:
+        name = name[:255]
 
     lookup = select(Payee).where(func.lower(Payee.name) == name.lower())
     if workspace_id is not None:
@@ -177,6 +180,37 @@ async def delete_payee(session: AsyncSession, payee_id: uuid.UUID, workspace_id:
     return True
 
 
+async def bulk_delete_payees(session: AsyncSession, workspace_id: uuid.UUID, payee_ids: list[uuid.UUID]) -> int:
+    # Check which payees exist in this workspace first
+    payees_query = await session.execute(
+        select(Payee.id).where(Payee.id.in_(payee_ids), Payee.workspace_id == workspace_id)
+    )
+    valid_ids = [row[0] for row in payees_query.all()]
+
+    if not valid_ids:
+        return 0
+
+    # Null out transaction references
+    await session.execute(
+        update(Transaction)
+        .where(Transaction.payee_id.in_(valid_ids))
+        .values(payee_id=None)
+    )
+
+    # Delete mappings pointing to this payee
+    await session.execute(
+        delete(PayeeMapping).where(PayeeMapping.target_id.in_(valid_ids))
+    )
+
+    # Delete payees
+    result = await session.execute(
+        delete(Payee).where(Payee.id.in_(valid_ids))
+    )
+    
+    await session.commit()
+    return cast(CursorResult, result).rowcount
+
+
 async def merge_payees(
     session: AsyncSession,
     workspace_id: uuid.UUID,
@@ -203,7 +237,7 @@ async def merge_payees(
         .where(Transaction.payee_id.in_(source_ids))
         .values(payee_id=target_id)
     )
-    reassigned = result.rowcount
+    reassigned = cast(CursorResult, result).rowcount
 
     # Update mappings: point source mappings to target
     for source_id in source_ids:
@@ -263,7 +297,7 @@ async def get_payee_summary(
                     else_=Decimal("0"),
                 )
             ), Decimal("0")).label("total_received"),
-            func.count(Transaction.id).label("count"),
+            func.count(Transaction.id).label("tx_count"),
             func.max(Transaction.date).label("last_date"),
         )
         .where(
@@ -293,12 +327,12 @@ async def get_payee_summary(
         )
         most_common_category = cat.scalar_one_or_none()
 
-    payee.transaction_count = row.count
+    payee.transaction_count = row.tx_count
     return {
         "payee": payee,
         "total_spent": row.total_spent,
         "total_received": row.total_received,
-        "transaction_count": row.count,
+        "transaction_count": row.tx_count,
         "most_common_category": most_common_category,
         "last_transaction_date": row.last_date,
     }

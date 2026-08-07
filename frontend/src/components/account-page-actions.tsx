@@ -15,8 +15,10 @@ export type AccountPageActionsProps = {
   onConnectBank: () => void
   onOpenCollections: () => void
   /** Optional view switcher rendered ahead of the actions, so it takes part in
-   *  the same responsive row instead of overflowing it. Mirrors the
-   *  `viewToggle` slot on TransactionsPageActions. */
+   *  the same responsive row instead of overflowing it. Kept as a generic node
+   *  (rather than TransactionsPageActions' structured `view` config) because
+   *  the accounts switcher is a fork feature with its own default/by-type
+   *  semantics, not the list/calendar pair that config models. */
   viewToggle?: ReactNode
   testId?: string
 }

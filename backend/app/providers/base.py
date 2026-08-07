@@ -329,7 +329,7 @@ class BankProvider(ABC):
         """Refresh access token if needed."""
         ...
 
-    async def trigger_refresh(self, credentials: dict) -> RefreshOutcome:
+    async def trigger_refresh(self, credentials: dict | None) -> RefreshOutcome:
         """Ask the provider to pull fresh data from the underlying institution.
 
         Some aggregator providers cache the bank's data on their own side and

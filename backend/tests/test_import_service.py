@@ -10,6 +10,7 @@ from app.models.account import Account
 from app.models.fx_rate import FxRate
 from app.models.user import User
 from app.services.import_service import (
+    _preprocess_ofx,
     detect_csv_columns,
     parse_csv,
     parse_ofx,
@@ -255,6 +256,17 @@ class TestParseCsv:
         assert transactions[0].amount == Decimal("5000.00")
         assert transactions[1].amount == Decimal("1200.00")
 
+    def test_parse_csv_autodetects_payee_and_notes(self):
+        """CSV with common headers for payee and notes should auto-detect them. external_id is strictly explicit."""
+        csv_content = (
+            "date,description,amount,merchant,transaction_id,notes\n"
+            "2026-05-01,AMAZON,-25.00,Amazon.com,txn_123,Gift for John\n"
+        )
+        transactions = parse_csv(csv_content.encode("utf-8"))
+        assert len(transactions) == 1
+        assert transactions[0].payee_raw == "Amazon.com"
+        assert transactions[0].external_id is None
+        assert transactions[0].notes == "Gift for John"
 
 class TestParseCsvColumnMapping:
     """Tests for customizable CSV column mapping (issue #201)."""
@@ -443,6 +455,28 @@ class TestParseCsvColumnMapping:
         assert transactions[0].type == "credit"
         assert transactions[1].amount == Decimal("200.00")
         assert transactions[1].type == "debit"
+
+    def test_column_mapping_payee_external_id_notes(self):
+        """Explicitly mapping payee, external_id, and notes should extract them correctly."""
+        csv_content = (
+            "Txn Date,Memo,Value,Counterparty,ExtRef,Comment\n"
+            "2026-08-01,Purchase,-15.00,Target,ref999,Groceries\n"
+        )
+        transactions = parse_csv(
+            csv_content.encode("utf-8"),
+            column_mapping={
+                "date": "Txn Date",
+                "description": "Memo",
+                "amount": "Value",
+                "payee": "Counterparty",
+                "external_id": "ExtRef",
+                "notes": "Comment",
+            },
+        )
+        assert len(transactions) == 1
+        assert transactions[0].payee_raw == "Target"
+        assert transactions[0].external_id == "ref999"
+        assert transactions[0].notes == "Groceries"
 
 
 class TestDetectCsvColumns:
@@ -966,6 +1000,92 @@ class TestParseOfx:
         assert transactions[0].description == "UBER TRIP"
         assert transactions[0].amount == Decimal("100.00")
 
+    def _make_ofx_xml(
+        self, memo: str, xml_encoding: str, *, prolog: bool = True, ofx_pi: bool = True
+    ) -> bytes:
+        """Helper to build an OFX 2.x document: XML prolog, no SGML header
+        block (e.g. Erste Bank's "MS Money Sunset Deluxe" export).
+
+        The XML declaration is optional in XML 1.0 and the <?OFX ?> instruction
+        can be dropped too, so `prolog` and `ofx_pi` cover the headerless
+        variants that reach ofxparse with nothing before the first tag.
+        """
+        text = (
+            (f'<?xml version="1.0" encoding="{xml_encoding}" ?>' if prolog else "")
+            + ('<?OFX OFXHEADER="200" VERSION="202" SECURITY="NONE" '
+               'OLDFILEUID="NONE" NEWFILEUID="NONE"?>' if ofx_pi else "")
+            + "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><CURDEF>EUR</CURDEF>"
+            "<BANKACCTFROM><BANKID>1</BANKID><ACCTID>1</ACCTID>"
+            "<ACCTTYPE>CHECKING</ACCTTYPE></BANKACCTFROM>"
+            "<BANKTRANLIST><DTSTART>20260101</DTSTART><DTEND>20260131</DTEND>"
+            "<STMTTRN><TRNTYPE>DEBIT</TRNTYPE><DTPOSTED>20260115</DTPOSTED>"
+            "<TRNAMT>-10.00</TRNAMT><FITID>1</FITID>"
+            f"<MEMO>{memo}</MEMO></STMTTRN>"
+            "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>"
+        )
+        return text.encode(xml_encoding.lower().replace("iso-8859-1", "latin-1"))
+
+    def test_parse_ofx_xml_format_without_sgml_header(self):
+        """OFX 2.x/XML files (no SGML header block) with UTF-8 non-ASCII
+        characters should parse without raising UnicodeDecodeError."""
+        ofx = self._make_ofx_xml("1 Aufladung(en) für Konto", "utf-8")
+        transactions = parse_ofx(ofx)
+
+        assert len(transactions) == 1
+        assert transactions[0].description == "1 Aufladung(en) für Konto"
+        assert transactions[0].amount == Decimal("10.00")
+        assert transactions[0].type == "debit"
+
+    def test_parse_ofx_xml_format_latin1(self):
+        """OFX 2.x/XML files declaring and using Latin-1 should decode
+        correctly, proving the fix doesn't hardcode UTF-8."""
+        ofx = self._make_ofx_xml("Café Paris", "ISO-8859-1")
+        transactions = parse_ofx(ofx)
+
+        assert len(transactions) == 1
+        assert transactions[0].description == "Café Paris"
+
+    def test_parse_ofx_xml_format_ascii_only(self):
+        """OFX 2.x/XML files with pure-ASCII content should still parse
+        correctly after the SGML header injection."""
+        ofx = self._make_ofx_xml("Grocery Store", "utf-8")
+        transactions = parse_ofx(ofx)
+
+        assert len(transactions) == 1
+        assert transactions[0].description == "Grocery Store"
+        assert transactions[0].amount == Decimal("10.00")
+
+    def test_parse_ofx_xml_format_without_xml_prolog(self):
+        """The XML declaration is optional, so an OFX 2.x file may open with
+        just its <?OFX ?> instruction. It reaches ofxparse with nothing before
+        the first tag, so it hits the same bug and needs the same header."""
+        ofx = self._make_ofx_xml("Aufladung für Konto", "utf-8", prolog=False)
+        transactions = parse_ofx(ofx)
+
+        assert len(transactions) == 1
+        assert transactions[0].description == "Aufladung für Konto"
+
+    def test_parse_ofx_xml_format_bare_ofx_element(self):
+        """Neither declaration is required: a document opening straight on
+        <OFX> is the same headerless case."""
+        ofx = self._make_ofx_xml("Café Paris", "utf-8", prolog=False, ofx_pi=False)
+        transactions = parse_ofx(ofx)
+
+        assert len(transactions) == 1
+        assert transactions[0].description == "Café Paris"
+
+    def test_parse_ofx_sgml_header_is_not_duplicated(self):
+        """A real OFX 1.x file already has a header before its first tag, so it
+        must be left untouched rather than given a second one."""
+        ofx = self._make_ofx_xml("Grocery Store", "utf-8", prolog=False, ofx_pi=False)
+        sgml = (
+            b"OFXHEADER:100\r\nDATA:OFXSGML\r\nVERSION:102\r\nSECURITY:NONE\r\n"
+            b"ENCODING:UTF-8\r\nCHARSET:NONE\r\nCOMPRESSION:NONE\r\n"
+            b"OLDFILEUID:NONE\r\nNEWFILEUID:NONE\r\n\r\n" + ofx
+        )
+        assert _preprocess_ofx(sgml).count(b"OFXHEADER:") == 1
+        assert parse_ofx(sgml)[0].description == "Grocery Store"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MULTI-CURRENCY PARSING TESTS
@@ -1178,6 +1298,32 @@ class TestImportTransactionsFx:
         tx = (await session.execute(select(Transaction).where(Transaction.payee_id == payee.id))).scalar_one()
         assert payee.workspace_id == test_workspace.id
         assert tx.workspace_id == test_workspace.id
+
+    @pytest.mark.asyncio
+    async def test_import_csv_preserves_notes_and_external_id(self, session: AsyncSession, test_user: User, test_workspace, test_account: Account):
+        from app.models.transaction import Transaction
+        from app.schemas.transaction import TransactionImport
+        from sqlalchemy import select
+
+        txns = [
+            TransactionImport(
+                description="Hardware Store",
+                amount=Decimal("50.00"),
+                date=date(2026, 2, 10),
+                type="debit",
+                currency=test_account.currency,
+                external_id="ext_456",
+                notes="Tools for repair",
+            ),
+        ]
+
+        imported, _, _, _ = await import_transactions(
+            session, test_workspace.id, test_user.id, test_account.id, txns, "csv",
+        )
+
+        assert imported == 1
+        tx = (await session.execute(select(Transaction).where(Transaction.external_id == "ext_456"))).scalar_one()
+        assert tx.notes == "Tools for repair"
 
     @pytest.mark.asyncio
     @patch("app.services.fx_rate_service._provider")

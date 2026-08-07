@@ -31,14 +31,49 @@ Good ways to align first:
 
 Once there's a shared understanding, go ahead and build. Large PRs that arrive without any prior discussion are harder to review and sometimes don't align with where the project is heading, so a quick conversation up front is the best way to make your contribution count.
 
+## Using AI
+
+Use it. We do. Parts of this codebase were written with AI. This isn't a policy against the tools.
+
+It's a policy about ownership. **We don't review the AI, we review you.** When a PR arrives, the questions are the same as they've always been: does this person understand what they're proposing, can they explain why it's built this way, and will they still be around if it breaks. Whatever produced the diff doesn't change any of that.
+
+So whatever you use, before you open the PR:
+
+- **You own the approach, not just the output.** You decided the strategy and delegated the typing. If the model picked the architecture and you went along with it, you don't know the change well enough to defend it in review.
+- **You're the quality gate.** The change holds to the standards of the code already here: naming, structure, tests, error handling. AI writes plausible code, and plausible isn't the bar.
+- **It fits where the product is going.** A change can work and still be wrong for Securo. Whether it belongs here is your call before it's ours.
+- **You ran it.** Not "the tests should pass" — you ran them, you ran the app, you saw the change work.
+- **The scope is what the issue asked for.** AI is generous with refactors nobody requested. Strip them. A thirty-file diff for a one-line bug goes back.
+- **You're accountable after it merges.** If it breaks in three weeks, you're who we come to.
+
+We won't ask which tools you used and we won't try to detect them. We'll read the code and ask questions. Contributors who understand their own work pass easily, and that was true long before any of this.
+
+The same applies to issues. An issue produced by pointing a model at the repository and asking it to find problems is not a bug report. Tell us what you did, what happened, and what you expected.
+
 ## Development Workflow
 
 1. Create a branch from `main`: `git checkout -b feature/your-feature`
 2. Make your changes
-3. Run backend tests: `cd backend && pip install -e ".[dev]" && pytest` (Python 3.11+)
+3. Run backend tests: `cd backend && uv sync --all-extras && uv run pytest` (Python 3.11+)
 4. Run frontend lint: `cd frontend && npm run lint`
 5. Commit with a clear message (see below)
 6. Push your branch and open a Pull Request
+
+Optional but recommended, so you catch lint and type errors before CI does:
+
+```bash
+prek install                                   # once, from the repo root
+# or, if you prefer the Python original:
+pip install pre-commit && pre-commit install
+```
+
+This runs `ruff check` and `ty check` on the backend whenever you commit a
+`backend/*.py` file. Both read their config from `backend/pyproject.toml`, so
+local and CI stay in sync.
+
+[prek](https://github.com/j178/prek) is a drop-in replacement for pre-commit:
+same `.pre-commit-config.yaml`, but a single binary with no Python bootstrap.
+Either works.
 
 ## Commit Messages
 
@@ -54,11 +89,24 @@ Use clear, descriptive commit messages:
 ```bash
 # Backend tests (run from backend/, needs Python 3.11+; same as CI)
 cd backend
-pip install -e ".[dev]"   # first time only — installs pytest and dev deps
+uv sync --all-extras   # first time only — builds .venv from uv.lock, same versions as CI
+source .venv/bin/activate
 pytest
+
+# No uv? pip works too, from an export of the lock:
+#   pip install uv && uv export --frozen --all-extras --no-emit-project -o /tmp/req.txt
+#   pip install --require-hashes -r /tmp/req.txt && pip install --no-deps -e .
 
 # Backend tests with coverage
 pytest --cov=app --cov-report=term-missing
+
+# Backend lint + type check (same commands CI runs)
+ruff check .
+ty check .
+
+# After changing dependencies in pyproject.toml: regenerate the lock and
+# commit uv.lock along with it (CI enforces this)
+./scripts/lock.sh
 
 # Frontend lint
 cd frontend && npm run lint

@@ -59,6 +59,7 @@ const CURRENCY_LOCALE: Record<string, string> = {
   RUB: 'ru-RU',
   GTQ: 'es-GT',
   PHP: 'en-PH',
+  UAH: 'uk-UA',
 }
 
 /**

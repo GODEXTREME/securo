@@ -34,7 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, CalendarDays, Check, HelpCircle, Info, List, Paperclip, Users, X, EyeClosed, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, Check, HelpCircle, Info, Paperclip, Users, X, EyeClosed, SlidersHorizontal } from 'lucide-react'
 import type { Transaction, Rule } from '@/types'
 import { RuleDialog, type RuleDialogInitialData } from '@/components/rule-dialog'
 import { PageHeader } from '@/components/page-header'
@@ -52,6 +52,8 @@ import { BulkAddToGroupDialog, type BulkAddToGroupSubmission } from '@/component
 import { TransactionsFilterBar } from '@/components/transactions-filter-bar'
 import { TransactionCalendarView } from '@/components/transaction-calendar-view'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { MobileTransactionRow } from '@/components/mobile-transaction-row'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
@@ -82,6 +84,7 @@ export default function TransactionsPage() {
   const locale = useDisplayLocale()
   const dateLocale = useDateLocale()
   const { mask } = usePrivacyMode()
+  const isMobile = useIsMobile()
   const { user } = useAuth()
   const { activeAccountIds } = useCollectionFilter()
   const { canWrite } = useWorkspace()
@@ -142,6 +145,7 @@ export default function TransactionsPage() {
   const [filterPayee, setFilterPayee] = useState<string>(searchParams.get('payee_id') ?? '')
   const [filterGroupId, setFilterGroupId] = useState<string>(searchParams.get('group_id') ?? '')
   const [filterType, setFilterType] = useState<string>(searchParams.get('type') ?? '')
+  const [filterStatus, setFilterStatus] = useState<string>(searchParams.get('status') ?? '')
   const [filterMinAmount, setFilterMinAmount] = useState<string>(searchParams.get('min_amount') ?? '')
   const [filterMaxAmount, setFilterMaxAmount] = useState<string>(searchParams.get('max_amount') ?? '')
   const [tagFilters, setTagFilters] = useState<string[]>([])
@@ -219,6 +223,7 @@ export default function TransactionsPage() {
     setFilterPayee(searchParams.get('payee_id') ?? '')
     setFilterGroupId(searchParams.get('group_id') ?? '')
     setFilterType(searchParams.get('type') ?? '')
+    setFilterStatus(searchParams.get('status') ?? '')
     const categories = searchParams.get('category_id');
     setFilterCategoryIds(categories ? categories.split(',') : []);
     setFilterUncategorized(searchParams.get('uncategorized') === '1');
@@ -253,6 +258,7 @@ export default function TransactionsPage() {
         ['payee_id', filterPayee],
         ['group_id', filterGroupId],
         ['type', filterType],
+        ['status', filterStatus],
         ['category_id', filterCategoryIds.join(',')],
         ['uncategorized', filterUncategorized ? '1' : ''],
         ['account_id', filterAccountIds.join(',')],
@@ -276,6 +282,7 @@ export default function TransactionsPage() {
     filterPayee,
     filterGroupId,
     filterType,
+    filterStatus,
     filterCategoryIds,
     filterUncategorized,
     filterAccountIds,
@@ -299,7 +306,16 @@ export default function TransactionsPage() {
     setSelectedIds(new Set())
     setLastSelectedId(null)
     setBulkCategory('')
-  }, [page, filterAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterType, filterFrom, filterTo, filterMinAmount, filterMaxAmount, searchQuery])
+  }, [page, filterAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterType, filterStatus, filterFrom, filterTo, filterMinAmount, filterMaxAmount, searchQuery])
+
+  useEffect(() => {
+    if (viewMode === 'calendar') {
+      setFilterAccountIds((prev) => prev.length > 1 ? [] : prev)
+      setSelectedIds(new Set())
+      setLastSelectedId(null)
+      setBulkCategory('')
+    }
+  }, [viewMode, filterAccountIds.length])
 
   useEffect(() => {
     if (viewMode === 'calendar') {
@@ -349,7 +365,7 @@ export default function TransactionsPage() {
     && activeAccountIds !== null && activeAccountIds.length === 0
 
   const { data, isLoading } = useQuery({
-    queryKey: ['transactions', page, limit, effectiveAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterGroupId, filterType, filterFrom, filterTo, filterMinAmount, filterMaxAmount, searchQuery, tagFilters, grid.sortBy, grid.sortDir],
+    queryKey: ['transactions', page, limit, effectiveAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterGroupId, filterType, filterStatus, filterFrom, filterTo, filterMinAmount, filterMaxAmount, searchQuery, tagFilters, isMobile ? 'date' : grid.sortBy, isMobile ? 'desc' : grid.sortDir],
     enabled: !noAccounts,
     queryFn: () =>
       transactions.list({
@@ -360,6 +376,7 @@ export default function TransactionsPage() {
         payee_id: filterPayee || undefined,
         group_id: filterGroupId || undefined,
         type: filterType || undefined,
+        status: filterStatus || undefined,
         uncategorized: filterUncategorized ? true : undefined,
         from: filterFrom || undefined,
         to: filterTo || undefined,
@@ -367,7 +384,9 @@ export default function TransactionsPage() {
         max_amount: filterMaxAmount ? Number(filterMaxAmount) : undefined,
         q: searchQuery || undefined,
         tags: tagFilters.length > 0 ? tagFilters : undefined,
-        ...grid.apiSort,
+        // Mobile has no column headers to change sort; force date-desc so
+        // the date grouping always works correctly.
+        ...(isMobile ? { sort_by: 'date', sort_dir: 'desc' as const } : grid.apiSort),
       }),
   })
 
@@ -393,6 +412,7 @@ export default function TransactionsPage() {
     payee_id: filterPayee || undefined,
     group_id: filterGroupId || undefined,
     type: filterType || undefined,
+    status: filterStatus || undefined,
     uncategorized: filterUncategorized || undefined,
     from: filterFrom || undefined,
     to: filterTo || undefined,
@@ -441,6 +461,10 @@ export default function TransactionsPage() {
     queryKey: ['recurring'],
     queryFn: recurring.list,
   })
+  const recurringById = useMemo(
+    () => new Map((recurringList ?? []).map(item => [item.id, item])),
+    [recurringList],
+  )
 
   const { data: accountingModeData } = useQuery({
     queryKey: ['admin', 'accounting-mode'],
@@ -701,6 +725,36 @@ export default function TransactionsPage() {
   const filteredItems = data?.items ?? []
   const selectableItems = filteredItems.filter(tx => !tx.is_shared)
 
+  // Group transactions by date for the mobile card view
+  const groupedByDate = useMemo(() => {
+    const groups: { date: string; label: string; items: Transaction[] }[] = []
+    let current: { date: string; label: string; items: Transaction[] } | null = null
+    for (const tx of filteredItems) {
+      if (!current || current.date !== tx.date) {
+        current = {
+          date: tx.date,
+          label: new Date(tx.date + 'T00:00:00').toLocaleDateString(dateLocale, {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          }),
+          items: [],
+        }
+        groups.push(current)
+      }
+      current.items.push(tx)
+    }
+    return groups
+  }, [filteredItems, dateLocale])
+
+  // Pre-resolve accounts into a Map for O(1) lookup in the mobile card view
+  const accountById = useMemo(() => {
+    const map = new Map<string, typeof accountsList extends (infer T)[] | undefined ? T : never>()
+    for (const a of accountsList ?? []) map.set(a.id, a)
+    return map
+  }, [accountsList])
+
   const toggleSelectAll = () => {
     if (!selectableItems.length) return
     const allSelected = selectableItems.every(tx => selectedIds.has(tx.id))
@@ -847,6 +901,7 @@ export default function TransactionsPage() {
           category_ids: filterCategoryIds.length > 0 ? filterCategoryIds : undefined,
           payee_id: filterPayee || undefined,
           type: filterType || undefined,
+          status: filterStatus || undefined,
           uncategorized: filterUncategorized ? true : undefined,
           from: filterFrom || undefined,
           to: filterTo || undefined,
@@ -1007,11 +1062,10 @@ export default function TransactionsPage() {
               </span>
                             )
             }
-            {(tx.recurring_transaction_id != null ||
-              recurringList?.some(r => r.description === tx.description && r.type === tx.type)) && (
+            {tx.recurring_transaction_id != null && (
               <span
                 className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/5 border border-primary/10 px-1.5 py-0.5 rounded-full"
-                title={tx.recurring_transaction_id != null ? t('transactions.recurringLinkedTooltip') : undefined}
+                title={t('transactions.recurringLinkedTooltip')}
               >
                 {t('transactions.recurringBadge')}
               </span>
@@ -1200,31 +1254,15 @@ export default function TransactionsPage() {
               prevLabel: t('transactions.monthPrevious'),
               nextLabel: t('transactions.monthNext'),
             }}
-            viewToggle={
-              <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
-                <Button
-                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-8 gap-1.5 px-2.5"
-                  onClick={() => setViewMode('list')}
-                >
-                  <List size={14} />
-                  {t('transactions.listView')}
-                </Button>
-                <Button
-                  variant={viewMode === 'calendar' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-8 gap-1.5 px-2.5"
-                  onClick={() => {
-                    if (filterAccountIds.length > 1) setFilterAccountIds([])
-                    setViewMode('calendar')
-                  }}
-                >
-                  <CalendarDays size={14} />
-                  {t('transactions.calendarView')}
-                </Button>
-              </div>
-            }
+            view={{
+              value: viewMode,
+              onChange: (value) => {
+                if (value === 'calendar' && filterAccountIds.length > 1) setFilterAccountIds([])
+                setViewMode(value)
+              },
+              listLabel: t('transactions.listView'),
+              calendarLabel: t('transactions.calendarView'),
+            }}
             columnPicker={viewMode === 'list' ? <TransactionsColumnPicker state={grid} /> : null}
             exportLabel={exportLabel}
             exporting={exporting}
@@ -1266,6 +1304,8 @@ export default function TransactionsPage() {
         onGroupIdChange={(v) => { setFilterGroupId(v); setPage(1) }}
         filterType={filterType}
         onTypeChange={(v) => { setFilterType(v); setPage(1) }}
+        filterStatus={filterStatus}
+        onStatusChange={(v) => { setFilterStatus(v); setPage(1) }}
         filterFrom={filterFrom}
         filterTo={filterTo}
         onDateRangeChange={(from, to) => { setFilterFrom(from); setFilterTo(to); setPage(1) }}
@@ -1281,6 +1321,7 @@ export default function TransactionsPage() {
           setFilterPayee('')
           setFilterGroupId('')
           setFilterType('')
+          setFilterStatus('')
           setFilterMinAmount('')
           setFilterMaxAmount('')
           setSearchInput('')
@@ -1344,10 +1385,12 @@ export default function TransactionsPage() {
           selectedDate={calendarSelectedDate}
           onSelectedDateChange={setCalendarSelectedDate}
           onOpenTransaction={handleOpenCalendarTransaction}
+          accounts={accountsList}
+          userCurrency={userCurrency}
         />
       )}
 
-      {/* Table */}
+      {/* Table / Mobile Cards */}
       {viewMode === 'list' && (
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden mb-4">
         {isLoading ? (
@@ -1356,7 +1399,50 @@ export default function TransactionsPage() {
               <Skeleton key={i} className="h-14 w-full" />
             ))}
           </div>
+        ) : isMobile ? (
+          /* ── Mobile card view: grouped by date ── */
+          <div>
+            {groupedByDate.map((group) => (
+              <div key={group.date}>
+                <div className="bg-muted/80 px-4 py-1.5 border-b border-border">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {group.label}
+                  </span>
+                </div>
+                {group.items.map((tx) => (
+                  <MobileTransactionRow
+                    key={tx.id}
+                    tx={tx}
+                    account={tx.account_id ? accountById.get(tx.account_id) : undefined}
+                    groupName={tx.group_id ? groupNameById.get(tx.group_id) : undefined}
+                    selected={selectedIds.has(tx.id)}
+                    selectable={canWrite && !tx.is_shared}
+                    canWrite={canWrite}
+                    highlighted={tx.id === highlightId}
+                    highlightedRowRef={tx.id === highlightId ? highlightedRowRef : undefined}
+                    locale={locale}
+                    userCurrency={userCurrency}
+                    onSelect={toggleSelect}
+                    onClick={(t) => {
+                      if (t.is_shared) {
+                        if (t.group_id) navigate(`/groups/${t.group_id}`)
+                        return
+                      }
+                      setEditingTx(t)
+                      setDialogOpen(true)
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+            {filteredItems.length === 0 && (
+              <div className="text-center py-16 text-muted-foreground">
+                {t('transactions.noResults')}
+              </div>
+            )}
+          </div>
         ) : (
+          /* ── Desktop table view ── */
           <div className="overflow-x-auto">
           <Table style={{ tableLayout: 'fixed' }}>
             <TableHeader>
@@ -1428,33 +1514,72 @@ export default function TransactionsPage() {
         {/* Filtered summary (issue #185): income / expenses / net across
             ALL rows matching the active filters — not just this page. */}
         {!isLoading && data?.summary && filteredItems.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border bg-muted/30 px-4 py-2.5">
-            <span className="mr-auto text-xs text-muted-foreground">
-              {t('transactions.summaryCount', { count: data.total })}
-            </span>
-            {/* Excluded (#242): transfers / investments / ignored, kept out of
-                income/expense. Hidden when nothing was excluded in range. */}
-            {data.summary.excluded > 0 && (
+          <div className="flex flex-col sm:flex-row flex-wrap sm:items-center gap-x-5 gap-y-1 border-t border-border bg-muted/30 px-4 py-2.5">
+            {/* Mobile: count + saldo on first line */}
+            <div className="flex items-center justify-between sm:hidden">
+              <span className="text-xs text-muted-foreground">
+                {t('transactions.summaryCount', { count: data.total })}
+              </span>
               <span className="flex items-baseline gap-1.5 text-xs">
+                <span className="text-muted-foreground">{t('transactions.summaryNet')}</span>
+                <span
+                  className={`text-sm font-bold tabular-nums ${
+                    data.summary.net >= 0 ? 'text-emerald-600' : 'text-rose-500'
+                  }`}
+                >
+                  {mask(formatCurrency(data.summary.net, data.summary.currency, locale))}
+                </span>
+              </span>
+            </div>
+            {/* Mobile: receitas + despesas on second line */}
+            <div className="flex items-center justify-between sm:hidden">
+              <span className="flex items-baseline gap-1.5 text-xs">
+                <span className="text-muted-foreground">{t('transactions.summaryIncome')}</span>
+                <span className="text-sm font-semibold tabular-nums text-emerald-600">
+                  {mask(formatCurrency(data.summary.income, data.summary.currency, locale))}
+                </span>
+              </span>
+              <span className="flex items-baseline gap-1.5 text-xs">
+                <span className="text-muted-foreground">{t('transactions.summaryExpenses')}</span>
+                <span className="text-sm font-semibold tabular-nums text-rose-500">
+                  {mask(formatCurrency(data.summary.expense, data.summary.currency, locale))}
+                </span>
+              </span>
+            </div>
+            {/* Mobile: excluido on third line */}
+            {data.summary.excluded > 0 && (
+              <span className="flex items-baseline gap-1.5 text-xs sm:hidden">
                 <span className="text-muted-foreground">{t('transactions.summaryExcluded')}</span>
                 <span className="text-sm font-semibold tabular-nums text-muted-foreground">
                   {mask(formatCurrency(data.summary.excluded, data.summary.currency, locale))}
                 </span>
               </span>
             )}
-            <span className="flex items-baseline gap-1.5 text-xs">
+            {/* Desktop: original horizontal layout */}
+            <span className="mr-auto text-xs text-muted-foreground hidden sm:inline">
+              {t('transactions.summaryCount', { count: data.total })}
+            </span>
+            {data.summary.excluded > 0 && (
+              <span className="hidden sm:flex items-baseline gap-1.5 text-xs">
+                <span className="text-muted-foreground">{t('transactions.summaryExcluded')}</span>
+                <span className="text-sm font-semibold tabular-nums text-muted-foreground">
+                  {mask(formatCurrency(data.summary.excluded, data.summary.currency, locale))}
+                </span>
+              </span>
+            )}
+            <span className="hidden sm:flex items-baseline gap-1.5 text-xs">
               <span className="text-muted-foreground">{t('transactions.summaryIncome')}</span>
               <span className="text-sm font-semibold tabular-nums text-emerald-600">
                 {mask(formatCurrency(data.summary.income, data.summary.currency, locale))}
               </span>
             </span>
-            <span className="flex items-baseline gap-1.5 text-xs">
+            <span className="hidden sm:flex items-baseline gap-1.5 text-xs">
               <span className="text-muted-foreground">{t('transactions.summaryExpenses')}</span>
               <span className="text-sm font-semibold tabular-nums text-rose-500">
                 {mask(formatCurrency(data.summary.expense, data.summary.currency, locale))}
               </span>
             </span>
-            <span className="flex items-baseline gap-1.5 text-xs">
+            <span className="hidden sm:flex items-baseline gap-1.5 text-xs">
               <span className="text-muted-foreground">{t('transactions.summaryNet')}</span>
               <span
                 className={`text-sm font-bold tabular-nums ${
@@ -1782,7 +1907,11 @@ export default function TransactionsPage() {
         categories={categoriesList ?? []}
         categoryGroups={categoryGroupsList ?? []}
         accounts={accountsList ?? []}
-        recurringMatch={editingTx ? recurringList?.find(r => r.description === editingTx.description && r.type === editingTx.type) : undefined}
+        recurringMatch={
+          editingTx?.recurring_transaction_id
+            ? recurringById.get(editingTx.recurring_transaction_id)
+            : undefined
+        }
         onSave={handleTransactionSave}
         onDelete={editingTx ? () => deleteMutation.mutate(editingTx.id) : undefined}
         onUnlinkTransfer={(pairId) => unlinkTransferMutation.mutate(pairId)}

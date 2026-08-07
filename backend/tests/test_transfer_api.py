@@ -992,3 +992,75 @@ async def test_transfers_appear_in_transaction_list(
     transfer_txns = [tx for tx in items if tx.get("transfer_pair_id") == transfer_pair_id]
     assert len(transfer_txns) == 2
     assert {tx["type"] for tx in transfer_txns} == {"debit", "credit"}
+
+
+@pytest.mark.asyncio
+async def test_get_transfer_pair_returns_counterpart(
+    client: AsyncClient, auth_headers, test_account: Account, second_account: Account
+):
+    """Each leg resolves to the other leg of the pair."""
+    created = await client.post(
+        "/api/transactions/transfer",
+        json={
+            "from_account_id": str(test_account.id),
+            "to_account_id": str(second_account.id),
+            "amount": 500.00,
+            "date": date.today().isoformat(),
+            "description": "Transfer to savings",
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+    debit = created.json()["debit"]
+    credit = created.json()["credit"]
+
+    # Debit -> credit
+    response = await client.get(
+        f"/api/transactions/{debit['id']}/transfer-pair", headers=auth_headers
+    )
+    assert response.status_code == 200
+    pair = response.json()
+    assert pair["id"] == credit["id"]
+    assert pair["type"] == "credit"
+    assert pair["account_id"] == str(second_account.id)
+    assert float(pair["amount"]) == 500.00
+
+    # Credit -> debit (symmetric)
+    response = await client.get(
+        f"/api/transactions/{credit['id']}/transfer-pair", headers=auth_headers
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == debit["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_transfer_pair_null_when_not_a_transfer(
+    client: AsyncClient, auth_headers, test_account: Account
+):
+    """A transaction with no transfer_pair_id resolves to null, not an error."""
+    created = await client.post(
+        "/api/transactions",
+        json={
+            "account_id": str(test_account.id),
+            "description": "Groceries",
+            "amount": 42.00,
+            "date": date.today().isoformat(),
+            "type": "debit",
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+
+    response = await client.get(
+        f"/api/transactions/{created.json()['id']}/transfer-pair", headers=auth_headers
+    )
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+@pytest.mark.asyncio
+async def test_get_transfer_pair_404_for_unknown_transaction(client: AsyncClient, auth_headers):
+    response = await client.get(
+        f"/api/transactions/{uuid.uuid4()}/transfer-pair", headers=auth_headers
+    )
+    assert response.status_code == 404
