@@ -1,9 +1,9 @@
 """Workspace + member management endpoints.
 
-Note: there's intentionally NO `POST /api/workspaces` endpoint here.
-Workspaces are auto-created at user registration; additional workspaces
-(Freelancer / Small Business / Accountant Firm) ship as part of the
-templates feature in a later phase.
+Every user gets a Personal workspace at registration. `POST` here
+creates the additional ones and is the only place `kind` is ever set;
+`PATCH` edits the rest of the workspace and deliberately cannot touch
+it.
 """
 import uuid
 
@@ -25,7 +25,7 @@ from app.schemas.workspace import (
     WorkspaceRead,
     WorkspaceUpdate,
 )
-from app.services import workspace_service
+from app.services import module_service, workspace_service
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
@@ -33,6 +33,19 @@ router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 def _user_display_name(user: User) -> str | None:
     prefs = user.preferences or {}
     return prefs.get("display_name") or None
+
+
+def _workspace_read(workspace: Workspace, role: str | None) -> WorkspaceRead:
+    """Build the read model for a workspace.
+
+    Every response that returns a workspace goes through here, so a new
+    read path cannot ship without `enabled_modules` — forgetting it
+    would leave the frontend hiding modules the server enabled.
+    """
+    item = WorkspaceRead.model_validate(workspace)
+    item.role = role
+    item.enabled_modules = module_service.resolve_modules(workspace)
+    return item
 
 
 @router.get("", response_model=list[WorkspaceRead])
@@ -64,9 +77,7 @@ async def list_my_workspaces(
     out: list[WorkspaceRead] = []
     seen_ids: set[uuid.UUID] = set()
     for ws, role in member_rows.all():
-        item = WorkspaceRead.model_validate(ws)
-        item.role = role
-        out.append(item)
+        out.append(_workspace_read(ws, role))
         seen_ids.add(ws.id)
 
     managed_rows = await session.execute(
@@ -80,9 +91,7 @@ async def list_my_workspaces(
     for ws in managed_rows.scalars().all():
         if ws.id in seen_ids:
             continue
-        item = WorkspaceRead.model_validate(ws)
-        item.role = "manager"
-        out.append(item)
+        out.append(_workspace_read(ws, "manager"))
     return out
 
 
@@ -110,17 +119,13 @@ async def create_workspace_endpoint(
         self_membership=body.self_membership,
     )
     await session.commit()
-    item = WorkspaceRead.model_validate(workspace)
-    item.role = "owner" if body.self_membership else "manager"
-    return item
+    return _workspace_read(workspace, "owner" if body.self_membership else "manager")
 
 
 @router.get("/current", response_model=WorkspaceRead)
 async def get_current_workspace(ctx: WorkspaceContext = Depends(current_workspace)):
     """Return the workspace resolved from X-Workspace-Id (or the default)."""
-    item = WorkspaceRead.model_validate(ctx.workspace)
-    item.role = ctx.role
-    return item
+    return _workspace_read(ctx.workspace, ctx.role)
 
 
 @router.patch("/{workspace_id}", response_model=WorkspaceRead)
@@ -151,9 +156,7 @@ async def update_workspace(
         session.add(user)
     await session.commit()
     await session.refresh(workspace)
-    item = WorkspaceRead.model_validate(workspace)
-    item.role = member.role
-    return item
+    return _workspace_read(workspace, member.role)
 
 
 @router.get("/{workspace_id}/members", response_model=list[MemberRead])
@@ -310,9 +313,7 @@ async def archive_workspace_endpoint(
     )
     workspace = await workspace_service.archive_workspace(session, workspace_id, user.id)
     await session.commit()
-    item = WorkspaceRead.model_validate(workspace)
-    item.role = "owner"
-    return item
+    return _workspace_read(workspace, "owner")
 
 
 @router.delete(

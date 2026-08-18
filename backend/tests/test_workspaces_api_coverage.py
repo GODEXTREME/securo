@@ -36,7 +36,7 @@ async def test_create_workspace_with_self_membership(client: AsyncClient, auth_h
         headers=auth_headers,
         json={
             "name": "Side Business",
-            "kind": "small_business",
+            "kind": "business",
             "default_currency": "EUR",
             "self_membership": True,
         },

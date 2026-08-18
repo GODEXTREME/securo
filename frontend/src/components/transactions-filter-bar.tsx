@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { getAccountName } from '@/lib/account-utils'
+import { getAccountName, sortAccountsByDisplayName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { startOfMonth, startOfYear, subDays } from 'date-fns'
@@ -135,6 +135,7 @@ export function TransactionsFilterBar({
   const [draftMaxAmount, setDraftMaxAmount] = useState<string>(filterMaxAmount)
   const [mobileFilterView, setMobileFilterView] = useState<MobileFilterView>('root')
   const searchRef = useRef<HTMLInputElement>(null)
+  const sortedAccounts = useMemo(() => sortAccountsByDisplayName(accounts), [accounts])
 
   // When a CheckRow is clicked inside a submenu, Radix tries to close the submenu
   // even if we preventDefault in onSelect. We intercept the close request so the
@@ -378,7 +379,7 @@ export function TransactionsFilterBar({
                 type="button"
                 aria-label={t('transactions.filtersBar.filters')}
                 className={cn(
-                  'inline-flex h-8 items-center gap-1.5 rounded-md border border-border/80 bg-background px-2.5 text-[12px] font-medium text-muted-foreground transition-colors',
+                  'inline-flex h-8 items-center gap-1.5 rounded-md border border-border/80 bg-card px-2.5 text-[12px] font-medium text-muted-foreground transition-colors',
                   'hover:bg-muted hover:text-foreground',
                   menuOpen && 'bg-muted text-foreground',
                   hasAnyFilter && 'border-primary/30 text-primary hover:text-primary',
@@ -399,7 +400,7 @@ export function TransactionsFilterBar({
                 view={mobileFilterView}
                 setView={setMobileFilterView}
                 setMenuOpen={setMenuOpen}
-                accounts={accounts}
+                accounts={sortedAccounts}
                 categories={categories}
                 categoryGroups={categoryGroups}
                 payees={payees}
@@ -488,12 +489,12 @@ export function TransactionsFilterBar({
                           <div className="my-1 h-px bg-border/60" />
                         </>
                       )}
-                      {accounts.length === 0 ? (
+                      {sortedAccounts.length === 0 ? (
                         <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">
                           {t('transactions.filtersBar.noOptions')}
                         </div>
                       ) : accountSelectionMode === 'single' ? (
-                        accounts.map((a) => {
+                        sortedAccounts.map((a) => {
                           const checked = filterAccountIds[0] === a.id
                           return (
                             <DropdownMenuItem
@@ -519,7 +520,7 @@ export function TransactionsFilterBar({
                           )
                         })
                       ) : (
-                        accounts.map((a) => (
+                        sortedAccounts.map((a) => (
                           <DropdownMenuCheckboxItem
                             key={a.id}
                             checked={filterAccountIds.includes(a.id)}
@@ -906,7 +907,7 @@ export function TransactionsFilterBar({
                                 applyAmountRange()
                               }
                             }}
-                            className="h-8 w-full rounded-md border border-border bg-background px-2 text-[13px] outline-none focus:border-primary/60 focus:ring-[2px] focus:ring-primary/15"
+                            className="h-8 w-full rounded-md border border-border bg-card px-2 text-[13px] outline-none focus:border-primary/60 focus:ring-[2px] focus:ring-primary/15"
                           />
                         </div>
                         <div className="flex-1">
@@ -927,7 +928,7 @@ export function TransactionsFilterBar({
                                 applyAmountRange()
                               }
                             }}
-                            className="h-8 w-full rounded-md border border-border bg-background px-2 text-[13px] outline-none focus:border-primary/60 focus:ring-[2px] focus:ring-primary/15"
+                            className="h-8 w-full rounded-md border border-border bg-card px-2 text-[13px] outline-none focus:border-primary/60 focus:ring-[2px] focus:ring-primary/15"
                           />
                         </div>
                       </div>

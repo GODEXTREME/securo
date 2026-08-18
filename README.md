@@ -171,6 +171,22 @@ COMPOSE_PROFILES=agents
 
 Then `docker compose up -d`. Settings → AI Agents to add a provider connection. Off by default; zero cost when off.
 
+### Without Docker
+
+`COMPOSE_PROFILES=agents` only tells Docker Compose to start the extra `mcp-server` container, so on a bare-metal or LXC install set `AGENTS_ENABLED=true` alone. The built-in MCP server is a plain uvicorn app in the same virtualenv; run it next to the API and point the backend at it:
+
+```bash
+# alongside the API/worker/beat processes
+uvicorn mcp_server.main:app --host 127.0.0.1 --port 8765
+```
+
+```
+AGENTS_ENABLED=true
+AGENTS_BUILTIN_MCP_URL=http://127.0.0.1:8765/mcp
+```
+
+Without that server the agents still chat, but they have no tools and cannot read your data. The backend log says which MCP server it failed to reach.
+
 ## Tech Stack
 
 | Layer | Stack |

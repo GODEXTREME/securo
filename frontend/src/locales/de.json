@@ -56,7 +56,9 @@
     "archiveHint": "Der Workspace wird aus der Liste entfernt und ist nicht mehr in der Workspace-Auswahl sichtbar. Die Daten bleiben erhalten.",
     "archiveSuccess": "Workspace archiviert",
     "archiveConfirmTitle": "Workspace archivieren?",
-    "archiveConfirmDescription": "Der Workspace \"{{name}}\" wird aus deiner Liste entfernt. Die Daten bleiben erhalten und ein Administrator kann ihn später wiederherstellen."
+    "archiveConfirmDescription": "Der Workspace \"{{name}}\" wird aus deiner Liste entfernt. Die Daten bleiben erhalten und ein Administrator kann ihn später wiederherstellen.",
+    "kindBusiness": "Geschäftlich",
+    "kindHint": "Wähle, was dieser Workspace erfasst. Das lässt sich später nicht ändern."
   },
   "app": {
     "name": "Securo",
@@ -140,7 +142,8 @@
     "purchasePlanner": "Cash vs instalments",
     "dividends": "Dividends",
     "emergencyFund": "Emergency fund",
-    "cards": "Cards"
+    "cards": "Cards",
+    "invoices": "Rechnungen"
   },
   "collections": {
     "title": "Sammlungen",
@@ -297,7 +300,10 @@
     "fxRateUsed": "Wechselkurs: {{rate}}",
     "refreshRates": "Wechselkurse aktualisieren",
     "ratesRefreshed": "Wechselkurse aktualisiert",
-    "ratesError": "Fehler beim Aktualisieren der Wechselkurse"
+    "ratesError": "Fehler beim Aktualisieren der Wechselkurse",
+    "projectedBalance": "Prognostizierter Saldo",
+    "projectedIncome": "Prognostizierte Einnahmen",
+    "projectedExpenses": "Prognostizierte Ausgaben"
   },
   "transactions": {
     "title": "Transaktionen",
@@ -430,7 +436,7 @@
     "transferFromAccount": "Vom Konto",
     "transferToAccount": "Auf das Konto",
     "transferAmount": "Betrag",
-    "transferCrossCurrency": "Währungen unterscheiden sich — Betrag wird automatisch umgerechnet",
+    "transferCrossCurrency": "Währungen unterscheiden sich — Zielbetrag eingeben oder für automatische Umrechnung leer lassen",
     "transferSameAccount": "Quell- und Zielkonto müssen unterschiedlich sein",
     "transferDescription": "Beschreibung",
     "transferNotes": "Notizen",
@@ -537,7 +543,21 @@
     "calendarNoActivity": "Keine Aktivität in diesem Monat",
     "calendarNoMovements": "Keine Bewegungen",
     "calendarActualNet": "Tatsächliches Netto",
-    "calendarTransfersExcluded": "Umbuchungen zählen nicht als Einnahmen oder Ausgaben"
+    "calendarTransfersExcluded": "Umbuchungen zählen nicht als Einnahmen oder Ausgaben",
+    "makeInstallment": "Als Raten wiederholen",
+    "installmentCount": "Anzahl der Raten",
+    "installmentFrequency": "Häufigkeit",
+    "installmentScopeTitle": "Auf welche Raten anwenden?",
+    "installmentScopeEditDesc": "Diese Transaktion gehört zu einer Ratenzahlungsreihe. Wie weit soll diese Änderung angewendet werden?",
+    "installmentScopeDeleteDesc": "Diese Transaktion gehört zu einer Ratenzahlungsreihe. Welche Raten sollen gelöscht werden?",
+    "installmentScopeThis": "Nur diese",
+    "installmentScopeFuture": "Diese und zukünftige",
+    "installmentScopeAll": "Alle Raten",
+    "bulkDelete": "Auswahl löschen",
+    "bulkDeleteTitle": "{{count}} Transaktionen löschen?",
+    "bulkDeleteDescription": "Dies löscht die ausgewählten Transaktionen dauerhaft, einschließlich Transfer-Gegenbuchungen und Anhängen. Dies kann nicht rückgängig gemacht werden.",
+    "bulkDeleteSuccess": "{{count}} Transaktionen gelöscht",
+    "projected": "Prognostiziert"
   },
   "accounts": {
     "title": "Konten",
@@ -687,7 +707,11 @@
         "description": "US-amerikanische und internationale Banken via SimpleFIN Bridge"
       }
     },
-    "reconnected": "Bank erfolgreich erneut verbunden"
+    "reconnected": "Bank erfolgreich erneut verbunden",
+    "projectedBalance": "Prognostizierter Saldo",
+    "notSettled": "Nicht abgerechnet",
+    "projectedIncome": "Prognostizierte Einnahmen",
+    "projectedExpenses": "Prognostizierte Ausgaben"
   },
   "connections": {
     "settings": "Verbindungseinstellungen",
@@ -837,7 +861,11 @@
     "autoGenerate": "Transaktionen automatisch erstellen",
     "autoGenerateHelp": "Erstellt bei jeder Fälligkeit dieser Rechnung eine Transaktion. Deaktivieren, um auf die tatsächliche Belastung (z. B. aus der Banksynchronisierung) zu warten und sie bis dahin nur als anstehend anzuzeigen.",
     "fxEstimate": "Schätzung basierend auf dem aktuellsten Wechselkurs ({{rate}}). Der endgültige Betrag kann abweichen.",
-    "quarterly": "Vierteljährlich"
+    "quarterly": "Vierteljährlich",
+    "weekendAdjustment": "Wochenendanpassung",
+    "weekendAdjustmentNone": "Keine Anpassung",
+    "weekendAdjustmentPreviousFriday": "Freitag vor dem Wochenende",
+    "weekendAdjustmentNextMonday": "Montag nach dem Wochenende"
   },
   "rules": {
     "section": "Automatisierung",
@@ -1026,7 +1054,8 @@
     "page": "Seite {{current}} von {{total}}",
     "mapPayee": "Spalte Zahlungsempfänger",
     "mapExternalId": "Spalte Transaktions-ID",
-    "mapNotes": "Spalte Notizen"
+    "mapNotes": "Spalte Notizen",
+    "importOptions": "Importoptionen"
   },
   "assets": {
     "title": "Vermögenswerte",
@@ -1330,7 +1359,7 @@
     "emptyHint": "Erstelle eine Gruppe, um Ausgaben mit anderen Personen, Abteilungen oder Projekten aufzuteilen.",
     "name": "Name",
     "kindLabel": "Typ",
-    "kindHint": "Bestimmt die Beschriftungen und Berichte — wähle die am besten passende Option.",
+    "kindHint": "Wähle, was dieser Workspace erfasst. Das lässt sich später nicht ändern.",
     "defaultCurrency": "Standardwährung",
     "notes": "Notizen",
     "archived": "Archiviert",
@@ -1430,7 +1459,8 @@
       "project": "Projekt",
       "client": "Kunde",
       "other": "Sonstiges"
-    }
+    },
+    "kindBusiness": "Geschäftlich"
   },
   "privacy": {
     "hide": "Werte ausblenden",
@@ -1685,7 +1715,7 @@
       "saving": "Wird gespeichert…",
       "saved": "Werkzeuge aktualisiert",
       "saveFailed": "Fehler beim Speichern der Werkzeugauswahl",
-      "empty": "Keine Werkzeuge gefunden. Läuft der MCP-Server? (`docker compose --profile agents up -d`)",
+      "empty": "Keine Werkzeuge gefunden. Läuft der MCP-Server? Mit Docker: `docker compose --profile agents up -d`.",
       "proposeBadge": "vorschlagen",
       "loading": "Werkzeuge werden geladen…"
     },
@@ -2133,5 +2163,9 @@
     "reconcileNote": "Der Anbieter hat nicht jede Zeile dieser abgeschlossenen Rechnung geliefert; dieser Betrag ergänzt den offiziellen Rechnungsbetrag.",
     "monthSpend": "Ausgaben im {{month}}",
     "monthSpendHint": "Kalendermonat, nach Kaufdatum"
+  },
+  "invoices": {
+    "title": "Rechnungen",
+    "comingNext": "Stelle deinen Kunden Rechnungen und behalte im Blick, was bezahlt ist und was offen bleibt. Das ist das Nächste, was gebaut wird."
   }
 }

@@ -56,7 +56,9 @@
     "archiveHint": "O workspace fica oculto da lista e do switcher. Os dados continuam preservados.",
     "archiveSuccess": "Workspace arquivado",
     "archiveConfirmTitle": "Arquivar workspace?",
-    "archiveConfirmDescription": "O workspace \"{{name}}\" será removido da sua lista. Os dados ficam preservados e um admin pode restaurar mais tarde."
+    "archiveConfirmDescription": "O workspace \"{{name}}\" será removido da sua lista. Os dados ficam preservados e um admin pode restaurar mais tarde.",
+    "kindBusiness": "Negócios",
+    "kindHint": "Escolha o que este workspace vai acompanhar. Isso não pode ser alterado depois."
   },
   "app": {
     "name": "Securo",
@@ -140,7 +142,8 @@
     "purchasePlanner": "À vista vs parcelado",
     "dividends": "Dividendos",
     "emergencyFund": "Reserva de emergência",
-    "cards": "Cartões"
+    "cards": "Cartões",
+    "invoices": "Cobranças"
   },
   "collections": {
     "title": "Coleções",
@@ -297,7 +300,10 @@
     "fxRateUsed": "Taxa de câmbio: {{rate}}",
     "refreshRates": "Atualizar taxas de câmbio",
     "ratesRefreshed": "Taxas de câmbio atualizadas",
-    "ratesError": "Erro ao atualizar taxas de câmbio"
+    "ratesError": "Erro ao atualizar taxas de câmbio",
+    "projectedBalance": "Saldo projetado",
+    "projectedIncome": "Entradas previstas",
+    "projectedExpenses": "Saídas previstas"
   },
   "transactions": {
     "title": "Transações",
@@ -427,7 +433,7 @@
     "transferFromAccount": "Conta de origem",
     "transferToAccount": "Conta de destino",
     "transferAmount": "Valor",
-    "transferCrossCurrency": "Moedas diferentes — o valor será convertido automaticamente",
+    "transferCrossCurrency": "Moedas diferentes — informe o valor de destino ou deixe em branco para converter automaticamente",
     "transferSameAccount": "Origem e destino devem ser diferentes",
     "transferDescription": "Descrição",
     "transferNotes": "Notas",
@@ -537,7 +543,21 @@
     "calendarNoActivity": "Sem atividade neste mês",
     "calendarNoMovements": "Sem movimentações",
     "calendarActualNet": "Líquido real",
-    "calendarTransfersExcluded": "Transferências não contam como receitas ou despesas"
+    "calendarTransfersExcluded": "Transferências não contam como receitas ou despesas",
+    "makeInstallment": "Repetir em parcelas",
+    "installmentCount": "Número de parcelas",
+    "installmentFrequency": "Frequência",
+    "installmentScopeTitle": "Aplicar a quais parcelas?",
+    "installmentScopeEditDesc": "Esta transação faz parte de uma série de parcelas. Até onde esta alteração deve ser aplicada?",
+    "installmentScopeDeleteDesc": "Esta transação faz parte de uma série de parcelas. Quais parcelas devem ser excluídas?",
+    "installmentScopeThis": "Apenas esta",
+    "installmentScopeFuture": "Esta e as futuras",
+    "installmentScopeAll": "Todas as parcelas",
+    "bulkDelete": "Excluir selecionadas",
+    "bulkDeleteTitle": "Excluir {{count}} transações?",
+    "bulkDeleteDescription": "Isso exclui permanentemente as transações selecionadas, incluindo contrapartes de transferência e seus anexos. Não dá para desfazer.",
+    "bulkDeleteSuccess": "{{count}} transações excluídas",
+    "projected": "Prevista"
   },
   "accounts": {
     "title": "Contas",
@@ -687,7 +707,11 @@
         "description": "Bancos dos EUA e internacionais via SimpleFIN Bridge"
       }
     },
-    "reconnected": "Banco reconectado com sucesso"
+    "reconnected": "Banco reconectado com sucesso",
+    "projectedBalance": "Saldo projetado",
+    "notSettled": "Não liquidado",
+    "projectedIncome": "Entradas previstas",
+    "projectedExpenses": "Saídas previstas"
   },
   "connections": {
     "settings": "Configurações da conexão",
@@ -837,7 +861,11 @@
     "autoGenerate": "Gerar transações automaticamente",
     "autoGenerateHelp": "Cria uma transação sempre que esta conta vence. Desative para aguardar o lançamento real (por exemplo, da sincronização bancária) e mostrá-la apenas como prevista até lá.",
     "fxEstimate": "Estimativa baseada na última taxa de câmbio ({{rate}}). O valor final pode mudar.",
-    "quarterly": "Trimestral"
+    "quarterly": "Trimestral",
+    "weekendAdjustment": "Ajuste de fim de semana",
+    "weekendAdjustmentNone": "Sem ajuste",
+    "weekendAdjustmentPreviousFriday": "Sexta-feira antes do fim de semana",
+    "weekendAdjustmentNextMonday": "Segunda-feira depois do fim de semana"
   },
   "rules": {
     "section": "Automação",
@@ -1026,7 +1054,8 @@
     "page": "Página {{current}} de {{total}}",
     "mapPayee": "Coluna de beneficiário",
     "mapExternalId": "Coluna de ID da transação",
-    "mapNotes": "Coluna de notas"
+    "mapNotes": "Coluna de notas",
+    "importOptions": "Opções de importação"
   },
   "assets": {
     "title": "Patrimônio",
@@ -1330,7 +1359,7 @@
     "emptyHint": "Crie um grupo para dividir despesas com pessoas, departamentos ou projetos.",
     "name": "Nome",
     "kindLabel": "Tipo",
-    "kindHint": "Define os rótulos e relatórios — escolha o que mais se aproxima.",
+    "kindHint": "Escolha o que este workspace vai acompanhar. Isso não pode ser alterado depois.",
     "defaultCurrency": "Moeda padrão",
     "notes": "Notas",
     "archived": "Arquivado",
@@ -1430,7 +1459,8 @@
       "project": "Projeto",
       "client": "Cliente",
       "other": "Outro"
-    }
+    },
+    "kindBusiness": "Negócios"
   },
   "privacy": {
     "hide": "Ocultar valores",
@@ -1670,7 +1700,7 @@
       "saving": "Salvando…",
       "saved": "Ferramentas atualizadas",
       "saveFailed": "Falha ao salvar a seleção de ferramentas",
-      "empty": "Nenhuma ferramenta descoberta. O servidor MCP está rodando? (`docker compose --profile agents up -d`)",
+      "empty": "Nenhuma ferramenta descoberta. O servidor MCP está rodando? Com Docker: `docker compose --profile agents up -d`.",
       "proposeBadge": "proposta",
       "loading": "Carregando ferramentas…"
     },
@@ -2133,5 +2163,9 @@
     "reconcileNote": "O provedor não enviou todas as linhas desta fatura fechada; este valor completa o total oficial.",
     "monthSpend": "Gasto em {{month}}",
     "monthSpendHint": "Mês-calendário, por data da compra"
+  },
+  "invoices": {
+    "title": "Cobranças",
+    "comingNext": "Cobre seus clientes e acompanhe o que já foi pago e o que continua em aberto. É a próxima coisa sendo construída."
   }
 }

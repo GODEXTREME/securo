@@ -11,8 +11,62 @@ from typing import Optional
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.account import Account
 from app.models.category import Category
 from app.models.transaction import Transaction
+
+
+def is_confirmed():
+    """SQL filter: the charge is settled rather than merely authorized.
+
+    One of the two independent axes a transaction sits on. This one is about
+    *confirmation*: a pending row is real money already committed, it just
+    has not cleared yet. It says nothing about when the row is dated.
+    """
+    return Transaction.status == "posted"
+
+
+def is_not_future(as_of: date):
+    """SQL filter: the transaction has already happened by ``as_of``.
+
+    The other axis, and a pure date question. A future-dated row is forecast
+    no matter how confirmed it is; a past-dated row has happened no matter
+    whether the bank has cleared it.
+    """
+    return Transaction.date <= as_of
+
+
+def is_inside_provider_snapshot():
+    """SQL filter: the provider's balance already accounts for this row.
+
+    A connected account's current balance is the number the provider sends,
+    not a sum of our rows, and providers net out the pending charges they
+    report. A row typed by hand is ambiguous the same way, since the user is
+    usually copying a charge the bank is already showing them.
+
+    A recurring placeholder is the one case we can be sure about: we invented
+    the row from a schedule, so no provider has ever seen it. Treating it as
+    already counted makes it cancel itself out, leaving a charge that shows up
+    in the forecast totals but moves no balance.
+    """
+    return Transaction.source != "recurring"
+
+
+def counts_in_current_balance(as_of: date):
+    """SQL filter: the row belongs in the balance labelled "current".
+
+    Composed from the two axes above so the definition lives in one place and
+    moving the line later is a change here rather than at every query site.
+
+    Today the line sits at "confirmed and not future", with one exception:
+    a credit card's balance is the debt owed, and an authorized purchase is
+    already owed, so pending card rows stay in. Without that carve-out the
+    card's balance understates the debt while its own bill total includes it.
+    """
+    return and_(
+        is_not_future(as_of),
+        or_(is_confirmed(), Account.type == "credit_card"),
+    )
 
 
 def reporting_date_col(accounting_mode: str):
@@ -157,6 +211,8 @@ async def owner_split_offset_pnl(
             Transaction.source != "opening_balance",
             date_col >= month_start,
             date_col < month_end,
+            date_col <= date.today(),
+            Transaction.status == "posted",
             counts_as_user_pnl(),
         )
         .group_by(Transaction.currency)
@@ -235,6 +291,8 @@ async def owner_split_offset_by_category(
             Transaction.source != "opening_balance",
             date_col >= month_start,
             date_col < month_end,
+            date_col <= date.today(),
+            Transaction.status == "posted",
             counts_as_user_pnl(),
         )
         .group_by(Transaction.category_id, Transaction.currency)
@@ -317,6 +375,8 @@ async def viewer_shared_pnl(
             Transaction.source != "opening_balance",
             date_col >= month_start,
             date_col < month_end,
+            date_col <= date.today(),
+            Transaction.status == "posted",
             counts_as_pnl(),
         )
         .group_by(Transaction.currency)
@@ -394,6 +454,8 @@ async def viewer_shared_spending_by_category(
             Transaction.source != "opening_balance",
             date_col >= month_start,
             date_col < month_end,
+            date_col <= date.today(),
+            Transaction.status == "posted",
             counts_as_pnl(),
         )
         .group_by(Transaction.category_id, Transaction.currency)

@@ -27,10 +27,7 @@ import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { resolveDateFnsLocale } from '@/lib/date-fns-locale'
-
-function formatCurrency(value: number, currency = 'USD', locale = 'en-US') {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value)
-}
+import { formatCurrency } from '@/lib/format'
 
 function currentMonth() {
   const now = new Date()

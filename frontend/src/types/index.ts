@@ -45,9 +45,13 @@ export interface AppSetting {
 
 export type WorkspaceRole = 'owner' | 'editor' | 'viewer' | 'manager'
 
+export type WorkspaceKind = 'personal' | 'business'
+
 export interface Workspace {
   id: string
   name: string
+  // Widened on purpose: a workspace stored before the current kind list
+  // still has to render. Writes are narrowed to WorkspaceKind.
   kind: string
   is_archived: boolean
   default_currency: string
@@ -58,6 +62,8 @@ export interface Workspace {
   created_by_user_id: string | null
   managed_by_user_id: string | null
   role: WorkspaceRole | null
+  /** Modules this workspace shows. Resolved server-side; see lib/modules.ts. */
+  enabled_modules: string[]
 }
 
 export interface WorkspaceMember {
@@ -181,11 +187,17 @@ export interface Collection {
 export interface AccountSummary {
   account_id: string
   current_balance: number
+  opening_balance: number
   monthly_income: number
   monthly_expenses: number
   current_balance_primary: number | null
+  opening_balance_primary: number | null
   monthly_income_primary: number | null
   monthly_expenses_primary: number | null
+  projected_income?: number
+  projected_expenses?: number
+  projected_income_primary?: number | null
+  projected_expenses_primary?: number | null
 }
 
 export interface Transaction {
@@ -215,6 +227,7 @@ export interface Transaction {
   total_installments: number | null
   installment_total_amount: number | null
   installment_purchase_date: string | null
+  installment_series_id: string | null
   bill_id: string | null
   // Manual override for which credit-card bill cycle this tx belongs to
   // (issue #92). Empty / null = use auto bucketing (Pluggy bill_id when
@@ -236,6 +249,38 @@ export interface Transaction {
   parent_owner_name?: string | null
   // Flag to exclude this transaction from reports and dashboard aggregations
   is_ignored: boolean
+  virtual?: boolean
+}
+
+// Scope for installment-series edits/deletes: "this" (default) only touches
+// the target row, "future" touches it plus later installments, "all" touches
+// the whole series. Ignored server-side for non-installment transactions.
+export type TransactionApplyScope = 'this' | 'future' | 'all'
+
+// Payload for POST /api/transactions/installments. `base` is
+// the amount repeated as-is; the backend fans it out into `installments`
+// equal parcels sharing the installment fingerprint and stores
+// installment_total_amount = base.amount * installments.
+export interface InstallmentSeriesInput {
+  base: {
+    account_id: string
+    category_id?: string | null
+    payee_id?: string | null
+    description: string
+    amount: number
+    date: string
+    type: 'debit' | 'credit'
+    currency?: string
+    notes?: string | null
+    status?: 'posted' | 'pending'
+    amount_primary?: number | null
+    fx_rate_used?: number | null
+    effective_bill_date?: string | null
+    splits?: TransactionSplitsInput | null
+  }
+  installments: number
+  first_installment_status?: 'posted' | 'pending'
+  frequency?: 'monthly' | 'quarterly' | 'weekly' | 'yearly'
 }
 
 export type ShareType = 'equal' | 'exact' | 'percent'
@@ -261,6 +306,14 @@ export interface TransactionSplitInput {
 export interface TransactionSplitsInput {
   share_type: ShareType
   splits: TransactionSplitInput[]
+}
+
+// Payload the transaction dialog sends on save. `splits` is the normalized
+// TransactionSplitsInput the split section produces, not the
+// TransactionSplit[] rows the API returns, so the edit payload type reflects
+// the form's actual shape.
+export type TransactionEditPayload = Omit<Partial<Transaction>, 'splits'> & {
+  splits?: TransactionSplitsInput | null
 }
 
 export type GroupKind = 'social' | 'cost_center' | 'project' | 'client' | 'other'
@@ -433,6 +486,7 @@ export interface RecurringTransaction {
   currency: string
   type: 'debit' | 'credit'
   frequency: 'monthly' | 'quarterly' | 'weekly' | 'yearly'
+  weekend_adjustment: 'none' | 'previous_friday' | 'next_monday'
   day_of_month: number | null
   start_date: string
   end_date: string | null
@@ -445,6 +499,7 @@ export interface RecurringTransaction {
 
 export interface ProjectedTransaction {
   recurring_id: string | null
+  account_id: string | null
   description: string
   amount: number
   amount_primary: number | null
@@ -459,7 +514,6 @@ export interface ProjectedTransaction {
   kind?: 'recurring' | 'installment'
   installment_number?: number | null
   total_installments?: number | null
-  account_id?: string | null
 }
 
 export interface TransactionCalendarItem {
@@ -536,14 +590,49 @@ export interface TransactionCalendarResponse {
   days: TransactionCalendarDay[]
 }
 
+export interface TransactionCalendarDay {
+  date: string
+  in_month: boolean
+  ending_balance: number
+  // Combined totals kept for backwards compatibility.
+  income: number
+  expense: number
+  transfer_net: number
+  actual_income: number
+  actual_expense: number
+  actual_transfer_net: number
+  projected_income: number
+  projected_expense: number
+  projected_transfer_net: number
+  actual_count: number
+  projected_count: number
+  has_income: boolean
+  has_expense: boolean
+  has_transfer: boolean
+  items: TransactionCalendarItem[]
+}
+
+export interface TransactionCalendarResponse {
+  month: string
+  currency: string
+  account_ids: string[] | null
+  days: TransactionCalendarDay[]
+}
+
 export interface DashboardSummary {
   total_balance: Record<string, number>
   total_balance_primary: number
+  projected_balance: Record<string, number>
+  projected_balance_primary: number
   balance_date: string
   monthly_income: number
   monthly_expenses: number
   monthly_income_primary: number
   monthly_expenses_primary: number
+  projected_income?: number
+  projected_expenses?: number
+  projected_income_primary?: number
+  projected_expenses_primary?: number
   accounts_count: number
   pending_categorization: number
   pending_categorization_amount: number
@@ -600,7 +689,9 @@ export interface BudgetVsActual {
   group_name: string | null
   budget_amount: number | null
   actual_amount: number
+  projected_amount: number
   prev_month_amount: number
+  projected_prev_month_amount: number
   percentage_used: number | null
   is_recurring: boolean
   rollover?: boolean

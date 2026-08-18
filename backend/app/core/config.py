@@ -65,7 +65,7 @@ class Settings(BaseSettings):
 
     # FX Rates
     openexchangerates_app_id: str = ""
-    supported_currencies: str = "USD,EUR,GBP,BRL,CAD,AUD,CHF,ARS,JPY,MXN,INR,SEK,DKK,NOK,PLN,CZK,HUF,RON,CRC,IDR,COP,CLP,DOP,RUB,GTQ,PHP,UAH"  # comma-separated list
+    supported_currencies: str = "USD,EUR,GBP,BRL,CAD,AUD,CHF,ARS,JPY,MXN,INR,SEK,DKK,NOK,PLN,CZK,HUF,RON,CRC,IDR,COP,CLP,DOP,RUB,GTQ,PHP,UAH,NZD"  # comma-separated list
     fx_sync_mode: str = "on_demand"  # "on_demand" or "scheduled"
 
     # Storage
@@ -120,7 +120,23 @@ class Settings(BaseSettings):
     # external dependency on the Brazilian government endpoint).
     tesouro_direto_enabled: bool = True
 
-    model_config = SettingsConfigDict(env_file=".env", secrets_dir=CREDENTIALS_DIRECTORY)
+    # The CWD-relative ".env" is kept for backward compatibility; the anchored
+    # backend/.env guarantees the API and the Celery worker/beat resolve the
+    # same file no matter which working directory each service is launched
+    # from (a systemd unit without WorkingDirectory= used to leave the worker
+    # with default settings, silently disabling every bank-sync provider).
+    #
+    # extra="ignore" because the same .env is shared with Docker Compose and with
+    # the optional modules: it legitimately holds keys this model doesn't declare
+    # (COMPOSE_PROFILES, FRONTEND_PORT, AGENTS_*, ...). Unknown keys coming from
+    # the process environment are ignored by pydantic-settings anyway; without
+    # this, the very same key written into the .env file aborted startup with
+    # "Extra inputs are not permitted".
+    model_config = SettingsConfigDict(
+        env_file=(".env", Path(__file__).resolve().parents[2] / ".env"),
+        secrets_dir=CREDENTIALS_DIRECTORY,
+        extra="ignore",
+    )
 
 
 @lru_cache
