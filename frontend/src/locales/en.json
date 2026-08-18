@@ -56,7 +56,9 @@
     "archiveHint": "The workspace is hidden from the list and switcher. Data is preserved.",
     "archiveSuccess": "Workspace archived",
     "archiveConfirmTitle": "Archive workspace?",
-    "archiveConfirmDescription": "The workspace \"{{name}}\" will be removed from your list. Data is preserved and an admin can restore it later."
+    "archiveConfirmDescription": "The workspace \"{{name}}\" will be removed from your list. Data is preserved and an admin can restore it later.",
+    "kindBusiness": "Business",
+    "kindHint": "Pick what this workspace tracks. This can't be changed later."
   },
   "app": {
     "name": "Securo",
@@ -140,7 +142,8 @@
     "purchasePlanner": "Cash vs instalments",
     "dividends": "Dividends",
     "emergencyFund": "Emergency fund",
-    "cards": "Cards"
+    "cards": "Cards",
+    "invoices": "Invoices"
   },
   "collections": {
     "title": "Collections",
@@ -297,7 +300,10 @@
     "fxRateUsed": "FX rate: {{rate}}",
     "refreshRates": "Refresh FX rates",
     "ratesRefreshed": "FX rates updated",
-    "ratesError": "Failed to update FX rates"
+    "ratesError": "Failed to update FX rates",
+    "projectedBalance": "Projected Balance",
+    "projectedIncome": "Projected Income",
+    "projectedExpenses": "Projected Expenses"
   },
   "transactions": {
     "title": "Transactions",
@@ -430,7 +436,7 @@
     "transferFromAccount": "From account",
     "transferToAccount": "To account",
     "transferAmount": "Amount",
-    "transferCrossCurrency": "Currencies differ — amount will be converted automatically",
+    "transferCrossCurrency": "Currencies differ — enter the destination amount or leave it blank to convert automatically",
     "transferSameAccount": "Source and destination must be different",
     "transferDescription": "Description",
     "transferNotes": "Notes",
@@ -537,7 +543,21 @@
     "calendarNoActivity": "No activity this month",
     "calendarNoMovements": "No movements",
     "calendarActualNet": "Actual net",
-    "calendarTransfersExcluded": "Transfers are not counted as income or expenses"
+    "calendarTransfersExcluded": "Transfers are not counted as income or expenses",
+    "makeInstallment": "Repeat as installments",
+    "installmentCount": "Number of installments",
+    "installmentFrequency": "Frequency",
+    "installmentScopeTitle": "Apply to which installments?",
+    "installmentScopeEditDesc": "This transaction is part of an installment series. How far should this change apply?",
+    "installmentScopeDeleteDesc": "This transaction is part of an installment series. Which installments should be deleted?",
+    "installmentScopeThis": "This one",
+    "installmentScopeFuture": "This and future",
+    "installmentScopeAll": "All installments",
+    "bulkDelete": "Delete selected",
+    "bulkDeleteTitle": "Delete {{count}} transactions?",
+    "bulkDeleteDescription": "This permanently deletes the selected transactions, including transfer counterparts and their attachments. This cannot be undone.",
+    "bulkDeleteSuccess": "{{count}} transactions deleted",
+    "projected": "Projected"
   },
   "accounts": {
     "title": "Accounts",
@@ -687,7 +707,11 @@
         "description": "US and international banks via SimpleFIN Bridge"
       }
     },
-    "reconnected": "Bank reconnected successfully"
+    "reconnected": "Bank reconnected successfully",
+    "projectedBalance": "Projected Balance",
+    "notSettled": "Not settled",
+    "projectedIncome": "Projected Income",
+    "projectedExpenses": "Projected Expenses"
   },
   "connections": {
     "settings": "Connection settings",
@@ -837,7 +861,11 @@
     "autoGenerate": "Generate transactions automatically",
     "autoGenerateHelp": "Create a transaction each time this bill is due. Turn off to wait for the real charge (e.g. from bank sync) and only show it as upcoming until then.",
     "fxEstimate": "Estimate based on latest exchange rate ({{rate}}). Final amount may change.",
-    "quarterly": "Quarterly"
+    "quarterly": "Quarterly",
+    "weekendAdjustment": "Weekend adjustment",
+    "weekendAdjustmentNone": "No adjustment",
+    "weekendAdjustmentPreviousFriday": "Friday before the weekend",
+    "weekendAdjustmentNextMonday": "Monday after the weekend"
   },
   "rules": {
     "section": "Automation",
@@ -1026,7 +1054,8 @@
     "page": "Page {{current}} of {{total}}",
     "mapPayee": "Payee column",
     "mapExternalId": "Transaction ID column",
-    "mapNotes": "Notes column"
+    "mapNotes": "Notes column",
+    "importOptions": "Import options"
   },
   "assets": {
     "title": "Assets",
@@ -1330,7 +1359,7 @@
     "emptyHint": "Create a group to split expenses with people, departments, or projects.",
     "name": "Name",
     "kindLabel": "Type",
-    "kindHint": "Drives the labels and reports — pick the closest fit.",
+    "kindHint": "Pick what this workspace tracks. This can't be changed later.",
     "defaultCurrency": "Default currency",
     "notes": "Notes",
     "archived": "Archived",
@@ -1430,7 +1459,8 @@
       "project": "Project",
       "client": "Client",
       "other": "Other"
-    }
+    },
+    "kindBusiness": "Business"
   },
   "privacy": {
     "hide": "Hide values",
@@ -1685,7 +1715,7 @@
       "saving": "Saving…",
       "saved": "Tools updated",
       "saveFailed": "Failed to save tool selection",
-      "empty": "No tools discovered. Is the MCP server running? (`docker compose --profile agents up -d`)",
+      "empty": "No tools discovered. Is the MCP server running? With Docker: `docker compose --profile agents up -d`.",
       "proposeBadge": "propose",
       "loading": "Loading tools…"
     },
@@ -2133,5 +2163,9 @@
     "reconcileNote": "The provider didn't deliver every line of this closed statement; this amount completes the official invoice total.",
     "monthSpend": "Spent in {{month}}",
     "monthSpendHint": "Calendar month, by purchase date"
+  },
+  "invoices": {
+    "title": "Invoices",
+    "comingNext": "Bill your clients and keep track of what has been paid and what is still open. This is the next thing being built."
   }
 }

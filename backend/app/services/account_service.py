@@ -12,7 +12,13 @@ from app.models.bank_connection import BankConnection
 from app.models.credit_card_bill import CreditCardBill
 from app.models.transaction import Transaction
 from app.schemas.account import AccountCreate, AccountUpdate
-from app.services._query_filters import counts_as_pnl
+from app.services._query_filters import (
+    counts_as_pnl,
+    counts_in_current_balance,
+    is_confirmed,
+    is_inside_provider_snapshot,
+    is_not_future,
+)
 from app.services.credit_card_service import apply_effective_date, compute_available_credit, get_cycle_dates
 from app.models.category import Category
 
@@ -43,6 +49,7 @@ def _opening_balance_values(account_type: str, balance: Decimal) -> tuple[Decima
 
 
 async def get_accounts(session: AsyncSession, workspace_id: uuid.UUID, include_closed: bool = False) -> list[dict]:
+    today = _Date.today()
     # Subquery: compute current_balance per account from transactions in one pass
     # Use amount_primary only when tx currency differs from account currency
     # (converts foreign txs to account's reporting currency)
@@ -63,6 +70,7 @@ async def get_accounts(session: AsyncSession, workspace_id: uuid.UUID, include_c
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
+            counts_in_current_balance(today),
             Transaction.is_ignored == False,
             or_(
                 Transaction.category_id.is_(None),
@@ -74,7 +82,6 @@ async def get_accounts(session: AsyncSession, workspace_id: uuid.UUID, include_c
     )
 
     # Subquery: compute previous_balance (balance at end of previous month)
-    today = _Date.today()
     first_of_month = today.replace(day=1)
     prev_month_end = first_of_month - timedelta(days=1)
 
@@ -83,9 +90,11 @@ async def get_accounts(session: AsyncSession, workspace_id: uuid.UUID, include_c
             Transaction.account_id,
             func.coalesce(func.sum(signed_amount), 0).label("previous_balance"),
         )
+        .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.date <= prev_month_end,
+            Transaction.status == "posted",
             Transaction.is_ignored == False,
             or_(
                 Transaction.category_id.is_(None),
@@ -445,6 +454,12 @@ async def sync_opening_balance_for_connected_account(
     if account.connection_id is None:
         return
 
+    # The provider balance is a snapshot for today. Future-dated transactions
+    # are projections and must not change the synthetic opening transaction;
+    # otherwise a later-dated row can shift the opening balance even though it
+    # is not part of the provider's current balance yet.
+    balance_cutoff = _Date.today()
+
     # For connected CC accounts the stored balance is positive debt and the UI
     # displays it negated (account_service.serialize_account). The sum of signed
     # transaction amounts on a CC trends negative as debt accrues, so the target
@@ -466,6 +481,14 @@ async def sync_opening_balance_for_connected_account(
         select(func.coalesce(func.sum(signed_amount), 0)).where(
             Transaction.account_id == account.id,
             Transaction.source != "opening_balance",
+            Transaction.date <= balance_cutoff,
+            Transaction.is_ignored == False,
+            or_(
+                Transaction.category_id.is_(None),
+                Transaction.category_id.not_in(
+                    select(Category.id).where(Category.is_ignored == True)
+                ),
+            ),
         )
     )
     tx_sum = Decimal(str(sum_result.scalar() or 0))
@@ -490,6 +513,14 @@ async def sync_opening_balance_for_connected_account(
         select(func.min(Transaction.date)).where(
             Transaction.account_id == account.id,
             Transaction.source != "opening_balance",
+            Transaction.date <= balance_cutoff,
+            Transaction.is_ignored == False,
+            or_(
+                Transaction.category_id.is_(None),
+                Transaction.category_id.not_in(
+                    select(Category.id).where(Category.is_ignored == True)
+                ),
+            ),
         )
     )
     oldest_date = oldest_result.scalar()
@@ -659,6 +690,11 @@ async def get_account_summary(
                 )
             ).where(
                 Transaction.account_id == account_id,
+                is_not_future(today),
+                # Same carve-out as the accounts list: a card's balance is the
+                # debt owed and an authorized purchase is already owed. The
+                # account is loaded here, so branch in Python rather than SQL.
+                *([] if account.type == "credit_card" else [is_confirmed()]),
                 Transaction.is_ignored == False,
                 or_(
                     Transaction.category_id.is_(None),
@@ -751,6 +787,8 @@ async def get_account_summary(
             Transaction.account_id == account_id,
             Transaction.type == "credit",
             Transaction.source != "opening_balance",
+            bucket_date <= today,
+            Transaction.status == "posted",
             counts_as_pnl(),
         ))
     )
@@ -770,6 +808,8 @@ async def get_account_summary(
             _scope(select(func.coalesce(func.sum(signed_for_bill), 0)).where(
                 Transaction.account_id == account_id,
                 Transaction.source != "opening_balance",
+                bucket_date <= today,
+                Transaction.status == "posted",
                 counts_as_pnl(),
             ))
         )
@@ -778,16 +818,145 @@ async def get_account_summary(
             _scope(select(func.coalesce(func.sum(func.abs(effective_amount)), 0)).where(
                 Transaction.account_id == account_id,
                 Transaction.type == "debit",
+                bucket_date <= today,
+                Transaction.status == "posted",
                 counts_as_pnl(),
             ))
         )
     monthly_expenses = float(expenses_result.scalar())
 
+    # Forecast values use the same cycle/date scope as the actual totals, but
+    # include every pending row and every row bucketed after today. The current
+    # balance remains posted-only (or the provider number for connected
+    # accounts); these fields are the payable/forecast view consumed by the
+    # account-detail bill card.
+    forecast_condition = or_(
+        Transaction.status == "pending",
+        bucket_date > today,
+    )
+    forecast_income_result = await session.execute(
+        _scope(select(func.coalesce(func.sum(effective_amount), 0)).where(
+            Transaction.account_id == account_id,
+            Transaction.type == "credit",
+            Transaction.source != "opening_balance",
+            forecast_condition,
+            counts_as_pnl(),
+        ))
+    )
+    forecast_income = float(forecast_income_result.scalar() or 0)
+
+    if account.type == "credit_card":
+        forecast_expense_result = await session.execute(
+            _scope(select(func.coalesce(func.sum(signed_for_bill), 0)).where(
+                Transaction.account_id == account_id,
+                Transaction.source != "opening_balance",
+                forecast_condition,
+                counts_as_pnl(),
+            ))
+        )
+    else:
+        forecast_expense_result = await session.execute(
+            _scope(select(func.coalesce(func.sum(func.abs(effective_amount)), 0)).where(
+                Transaction.account_id == account_id,
+                Transaction.type == "debit",
+                forecast_condition,
+                counts_as_pnl(),
+            ))
+        )
+    forecast_expenses = float(forecast_expense_result.scalar() or 0)
+
+    # Opening balance: the projected balance at (date_from - 1 day). It seeds
+    # the account-detail running-balance walk, so it includes pending rows and
+    # future-dated rows that occur before the visible window. The opening row
+    # itself is included when it falls inside the window and applied by the
+    # same walk as every other transaction.
+    if account.type != "credit_card" and date_from:
+        ob_base_filters = [
+            Transaction.account_id == account_id,
+            Transaction.is_ignored == False,
+            or_(
+                Transaction.category_id.is_(None),
+                Transaction.category_id.not_in(
+                    select(Category.id).where(Category.is_ignored == True)
+                ),
+            ),
+        ]
+        if account.connection_id:
+            # Connected current balance is the provider snapshot. Reconstruct
+            # the balance before the visible window from that snapshot and all
+            # settled/pending rows in the visible historical portion. This
+            # preserves the provider number even when it includes pending rows.
+            # A recurring placeholder is left out of that unwinding: we
+            # generated it ourselves so it was never in the snapshot, and
+            # removing it here would cancel it out when the walk re-applies it.
+            period_filters = [
+                *ob_base_filters,
+                Transaction.date >= date_from,
+                Transaction.date <= today,
+            ]
+            posted_result = await session.execute(
+                select(func.coalesce(func.sum(
+                    case(
+                        (Transaction.type == "credit", effective_amount),
+                        else_=-effective_amount,
+                    )
+                ), 0)).where(*period_filters, Transaction.status == "posted")
+            )
+            pending_result = await session.execute(
+                select(func.coalesce(func.sum(
+                    case(
+                        (Transaction.type == "credit", effective_amount),
+                        else_=-effective_amount,
+                    )
+                ), 0)).where(
+                    *period_filters,
+                    Transaction.status == "pending",
+                    is_inside_provider_snapshot(),
+                )
+            )
+            opening_balance = current_balance - float(posted_result.scalar() or 0)
+            opening_balance -= float(pending_result.scalar() or 0)
+
+            if date_from > today:
+                before_window_result = await session.execute(
+                    select(func.coalesce(func.sum(
+                        case(
+                            (Transaction.type == "credit", effective_amount),
+                            else_=-effective_amount,
+                        )
+                    ), 0)).where(
+                        *ob_base_filters,
+                        Transaction.date > today,
+                        Transaction.date < date_from,
+                        Transaction.status.in_(("posted", "pending")),
+                    )
+                )
+                opening_balance += float(before_window_result.scalar() or 0)
+        else:
+            manual_result = await session.execute(
+                select(func.coalesce(func.sum(
+                    case(
+                        (Transaction.type == "credit", effective_amount),
+                        else_=-effective_amount,
+                    )
+                ), 0)).where(
+                    *ob_base_filters,
+                    Transaction.date < date_from,
+                    Transaction.status.in_(("posted", "pending")),
+                )
+            )
+            opening_balance = float(manual_result.scalar() or 0)
+    else:
+        opening_balance = 0.0
+
     return {
         "account_id": account_id,
         "current_balance": current_balance,
+        "opening_balance": opening_balance,
         "monthly_income": monthly_income,
         "monthly_expenses": monthly_expenses,
+        "projected_income": monthly_income + forecast_income,
+        "projected_expenses": monthly_expenses + forecast_expenses,
     }
 
 
@@ -815,7 +984,8 @@ async def _account_balance_at(
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.account_id == account_id,
-            Transaction.date <= cutoff,
+            Transaction.date <= min(cutoff, _Date.today()),
+            Transaction.status == "posted",
             Transaction.is_ignored == False,
             or_(
                 Transaction.category_id.is_(None),
@@ -848,6 +1018,8 @@ async def _account_daily_balance_series(
             Transaction.account_id == account_id,
             Transaction.date >= date_from,
             Transaction.date <= date_to,
+            Transaction.date <= _Date.today(),
+            Transaction.status == "posted",
             Transaction.is_ignored == False,
             or_(
                 Transaction.category_id.is_(None),

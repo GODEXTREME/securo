@@ -95,8 +95,14 @@ class CreditCardBillRead(BaseModel):
 class AccountSummary(BaseModel):
     account_id: uuid.UUID
     current_balance: float
+    opening_balance: float
     monthly_income: float
     monthly_expenses: float
+    projected_income: float = 0.0
+    projected_expenses: float = 0.0
     current_balance_primary: Optional[float] = None
+    opening_balance_primary: Optional[float] = None
     monthly_income_primary: Optional[float] = None
     monthly_expenses_primary: Optional[float] = None
+    projected_income_primary: Optional[float] = None
+    projected_expenses_primary: Optional[float] = None

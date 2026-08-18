@@ -36,7 +36,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { AlertTriangle, Archive, Plus, Save, Trash2, Users } from 'lucide-react'
-import type { WorkspaceMember, WorkspaceRole } from '@/types'
+import { WORKSPACE_KIND_LABEL_KEY } from '@/lib/workspace-kinds'
+import type { WorkspaceKind, WorkspaceMember, WorkspaceRole } from '@/types'
 
 function labelForRole(role: WorkspaceRole, t: (key: string) => string): string {
   return {
@@ -246,6 +247,7 @@ export default function WorkspaceSettingsPage() {
   const stats = statsQuery.data ?? { members: 1, accounts: 0, transactions: 0 }
   const isManaged = !!current.managed_by_user_id
   const isManagerSelf = isManaged && current.managed_by_user_id === currentUser?.id
+  const kindLabelKey = WORKSPACE_KIND_LABEL_KEY[current.kind as WorkspaceKind]
 
   return (
     <div className="container max-w-5xl py-8 space-y-6">
@@ -261,6 +263,12 @@ export default function WorkspaceSettingsPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-semibold truncate">{current.name}</h1>
+              {/* Fixed at creation, so it reads as identity, not a control. */}
+              {kindLabelKey && (
+                <Badge variant="outline" className="text-[11px]">
+                  {t(kindLabelKey)}
+                </Badge>
+              )}
               {current.role && (
                 <Badge variant="secondary" className="text-[11px]">
                   {labelForRole(current.role, t)}
@@ -338,7 +346,7 @@ export default function WorkspaceSettingsPage() {
                     type="color"
                     value={editColor}
                     onChange={(e) => setEditColor(e.target.value)}
-                    className="h-10 w-10 p-1 rounded-lg cursor-pointer border border-input bg-background shrink-0"
+                    className="h-10 w-10 p-1 rounded-lg cursor-pointer border border-input bg-card shrink-0"
                     title={t('groups.color', 'Cor')}
                   />
                 </div>
@@ -478,7 +486,7 @@ export default function WorkspaceSettingsPage() {
                           role: e.target.value as WorkspaceRole,
                         })
                       }
-                      className="h-9 w-32 rounded-lg border border-input bg-background px-2 text-sm"
+                      className="h-9 w-32 rounded-lg border border-input bg-card px-2 text-sm"
                     >
                       {(['owner', 'editor', 'viewer'] as WorkspaceRole[]).map((r) => (
                         <option key={r} value={r}>
@@ -575,7 +583,7 @@ export default function WorkspaceSettingsPage() {
                 id="invite-role"
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value as WorkspaceRole)}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                className="w-full h-10 rounded-lg border border-input bg-card px-3 text-sm"
               >
                 {(['owner', 'editor', 'viewer'] as WorkspaceRole[]).map((r) => (
                   <option key={r} value={r}>

@@ -56,7 +56,9 @@
     "archiveHint": "Obszar roboczy zostanie ukryty z listy i przełącznika. Dane zostają zachowane.",
     "archiveSuccess": "Zarchiwizowano obszar roboczy",
     "archiveConfirmTitle": "Zarchiwizować obszar roboczy?",
-    "archiveConfirmDescription": "Obszar roboczy „{{name}}” zostanie usunięty z listy. Dane zostają zachowane, a administrator może go później przywrócić."
+    "archiveConfirmDescription": "Obszar roboczy „{{name}}” zostanie usunięty z listy. Dane zostają zachowane, a administrator może go później przywrócić.",
+    "kindBusiness": "Firmowy",
+    "kindHint": "Wybierz, co śledzi ten obszar roboczy. Tego nie można później zmienić."
   },
   "app": {
     "name": "Securo",
@@ -140,7 +142,8 @@
     "purchasePlanner": "Cash vs instalments",
     "dividends": "Dividends",
     "emergencyFund": "Emergency fund",
-    "cards": "Cards"
+    "cards": "Cards",
+    "invoices": "Faktury"
   },
   "collections": {
     "title": "Kolekcje",
@@ -305,7 +308,10 @@
     "ratesRefreshed": "Zaktualizowano kursy FX",
     "ratesError": "Nie udało się zaktualizować kursów FX",
     "drillDownTotal": "{{count}} transactions · {{total}}",
-    "uncategorizedCta": "{{count}} transactions need categorizing"
+    "uncategorizedCta": "{{count}} transactions need categorizing",
+    "projectedBalance": "Saldo prognozowane",
+    "projectedIncome": "Prognozowane przychody",
+    "projectedExpenses": "Prognozowane wydatki"
   },
   "transactions": {
     "title": "Transakcje",
@@ -450,7 +456,7 @@
     "transferFromAccount": "Z konta",
     "transferToAccount": "Na konto",
     "transferAmount": "Kwota",
-    "transferCrossCurrency": "Waluty się różnią — kwota zostanie przeliczona automatycznie",
+    "transferCrossCurrency": "Waluty się różnią — podaj kwotę docelową lub pozostaw puste pole, aby przeliczyć automatycznie",
     "transferSameAccount": "Źródło i cel muszą być różne",
     "transferDescription": "Opis",
     "transferNotes": "Notatki",
@@ -573,7 +579,27 @@
     "calendarNoActivity": "Brak aktywności w tym miesiącu",
     "calendarNoMovements": "Brak operacji",
     "calendarActualNet": "Rzeczywiste netto",
-    "calendarTransfersExcluded": "Transfery nie liczą się jako przychody ani wydatki"
+    "calendarTransfersExcluded": "Transfery nie liczą się jako przychody ani wydatki",
+    "makeInstallment": "Powtórz jako raty",
+    "installmentCount": "Liczba rat",
+    "installmentFrequency": "Częstotliwość",
+    "installmentScopeTitle": "Do których rat zastosować?",
+    "installmentScopeEditDesc": "Ta transakcja jest częścią serii rat. Jak daleko ma zostać zastosowana ta zmiana?",
+    "installmentScopeDeleteDesc": "Ta transakcja jest częścią serii rat. Które raty mają zostać usunięte?",
+    "installmentScopeThis": "Tylko ta",
+    "installmentScopeFuture": "Ta i przyszłe",
+    "installmentScopeAll": "Wszystkie raty",
+    "bulkDelete": "Usuń zaznaczone",
+    "bulkDeleteTitle_one": "Usunąć {{count}} transakcję?",
+    "bulkDeleteTitle_few": "Usunąć {{count}} transakcje?",
+    "bulkDeleteTitle_many": "Usunąć {{count}} transakcji?",
+    "bulkDeleteTitle_other": "Usunąć {{count}} transakcji?",
+    "bulkDeleteDescription": "Spowoduje to trwałe usunięcie zaznaczonych transakcji, w tym powiązanych transferów i ich załączników. Nie można tego cofnąć.",
+    "bulkDeleteSuccess_one": "Usunięto {{count}} transakcję",
+    "bulkDeleteSuccess_few": "Usunięto {{count}} transakcje",
+    "bulkDeleteSuccess_many": "Usunięto {{count}} transakcji",
+    "bulkDeleteSuccess_other": "Usunięto {{count}} transakcji",
+    "projected": "Prognozowana"
   },
   "accounts": {
     "title": "Konta",
@@ -735,7 +761,11 @@
     "overdueDays": "Overdue by {{count}} days",
     "dueIn": "Due in {{count}} days",
     "mergedCount": "{{count}} transactions merged with synced data",
-    "reconnected": "Bank połączony ponownie"
+    "reconnected": "Bank połączony ponownie",
+    "projectedBalance": "Saldo prognozowane",
+    "notSettled": "Nierozliczone",
+    "projectedIncome": "Prognozowane przychody",
+    "projectedExpenses": "Prognozowane wydatki"
   },
   "connections": {
     "settings": "Ustawienia połączenia",
@@ -897,7 +927,11 @@
     "generated": "{{count}} transactions generated",
     "autoGenerate": "Automatycznie generuj transakcje",
     "autoGenerateHelp": "Tworzy transakcję za każdym razem, gdy ten rachunek jest wymagalny. Wyłącz, aby poczekać na rzeczywiste obciążenie (np. z synchronizacji bankowej) i do tego czasu pokazywać je tylko jako nadchodzące.",
-    "quarterly": "Kwartalnie"
+    "quarterly": "Kwartalnie",
+    "weekendAdjustment": "Korekta weekendowa",
+    "weekendAdjustmentNone": "Bez korekty",
+    "weekendAdjustmentPreviousFriday": "Piątek przed weekendem",
+    "weekendAdjustmentNextMonday": "Poniedziałek po weekendzie"
   },
   "rules": {
     "section": "Automatyzacja",
@@ -1118,7 +1152,8 @@
     "previewInfo": "{{count}} transactions · format {{format}}",
     "mapPayee": "Kolumna odbiorcy",
     "mapExternalId": "Kolumna ID transakcji",
-    "mapNotes": "Kolumna notatek"
+    "mapNotes": "Kolumna notatek",
+    "importOptions": "Opcje importu"
   },
   "assets": {
     "title": "Aktywa",
@@ -1434,7 +1469,7 @@
     "emptyHint": "Utwórz grupę, aby dzielić wydatki z osobami, działami lub projektami.",
     "name": "Nazwa",
     "kindLabel": "Typ",
-    "kindHint": "Wpływa na etykiety i raporty — wybierz najbliższe dopasowanie.",
+    "kindHint": "Wybierz, co śledzi ten obszar roboczy. Tego nie można później zmienić.",
     "defaultCurrency": "Waluta domyślna",
     "notes": "Notatki",
     "archived": "Zarchiwizowane",
@@ -1542,7 +1577,8 @@
       "other": "Inne"
     },
     "memberCount": "{{count}} members",
-    "splitWays": "split {{count}} ways"
+    "splitWays": "split {{count}} ways",
+    "kindBusiness": "Firmowy"
   },
   "privacy": {
     "hide": "Ukryj wartości",
@@ -1786,7 +1822,7 @@
       "saving": "Zapisywanie…",
       "saved": "Zaktualizowano narzędzia",
       "saveFailed": "Nie udało się zapisać wyboru narzędzi",
-      "empty": "Nie wykryto narzędzi. Czy serwer MCP działa? (`docker compose --profile agents up -d`)",
+      "empty": "Nie wykryto narzędzi. Czy serwer MCP działa? W Dockerze: `docker compose --profile agents up -d`.",
       "proposeBadge": "propozycja",
       "loading": "Wczytywanie narzędzi…"
     },
@@ -2253,5 +2289,9 @@
     "reconcileNote": "Dostawca nie dostarczył wszystkich pozycji tego zamkniętego wyciągu; ta kwota uzupełnia oficjalną sumę faktury.",
     "monthSpend": "Wydatki w {{month}}",
     "monthSpendHint": "Miesiąc kalendarzowy, wg daty zakupu"
+  },
+  "invoices": {
+    "title": "Faktury",
+    "comingNext": "Wystawiaj faktury klientom i śledź, co zostało zapłacone, a co wciąż jest otwarte. To następna rzecz w budowie."
   }
 }

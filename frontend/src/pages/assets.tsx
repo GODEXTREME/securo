@@ -55,14 +55,7 @@ import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
-
-function formatCurrency(value: number, currency = 'USD', locale = 'en-US') {
-  try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: currency || 'USD' }).format(value)
-  } catch {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(value)
-  }
-}
+import { formatCurrency } from '@/lib/format'
 
 // Renders a logo image when one is available, falling back to the asset's
 // type-based Lucide icon on missing URL or broken image. Uses the type's

@@ -56,7 +56,9 @@
     "archiveHint": "Робочий простір ховається зі списку та перемикача. Дані зберігаються.",
     "archiveSuccess": "Робочий простір архівовано",
     "archiveConfirmTitle": "Архівувати робочий простір?",
-    "archiveConfirmDescription": "Робочий простір «{{name}}» буде видалено з вашого списку. Дані зберігаються, адміністратор зможе відновити його пізніше."
+    "archiveConfirmDescription": "Робочий простір «{{name}}» буде видалено з вашого списку. Дані зберігаються, адміністратор зможе відновити його пізніше.",
+    "kindBusiness": "Бізнес",
+    "kindHint": "Виберіть, що вестиме цей робочий простір. Змінити пізніше не можна."
   },
   "app": {
     "name": "Securo",
@@ -140,7 +142,8 @@
     "purchasePlanner": "Cash vs instalments",
     "dividends": "Dividends",
     "emergencyFund": "Emergency fund",
-    "cards": "Cards"
+    "cards": "Cards",
+    "invoices": "Рахунки"
   },
   "collections": {
     "title": "Колекції",
@@ -297,7 +300,10 @@
     "fxRateUsed": "Курс: {{rate}}",
     "refreshRates": "Оновити курси валют",
     "ratesRefreshed": "Курси валют оновлено",
-    "ratesError": "Не вдалося оновити курси валют"
+    "ratesError": "Не вдалося оновити курси валют",
+    "projectedBalance": "Прогнозований баланс",
+    "projectedIncome": "Прогнозований дохід",
+    "projectedExpenses": "Прогнозовані витрати"
   },
   "transactions": {
     "title": "Транзакції",
@@ -430,7 +436,7 @@
     "transferFromAccount": "З рахунку",
     "transferToAccount": "На рахунок",
     "transferAmount": "Сума",
-    "transferCrossCurrency": "Валюти різняться — суму буде сконвертовано автоматично",
+    "transferCrossCurrency": "Валюти різняться — вкажіть суму призначення або залиште поле порожнім для автоматичної конвертації",
     "transferSameAccount": "Джерело та призначення мають різнитися",
     "transferDescription": "Опис",
     "transferNotes": "Примітки",
@@ -537,7 +543,27 @@
     "calendarNoActivity": "Цього місяця немає активності",
     "calendarNoMovements": "Немає операцій",
     "calendarActualNet": "Фактичний підсумок",
-    "calendarTransfersExcluded": "Перекази не враховуються як надходження чи витрати"
+    "calendarTransfersExcluded": "Перекази не враховуються як надходження чи витрати",
+    "makeInstallment": "Повторити платежами",
+    "installmentCount": "Кількість платежів",
+    "installmentFrequency": "Періодичність",
+    "installmentScopeTitle": "До яких платежів застосувати?",
+    "installmentScopeEditDesc": "Ця операція є частиною серії платежів. Наскільки далеко застосувати цю зміну?",
+    "installmentScopeDeleteDesc": "Ця операція є частиною серії платежів. Які платежі видалити?",
+    "installmentScopeThis": "Тільки цей",
+    "installmentScopeFuture": "Цей і майбутні",
+    "installmentScopeAll": "Усі платежі",
+    "bulkDelete": "Видалити вибрані",
+    "bulkDeleteTitle_one": "Видалити {{count}} транзакцію?",
+    "bulkDeleteTitle_few": "Видалити {{count}} транзакції?",
+    "bulkDeleteTitle_many": "Видалити {{count}} транзакцій?",
+    "bulkDeleteTitle_other": "Видалити {{count}} транзакцій?",
+    "bulkDeleteDescription": "Вибрані транзакції буде видалено назавжди, включно з парними переказами та вкладеннями. Цю дію не можна скасувати.",
+    "bulkDeleteSuccess_one": "{{count}} транзакція видалена",
+    "bulkDeleteSuccess_few": "{{count}} транзакції видалені",
+    "bulkDeleteSuccess_many": "{{count}} транзакцій видалено",
+    "bulkDeleteSuccess_other": "{{count}} транзакцій видалено",
+    "projected": "Прогнозована"
   },
   "accounts": {
     "title": "Рахунки",
@@ -687,7 +713,11 @@
         "description": "Банки США та інших країн через SimpleFIN Bridge"
       }
     },
-    "reconnected": "Банк успішно перепідключено"
+    "reconnected": "Банк успішно перепідключено",
+    "projectedBalance": "Прогнозований баланс",
+    "notSettled": "Не проведено",
+    "projectedIncome": "Прогнозований дохід",
+    "projectedExpenses": "Прогнозовані витрати"
   },
   "connections": {
     "settings": "Налаштування підключення",
@@ -837,7 +867,11 @@
     "autoGenerate": "Створювати транзакції автоматично",
     "autoGenerateHelp": "Створює транзакцію щоразу, коли настає термін оплати. Вимкніть, щоб дочекатися реального списання (наприклад, із банківської синхронізації) і до того часу показувати її лише як майбутню.",
     "fxEstimate": "Оцінка на основі останнього курсу ({{rate}}). Підсумкова сума може змінитися.",
-    "quarterly": "Щоквартально"
+    "quarterly": "Щоквартально",
+    "weekendAdjustment": "Коригування на вихідні",
+    "weekendAdjustmentNone": "Без коригування",
+    "weekendAdjustmentPreviousFriday": "П’ятниця перед вихідними",
+    "weekendAdjustmentNextMonday": "Понеділок після вихідних"
   },
   "rules": {
     "section": "Автоматизація",
@@ -1026,7 +1060,8 @@
     "page": "Сторінка {{current}} із {{total}}",
     "mapPayee": "Стовпець одержувача",
     "mapExternalId": "Стовпець ID транзакції",
-    "mapNotes": "Стовпець приміток"
+    "mapNotes": "Стовпець приміток",
+    "importOptions": "Параметри імпорту"
   },
   "assets": {
     "title": "Активи",
@@ -1330,7 +1365,7 @@
     "emptyHint": "Створіть групу, щоб розділяти витрати з людьми, відділами або проєктами.",
     "name": "Назва",
     "kindLabel": "Тип",
-    "kindHint": "Визначає мітки та звіти — оберіть найбільш відповідний.",
+    "kindHint": "Виберіть, що вестиме цей робочий простір. Змінити пізніше не можна.",
     "defaultCurrency": "Валюта за замовчуванням",
     "notes": "Примітки",
     "archived": "Архівована",
@@ -1430,7 +1465,8 @@
       "project": "Проєкт",
       "client": "Клієнт",
       "other": "Інше"
-    }
+    },
+    "kindBusiness": "Бізнес"
   },
   "privacy": {
     "hide": "Сховати суми",
@@ -1685,7 +1721,7 @@
       "saving": "Збереження…",
       "saved": "Інструменти оновлено",
       "saveFailed": "Не вдалося зберегти вибір інструментів",
-      "empty": "Інструменти не знайдено. MCP-сервер запущено? (`docker compose --profile agents up -d`)",
+      "empty": "Інструменти не знайдено. MCP-сервер запущено? У Docker: `docker compose --profile agents up -d`.",
       "proposeBadge": "запропонувати",
       "loading": "Завантаження інструментів…"
     },
@@ -2133,5 +2169,9 @@
     "reconcileNote": "Провайдер надіслав не всі рядки цієї закритої виписки; ця сума доповнює офіційний підсумок рахунку.",
     "monthSpend": "Витрати за {{month}}",
     "monthSpendHint": "Календарний місяць, за датою покупки"
+  },
+  "invoices": {
+    "title": "Рахунки",
+    "comingNext": "Виставляйте рахунки клієнтам і стежте за тим, що оплачено, а що залишається відкритим. Це наступне, що буде зроблено."
   }
 }

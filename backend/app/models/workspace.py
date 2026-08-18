@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional, get_args
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -14,7 +14,17 @@ if TYPE_CHECKING:
 
 # Allowed values for Workspace.kind. Drives template defaults + module
 # visibility. New kinds get added here; the data model is identical.
-WORKSPACE_KINDS = ("personal", "freelancer", "small_business", "accountant_firm")
+#
+# Two values, both describing what the container holds: a household's
+# money or a work's money. `kind` never describes how a workspace is
+# accessed; operating one on someone else's behalf is the separate
+# `managed_by_user_id` primitive below.
+#
+# Set once, at creation, and never edited: it is the premise the
+# workspace's accounts and categories were built on, not a label. A
+# workspace that turns out to be the wrong kind is a new workspace.
+WorkspaceKind = Literal["personal", "business"]
+WORKSPACE_KINDS: tuple[str, ...] = get_args(WorkspaceKind)
 
 # Roles a member can hold inside a workspace. `owner` is the
 # member-management + workspace-config role; `editor` can read/write

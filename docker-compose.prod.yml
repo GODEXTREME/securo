@@ -68,6 +68,11 @@ x-backend-env: &backend-env
 x-backend-base: &backend-base
   image: ghcr.io/securo-finance/securo-backend:latest
   environment: *backend-env
+  # Lets a connection point at a model server running on the host (LM Studio,
+  # Ollama, llama.cpp) as http://host.docker.internal:<port>. Docker Desktop
+  # resolves the name on its own; this makes it work on Linux too.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   depends_on:
     db: { condition: service_healthy }
     redis: { condition: service_healthy }
@@ -80,7 +85,7 @@ x-backend-base: &backend-base
 
 services:
   redis:
-    image: docker.io/library/redis:7-alpine
+    image: docker.io/library/redis:8-alpine
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]

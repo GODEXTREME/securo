@@ -9,6 +9,7 @@ import { CollectionFilterProvider } from '@/contexts/collection-filter-context'
 import { ProtectedRoute } from '@/components/protected-route'
 import { AdminRoute } from '@/components/admin-route'
 import { AgentsRoute } from '@/components/agents-route'
+import { ModuleRoute } from '@/components/module-route'
 import { AppLayout } from '@/components/app-layout'
 
 const SetupPage = lazy(() => import('@/pages/setup'))
@@ -35,6 +36,7 @@ const AdminSettingsPage = lazy(() => import('@/pages/admin/settings'))
 const AgentsListPage = lazy(() => import('@/pages/agents-list'))
 const AgentDetailPage = lazy(() => import('@/pages/agent-detail'))
 const AgentConnectionsPage = lazy(() => import('@/pages/agent-connections'))
+const InvoicesPage = lazy(() => import('@/pages/invoices'))
 const WorkspaceSettingsPage = lazy(() => import('@/pages/workspace-settings'))
 const OAuthCallbackPage = lazy(() => import('@/pages/oauth-callback'))
 const OIDCCallbackPage = lazy(() => import('@/pages/oidc-callback'))
@@ -95,21 +97,27 @@ function App() {
                   }
                 >
                   <Route path="/" element={<DashboardPage />} />
-                  <Route path="/transactions" element={<TransactionsPage />} />
-                  <Route path="/accounts" element={<AccountsPage />} />
-                  <Route path="/accounts/:id" element={<AccountDetailPage />} />
+                  <Route path="/transactions" element={<ModuleRoute module="transactions"><TransactionsPage /></ModuleRoute>} />
+                  <Route path="/accounts" element={<ModuleRoute module="accounts"><AccountsPage /></ModuleRoute>} />
+                  <Route path="/accounts/:id" element={<ModuleRoute module="accounts"><AccountDetailPage /></ModuleRoute>} />
+                  {/* Fork pages have no upstream ModuleId, so they stay unwrapped. */}
                   <Route path="/cards" element={<CardsPage />} />
                   <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
                   <Route path="/enable-banking" element={<OAuthCallbackPage />} />
-                  <Route path="/import" element={<ImportPage />} />
-                  <Route path="/rules" element={<RulesPage />} />
-                  <Route path="/categories" element={<CategoriesPage />} />
+                  <Route path="/import" element={<ModuleRoute module="import"><ImportPage /></ModuleRoute>} />
+                  <Route path="/rules" element={<ModuleRoute module="rules"><RulesPage /></ModuleRoute>} />
+                  <Route path="/categories" element={<ModuleRoute module="categories"><CategoriesPage /></ModuleRoute>} />
                   <Route path="/collections" element={<CollectionsPage />} />
-                  <Route path="/budgets" element={<BudgetsPage />} />
-                  <Route path="/goals" element={<GoalsPage />} />
-                  <Route path="/recurring" element={<RecurringPage />} />
-                  <Route path="/assets" element={<AssetsPage />} />
-                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/budgets" element={<ModuleRoute module="budgets"><BudgetsPage /></ModuleRoute>} />
+                  <Route path="/goals" element={<ModuleRoute module="goals"><GoalsPage /></ModuleRoute>} />
+                  <Route path="/recurring" element={<ModuleRoute module="recurring"><RecurringPage /></ModuleRoute>} />
+                  <Route path="/assets" element={<ModuleRoute module="assets"><AssetsPage /></ModuleRoute>} />
+                  <Route path="/reports" element={<ModuleRoute module="reports"><ReportsPage /></ModuleRoute>} />
+                  <Route path="/payees" element={<ModuleRoute module="payees"><PayeesPage /></ModuleRoute>} />
+                  <Route path="/groups" element={<ModuleRoute module="split_groups"><GroupsPage /></ModuleRoute>} />
+                  <Route path="/groups/:id" element={<ModuleRoute module="split_groups"><GroupDetailPage /></ModuleRoute>} />
+                  <Route path="/invoices" element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
+                  {/* Fork pages — no upstream ModuleId, so left unwrapped. */}
                   <Route path="/notifications" element={<NotificationsPage />} />
                   <Route path="/subscriptions" element={<SubscriptionsPage />} />
                   <Route path="/insights" element={<InsightsPage />} />
@@ -126,9 +134,6 @@ function App() {
                   <Route path="/dividends" element={<DividendsPage />} />
                   <Route path="/emergency-fund" element={<EmergencyFundPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
-                  <Route path="/payees" element={<PayeesPage />} />
-                  <Route path="/groups" element={<GroupsPage />} />
-                  <Route path="/groups/:id" element={<GroupDetailPage />} />
                   <Route path="/workspace/settings" element={<WorkspaceSettingsPage />} />
                   <Route path="/admin" element={<AdminRoute><AdminSettingsPage /></AdminRoute>} />
                   <Route path="/agents" element={<AgentsRoute><AgentsListPage /></AgentsRoute>} />

@@ -27,7 +27,10 @@ from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
 from app.schemas.recurring_transaction import RecurringTransactionCreate
 from app.services.connection_service import sync_connection
-from app.services.recurring_transaction_service import create_recurring_transaction
+from app.services.recurring_transaction_service import (
+    create_recurring_transaction,
+    generate_pending,
+)
 
 
 @pytest_asyncio.fixture
@@ -136,25 +139,22 @@ async def test_sync_links_and_advances_bill(session, test_user, test_workspace, 
 
 
 @pytest.mark.asyncio
-async def test_sync_merges_into_placeholder(session, test_user, test_workspace, conn_account):
+async def test_sync_promotes_pending_placeholder_to_posted(
+    session, test_user, test_workspace, conn_account
+):
     conn, account = conn_account
     conn_id, account_id = conn.id, account.id
     bill = await _make_bill(session, test_workspace, test_user, account,
                             start_date=date(2025, 1, 10))
     bill_id = bill.id
-    # Placeholder as generate_pending would have written it (occurrence already
-    # advanced next_occurrence to Feb).
-    bill.next_occurrence = date(2025, 2, 10)
-    placeholder = Transaction(
-        id=uuid.uuid4(), user_id=test_user.id, account_id=account_id,
-        workspace_id=test_workspace.id, description="Netflix Subscription",
-        amount=Decimal("39.90"), currency="BRL", date=date(2025, 1, 10),
-        type="debit", source="recurring", status="posted",
-        recurring_transaction_id=bill_id, created_at=datetime.now(timezone.utc),
-    )
-    session.add(placeholder)
-    await session.commit()
+    assert await generate_pending(session, test_user.id, up_to=date(2025, 1, 10)) == 1
+    placeholder = (await session.execute(
+        select(Transaction).where(Transaction.source == "recurring")
+    )).scalar_one()
     placeholder_id = placeholder.id
+    # Synced account: the placeholder is held pending until a real
+    # charge confirms it, so a missed match never inflates the balance.
+    assert placeholder.status == "pending"
 
     provider = _provider([_tx(external_id="s1", description="NETFLIX SUBSCRIPTION",
                               amount=Decimal("39.90"), date=date(2025, 1, 11))])
@@ -166,6 +166,7 @@ async def test_sync_merges_into_placeholder(session, test_user, test_workspace, 
     assert merged.id == placeholder_id
     assert merged.external_id == "s1"
     assert merged.source == "sync"
+    assert merged.status == "posted"
     assert merged.recurring_transaction_id == bill_id
     refreshed = await session.get(RecurringTransaction, bill_id)
     assert refreshed.next_occurrence == date(2025, 2, 10)  # NOT advanced again

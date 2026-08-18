@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -34,14 +35,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, Check, HelpCircle, Info, Paperclip, Users, X, EyeClosed, SlidersHorizontal } from 'lucide-react'
-import type { Transaction, Rule } from '@/types'
+import { AlertTriangle, ArrowLeftRight, ArrowUp, ArrowDown, Check, Clock, HelpCircle, Info, Paperclip, Trash2, Users, X, EyeClosed, SlidersHorizontal } from 'lucide-react'
+import type { Transaction, Rule, InstallmentSeriesInput, TransactionApplyScope, TransactionEditPayload } from '@/types'
 import { RuleDialog, type RuleDialogInitialData } from '@/components/rule-dialog'
 import { PageHeader } from '@/components/page-header'
 import { calculateRangeSelection } from '@/lib/selection-utils'
+import { isManualInstallmentSeriesRow } from '@/lib/installment-series'
 import { CategoryIcon } from '@/components/category-icon'
 import { CategorySelect } from '@/components/category-select'
-import { TransactionDialog, extractApiError, type SaveAction } from '@/components/transaction-dialog'
+import { TransactionDialog, extractApiError, type SaveAction, type TransactionSavePayload } from '@/components/transaction-dialog'
 import { TransactionsColumnPicker } from '@/components/transactions-column-picker'
 import { TransactionsPageActions } from '@/components/transactions-page-actions'
 import { MobileBulkSelectionActions } from '@/components/mobile-bulk-selection-actions'
@@ -57,18 +59,17 @@ import { MobileTransactionRow } from '@/components/mobile-transaction-row'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
+import { formatCurrency } from '@/lib/format'
+import { shouldShowPendingBadge } from '@/lib/transaction-status'
 
-type TransactionUpdatePayload = Partial<Transaction> & {
+type TransactionUpdatePayload = TransactionEditPayload & {
   apply_to_transfer_pair?: boolean
+  apply_to?: TransactionApplyScope
 }
 
 type PendingTransferCategoryUpdate = {
   id: string
   data: TransactionUpdatePayload
-}
-
-function formatCurrency(value: number, currency = 'USD', locale = 'en-US') {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value)
 }
 
 function parseHashtags(notes: string | null): string[] {
@@ -136,8 +137,11 @@ export default function TransactionsPage() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
   const [pendingTransferCategoryUpdate, setPendingTransferCategoryUpdate] =
     useState<PendingTransferCategoryUpdate | null>(null)
+  // Manual installment-series scoped delete. Scoped edits are handled by the
+  // shared TransactionDialog so account detail and dashboard behave the same.
+  const [pendingSeriesDeleteId, setPendingSeriesDeleteId] = useState<string | null>(null)
   const [formResetKey, setFormResetKey] = useState(0)
-  const [duplicateDraft, setDuplicateDraft] = useState<Partial<Transaction> | null>(null)
+  const [duplicateDraft, setDuplicateDraft] = useState<TransactionEditPayload | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>(() => (
     searchParams.get('view') === 'calendar' ? 'calendar' : 'list'
   ))
@@ -317,15 +321,6 @@ export default function TransactionsPage() {
     }
   }, [viewMode, filterAccountIds.length])
 
-  useEffect(() => {
-    if (viewMode === 'calendar') {
-      setFilterAccountIds((prev) => prev.length > 1 ? [] : prev)
-      setSelectedIds(new Set())
-      setLastSelectedId(null)
-      setBulkCategory('')
-    }
-  }, [viewMode, filterAccountIds.length])
-
   // Reset bulk category when selection changes so the same category can be re-applied
   useEffect(() => {
     setBulkCategory('')
@@ -476,8 +471,16 @@ export default function TransactionsPage() {
   const invalidateAfterTxMutation = () => invalidateFinancialQueries(queryClient)
 
   const createMutation = useMutation({
-    mutationFn: async (payload: { tx: Partial<Transaction>; recurringData?: { frequency: string; end_date?: string }; pendingFiles?: File[]; action?: SaveAction }) => {
-      const created = await transactions.create(payload.tx)
+    mutationFn: async (payload: { tx: TransactionEditPayload; recurringData?: { frequency: string; end_date?: string }; installmentData?: InstallmentSeriesInput; pendingFiles?: File[]; action?: SaveAction }) => {
+      let created: Transaction
+      if (payload.installmentData) {
+        // Manual installment series: the backend repeats the base row N
+        // times with the shared installment fingerprint.
+        const series = await transactions.createInstallments(payload.installmentData)
+        created = series[0]
+      } else {
+        created = await transactions.create(payload.tx)
+      }
       if (payload.recurringData) {
         await recurring.create({
           description: payload.tx.description,
@@ -533,7 +536,8 @@ export default function TransactionsPage() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => transactions.delete(id),
+    mutationFn: (payload: { id: string; applyTo?: TransactionApplyScope }) =>
+      transactions.delete(payload.id, payload.applyTo ?? 'this'),
     onSuccess: () => {
       invalidateAfterTxMutation()
       setDialogOpen(false)
@@ -622,6 +626,20 @@ export default function TransactionsPage() {
     },
   })
 
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
+  const bulkDeleteMutation = useMutation({
+    mutationFn: () => transactions.bulkDelete(Array.from(selectedIds)),
+    onSuccess: (result) => {
+      invalidateAfterTxMutation()
+      setSelectedIds(new Set())
+      setBulkDeleteConfirmOpen(false)
+      toast.success(t('transactions.bulkDeleteSuccess', { count: result.deleted }))
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error))
+    },
+  })
+
   const createCounterpartMutation = useMutation({
     mutationFn: ({ anchorId, toAccountId }: { anchorId: string; toAccountId: string }) =>
       transactions.createTransferCounterpart(anchorId, toAccountId),
@@ -658,7 +676,7 @@ export default function TransactionsPage() {
       date: string
       description: string
       notes?: string
-      fx_rate?: number
+      destination_amount?: number
     }) => transactions.createTransfer(data),
     onSuccess: () => {
       invalidateAfterTxMutation()
@@ -829,13 +847,14 @@ export default function TransactionsPage() {
   }
 
   const handleTransactionSave = (
-    data: Partial<Transaction>,
+    data: TransactionSavePayload,
     recurringData?: { frequency: string; end_date?: string },
+    installmentData?: InstallmentSeriesInput,
     pendingFiles?: File[],
     action?: SaveAction,
   ) => {
     if (!editingTx) {
-      createMutation.mutate({ tx: data, recurringData, pendingFiles, action })
+      createMutation.mutate({ tx: data, recurringData, installmentData, pendingFiles, action })
       return
     }
 
@@ -852,13 +871,19 @@ export default function TransactionsPage() {
     updateMutation.mutate({ id: editingTx.id, ...data })
   }
 
+  const submitPendingSeriesDelete = (scope: TransactionApplyScope) => {
+    if (!pendingSeriesDeleteId) return
+    deleteMutation.mutate({ id: pendingSeriesDeleteId, applyTo: scope })
+    setPendingSeriesDeleteId(null)
+  }
+
   // Open the Add Transaction dialog seeded from an existing row's
   // fields (issue #158). Identity-bearing fields (id, transfer_pair,
   // installment series, splits) are dropped so the dialog treats the
   // result as a brand-new transaction; the user can tweak the date or
   // any other field before saving.
   const handleDuplicateTransaction = (tx: Transaction) => {
-    const draft: Partial<Transaction> = {
+    const draft: TransactionEditPayload = {
       description: tx.description,
       amount: tx.amount,
       currency: tx.currency,
@@ -1080,6 +1105,14 @@ export default function TransactionsPage() {
                 {tx.installment_number}/{tx.total_installments}
               </span>
             )}
+            {shouldShowPendingBadge(tx) && (
+              <span
+                title={t('transactions.pending')}
+                className="shrink-0 inline-flex items-center justify-center rounded-full border border-amber-200 bg-amber-50 p-0.5 dark:border-amber-500/30 dark:bg-amber-500/10"
+              >
+                <Clock size={12} className="text-amber-500" role="img" aria-label={t('transactions.pending')} />
+              </span>
+            )}
             {(tx.attachment_count ?? 0) > 0 && (
               <Paperclip size={12} className="text-muted-foreground shrink-0" />
             )}
@@ -1090,7 +1123,7 @@ export default function TransactionsPage() {
           {(showInlineNotes || showInlineTags) && tx.notes && (
             <div className="mt-1 space-y-0.5">
               {showInlineNotes && noteText && (
-                <p className="text-xs text-muted-foreground italic leading-snug">{noteText}</p>
+                <p className="text-xs text-muted-foreground italic leading-snug truncate">{noteText}</p>
               )}
               {showInlineTags && noteTags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
@@ -1684,6 +1717,7 @@ export default function TransactionsPage() {
               onTagInputChange={setBulkTagInput}
               onAddTags={(tags) => bulkAddTagsMutation.mutate({ ids: Array.from(selectedIds), tags })}
               onRemoveTags={(tags) => bulkRemoveTagsMutation.mutate({ ids: Array.from(selectedIds), tags })}
+              onBulkDelete={() => setBulkDeleteConfirmOpen(true)}
               onClear={() => { setSelectedIds(new Set()); setBulkCategory(''); setBulkTagInput('') }}
             />
 
@@ -1835,6 +1869,18 @@ export default function TransactionsPage() {
               )
             })()}
 
+            {/* Bulk Delete */}
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setBulkDeleteConfirmOpen(true)}
+              disabled={bulkDeleteMutation.isPending}
+              className="h-8 px-3 shrink-0 text-sm"
+            >
+              <Trash2 size={15} className="lg:mr-1.5" />
+              <span className="hidden lg:inline">{t('common.delete')}</span>
+            </Button>
+
             <div className="ml-auto" />
 
             {/* Close */}
@@ -1913,7 +1959,15 @@ export default function TransactionsPage() {
             : undefined
         }
         onSave={handleTransactionSave}
-        onDelete={editingTx ? () => deleteMutation.mutate(editingTx.id) : undefined}
+        onDelete={editingTx ? () => {
+          if (isManualInstallmentSeriesRow(editingTx)) {
+            // Deleting one row of a manual series — ask the user
+            // whether to drop this, this+future, or all installments.
+            setPendingSeriesDeleteId(editingTx.id)
+          } else {
+            deleteMutation.mutate({ id: editingTx.id })
+          }
+        } : undefined}
         onUnlinkTransfer={(pairId) => unlinkTransferMutation.mutate(pairId)}
         onIgnoreChanged={invalidateAfterTxMutation}
         onCreateRule={(tx) => {
@@ -1963,6 +2017,76 @@ export default function TransactionsPage() {
               {updateMutation.isPending
                 ? t('common.loading')
                 : t('transactions.confirmTransferCategoryBoth')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Installment-series delete scope. Edit scope is handled by the shared
+          TransactionDialog so every edit surface behaves consistently. */}
+      <Dialog
+        open={!!pendingSeriesDeleteId}
+        onOpenChange={(open) => {
+          if (!open) setPendingSeriesDeleteId(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('transactions.installmentScopeTitle')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t('transactions.installmentScopeDeleteDesc')}
+          </p>
+          <DialogFooter className="flex-col sm:flex-row sm:justify-end gap-2">
+            <Button
+              autoFocus
+              onClick={() => submitPendingSeriesDelete('this')}
+              disabled={updateMutation.isPending || deleteMutation.isPending}
+              className="justify-center"
+            >
+              {updateMutation.isPending || deleteMutation.isPending
+                ? t('common.loading')
+                : t('transactions.installmentScopeThis')}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => submitPendingSeriesDelete('future')}
+              disabled={updateMutation.isPending || deleteMutation.isPending}
+              className="justify-center"
+            >
+              {t('transactions.installmentScopeFuture')}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => submitPendingSeriesDelete('all')}
+              disabled={updateMutation.isPending || deleteMutation.isPending}
+              className="justify-center"
+            >
+              {t('transactions.installmentScopeAll')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete confirmation */}
+      <Dialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('transactions.bulkDeleteTitle', { count: selectedIds.size })}</DialogTitle>
+            <DialogDescription>
+              {t('transactions.bulkDeleteDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setBulkDeleteConfirmOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => bulkDeleteMutation.mutate()}
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending ? t('common.loading') : t('common.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>

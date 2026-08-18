@@ -56,7 +56,9 @@
     "archiveHint": "Рабочее пространство скрывается из списка и переключателя. Данные сохраняются.",
     "archiveSuccess": "Рабочее пространство архивировано",
     "archiveConfirmTitle": "Архивировать рабочее пространство?",
-    "archiveConfirmDescription": "Рабочее пространство «{{name}}» будет удалено из вашего списка. Данные сохраняются, администратор сможет восстановить его позже."
+    "archiveConfirmDescription": "Рабочее пространство «{{name}}» будет удалено из вашего списка. Данные сохраняются, администратор сможет восстановить его позже.",
+    "kindBusiness": "Бизнес",
+    "kindHint": "Выберите, что будет вести это рабочее пространство. Изменить позже нельзя."
   },
   "app": {
     "name": "Securo",
@@ -140,7 +142,8 @@
     "purchasePlanner": "Cash vs instalments",
     "dividends": "Dividends",
     "emergencyFund": "Emergency fund",
-    "cards": "Cards"
+    "cards": "Cards",
+    "invoices": "Счета"
   },
   "collections": {
     "title": "Коллекции",
@@ -297,7 +300,10 @@
     "fxRateUsed": "Курс: {{rate}}",
     "refreshRates": "Обновить курсы валют",
     "ratesRefreshed": "Курсы валют обновлены",
-    "ratesError": "Не удалось обновить курсы валют"
+    "ratesError": "Не удалось обновить курсы валют",
+    "projectedBalance": "Прогнозируемый баланс",
+    "projectedIncome": "Прогнозируемый доход",
+    "projectedExpenses": "Прогнозируемые расходы"
   },
   "transactions": {
     "title": "Транзакции",
@@ -430,7 +436,7 @@
     "transferFromAccount": "Со счета",
     "transferToAccount": "На счёт",
     "transferAmount": "Сумма",
-    "transferCrossCurrency": "Валюты различаются — сумма будет сконвертирована автоматически",
+    "transferCrossCurrency": "Валюты различаются — укажите сумму назначения или оставьте поле пустым для автоматической конвертации",
     "transferSameAccount": "Источник и назначение должны различаться",
     "transferDescription": "Описание",
     "transferNotes": "Примечания",
@@ -537,7 +543,27 @@
     "calendarNoActivity": "В этом месяце нет активности",
     "calendarNoMovements": "Нет операций",
     "calendarActualNet": "Фактический итог",
-    "calendarTransfersExcluded": "Переводы не учитываются как приход или расходы"
+    "calendarTransfersExcluded": "Переводы не учитываются как приход или расходы",
+    "makeInstallment": "Повторить платежами",
+    "installmentCount": "Количество платежей",
+    "installmentFrequency": "Периодичность",
+    "installmentScopeTitle": "К каким платежам применить?",
+    "installmentScopeEditDesc": "Эта операция является частью серии платежей. Насколько далеко применить это изменение?",
+    "installmentScopeDeleteDesc": "Эта операция является частью серии платежей. Какие платежи удалить?",
+    "installmentScopeThis": "Только этот",
+    "installmentScopeFuture": "Этот и будущие",
+    "installmentScopeAll": "Все платежи",
+    "bulkDelete": "Удалить выбранные",
+    "bulkDeleteTitle_one": "Удалить {{count}} транзакцию?",
+    "bulkDeleteTitle_few": "Удалить {{count}} транзакции?",
+    "bulkDeleteTitle_many": "Удалить {{count}} транзакций?",
+    "bulkDeleteTitle_other": "Удалить {{count}} транзакций?",
+    "bulkDeleteDescription": "Выбранные транзакции будут удалены безвозвратно, включая парные переводы и вложения. Это действие нельзя отменить.",
+    "bulkDeleteSuccess_one": "{{count}} транзакция удалена",
+    "bulkDeleteSuccess_few": "{{count}} транзакции удалены",
+    "bulkDeleteSuccess_many": "{{count}} транзакций удалено",
+    "bulkDeleteSuccess_other": "{{count}} транзакций удалено",
+    "projected": "Прогнозируемая"
   },
   "accounts": {
     "title": "Счета",
@@ -687,7 +713,11 @@
         "description": "Банки США и других стран через SimpleFIN Bridge"
       }
     },
-    "reconnected": "Банк успешно переподключён"
+    "reconnected": "Банк успешно переподключён",
+    "projectedBalance": "Прогнозируемый баланс",
+    "notSettled": "Не проведено",
+    "projectedIncome": "Прогнозируемый доход",
+    "projectedExpenses": "Прогнозируемые расходы"
   },
   "connections": {
     "settings": "Настройки подключения",
@@ -837,7 +867,11 @@
     "autoGenerate": "Создавать транзакции автоматически",
     "autoGenerateHelp": "Создаёт транзакцию при каждом наступлении срока оплаты. Отключите, чтобы дождаться реального списания (например, из банковской синхронизации) и до тех пор показывать её только как предстоящую.",
     "fxEstimate": "Оценка на основе последнего курса ({{rate}}). Итоговая сумма может измениться.",
-    "quarterly": "Ежеквартально"
+    "quarterly": "Ежеквартально",
+    "weekendAdjustment": "Корректировка на выходные",
+    "weekendAdjustmentNone": "Без корректировки",
+    "weekendAdjustmentPreviousFriday": "Пятница перед выходными",
+    "weekendAdjustmentNextMonday": "Понедельник после выходных"
   },
   "rules": {
     "section": "Автоматизация",
@@ -1026,7 +1060,8 @@
     "page": "Страница {{current}} из {{total}}",
     "mapPayee": "Колонка получателя",
     "mapExternalId": "Колонка ID транзакции",
-    "mapNotes": "Колонка заметок"
+    "mapNotes": "Колонка заметок",
+    "importOptions": "Параметры импорта"
   },
   "assets": {
     "title": "Активы",
@@ -1330,7 +1365,7 @@
     "emptyHint": "Создайте группу, чтобы разделять расходы с людьми, отделами или проектами.",
     "name": "Название",
     "kindLabel": "Тип",
-    "kindHint": "Определяет метки и отчёты — выберите наиболее подходящий.",
+    "kindHint": "Выберите, что будет вести это рабочее пространство. Изменить позже нельзя.",
     "defaultCurrency": "Валюта по умолчанию",
     "notes": "Примечания",
     "archived": "Архивирована",
@@ -1430,7 +1465,8 @@
       "project": "Проект",
       "client": "Клиент",
       "other": "Другое"
-    }
+    },
+    "kindBusiness": "Бизнес"
   },
   "privacy": {
     "hide": "Скрыть суммы",
@@ -1685,7 +1721,7 @@
       "saving": "Сохранение…",
       "saved": "Инструменты обновлены",
       "saveFailed": "Не удалось сохранить выбор инструментов",
-      "empty": "Инструменты не найдены. MCP-сервер запущен? (`docker compose --profile agents up -d`)",
+      "empty": "Инструменты не найдены. MCP-сервер запущен? В Docker: `docker compose --profile agents up -d`.",
       "proposeBadge": "предложить",
       "loading": "Загрузка инструментов…"
     },
@@ -2133,5 +2169,9 @@
     "reconcileNote": "Провайдер прислал не все строки этой закрытой выписки; эта сумма дополняет официальный итог счёта.",
     "monthSpend": "Траты за {{month}}",
     "monthSpendHint": "Календарный месяц, по дате покупки"
+  },
+  "invoices": {
+    "title": "Счета",
+    "comingNext": "Выставляйте счета клиентам и следите за тем, что оплачено, а что остаётся открытым. Это следующее, что будет сделано."
   }
 }
