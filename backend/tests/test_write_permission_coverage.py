@@ -94,6 +94,26 @@ ALLOWLIST: dict[tuple[str, str], str] = {
     # touched. Flagged here so a future rate limit or admin floor is a
     # decision rather than an oversight.
     ("POST", "/api/fx-rates/refresh"): "refreshes instance-wide FX rates, no workspace data",
+    # --- fork-only routes ------------------------------------------------
+    # Personal state inside a workspace: every row is keyed by
+    # (workspace_id, user_id) and is invisible to other members, so the actor
+    # is the user on their own data — the same family as passkeys and agent
+    # connections. Gating these on write would stop a viewer from dismissing
+    # their own alert or saving their own filter, which is a usability
+    # regression, not a permission fix.
+    ("POST", "/api/notifications/refresh"): "recomputes the requester's own alerts",
+    ("POST", "/api/notifications/read-all"): "the requester's own read state",
+    ("POST", "/api/notifications/{notif_id}/read"): "the requester's own read state",
+    ("DELETE", "/api/notifications/{notif_id}"): "the requester's own notification row",
+    ("POST", "/api/saved-searches"): "the requester's own saved filters",
+    ("DELETE", "/api/saved-searches/{search_id}"): "the requester's own saved filters",
+    # Pure calculators. Each takes a body because the inputs are a struct, and
+    # each returns a projection computed in memory — none of them opens a
+    # session at all. Same shape as the /preview routes above.
+    ("POST", "/api/debt/plan"): "computes a payoff plan; writes nothing",
+    ("POST", "/api/loans/simulate"): "simulates an amortization schedule; writes nothing",
+    ("POST", "/api/purchase/cash-vs-installments"): "compares two payment options; writes nothing",
+    ("POST", "/api/retirement/project"): "projects a FIRE trajectory; writes nothing",
 }
 
 
