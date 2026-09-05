@@ -129,6 +129,21 @@ class TestTransactionReadInstallmentFields:
         assert dumped["installment_total_amount"] == 300.00
         assert dumped["installment_purchase_date"] == "2026-03-25"
 
+    def test_exposes_original_description_without_raw_provider_data(self):
+        data = TransactionRead.model_validate(
+            self._base(
+                description="iFood",
+                original_description="|fd*f|ood Club",
+                raw_data={"provider_secret": "not-safe"},
+                description_is_rule_managed=True,
+            )
+        )
+        dumped = data.model_dump(mode="json")
+
+        assert dumped["original_description"] == "|fd*f|ood Club"
+        assert "raw_data" not in dumped
+        assert "description_is_rule_managed" not in dumped
+
 
 class TestTransactionCreateDateField:
     """Ensure TransactionCreate also handles the date field correctly."""

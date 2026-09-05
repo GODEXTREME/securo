@@ -5,10 +5,12 @@ import { useDateLocale, useDisplayLocale } from '@/hooks/use-display-locale'
 import { formatCurrency } from '@/lib/format'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/auth-context'
-import { currencies as currenciesApi, transactions as transactionsApi, settings as settingsApi, payees as payeesApi, rules as rulesApi } from '@/lib/api'
+import { currencies as currenciesApi, transactions as transactionsApi, settings as settingsApi, payees as payeesApi, rules as rulesApi, categories as categoriesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
 import { localDateString } from '@/lib/date-utils'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { normalizeRuleMatchValue } from '@/lib/rule-match-utils'
+import { findCategoryReference, getRuleCategoryId } from '@/lib/category-reference-utils'
+import { flattenConditions, hasConditionGroups } from '@/lib/rule-conditions'
 import { cn, normalizeText } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -61,39 +63,15 @@ type PendingInstallmentEdit = {
   action?: SaveAction
 }
 
-export function extractApiError(error: unknown): string {
-  if (
-    error &&
-    typeof error === 'object' &&
-    'response' in error &&
-    error.response &&
-    typeof error.response === 'object' &&
-    'data' in error.response
-  ) {
-    const data = (error.response as { data: unknown }).data
-    if (data && typeof data === 'object' && 'detail' in data) {
-      const detail = (data as { detail: unknown }).detail
-      if (typeof detail === 'string') return detail
-      if (Array.isArray(detail)) {
-        return detail.map((d: { msg?: string; loc?: string[] }) => {
-          const field = d.loc?.slice(-1)[0] ?? ''
-          return `${field}: ${d.msg ?? 'invalid'}`
-        }).join(', ')
-      }
-    }
-  }
-  return 'An unexpected error occurred'
-}
-
 function isImageType(contentType: string): boolean {
   return contentType.startsWith('image/')
 }
 
-function getRuleCategoryId(rule: Rule): string | null {
-  return rule.actions.find(action => action.op === 'set_category' && action.value)?.value ?? null
-}
-
 function canExtendRuleFromTransaction(rule: Rule): boolean {
+  // Rules that mix AND and OR are left out: appending a top-level condition —
+  // and possibly flipping the rule to OR — would silently change what the
+  // grouped rule matches. Those are edited from the rules page instead.
+  if (hasConditionGroups(rule.conditions)) return false
   return rule.is_active && !!getRuleCategoryId(rule) && (rule.conditions_op === 'or' || rule.conditions.length <= 1)
 }
 
@@ -529,6 +507,9 @@ function TransactionForm({
     el.style.height = `${el.scrollHeight + border}px`
   }, [description, isSynced])
   const [isIgnored, setIsIgnored] = useState(seed?.is_ignored ?? false)
+  const [excludeFromReports, setExcludeFromReports] = useState(
+    seed?.exclude_from_pnl ?? false,
+  )
   const [togglingIgnore, setTogglingIgnore] = useState(false)
   const [recurringLinked, setRecurringLinked] = useState(seed?.recurring_transaction_id != null)
   const [unlinkingRecurring, setUnlinkingRecurring] = useState(false)
@@ -560,7 +541,7 @@ function TransactionForm({
       rule: Rule
       condition: RuleCondition
     }) => {
-      const duplicate = rule.conditions.some(existing =>
+      const duplicate = flattenConditions(rule.conditions).some(existing =>
         existing.field === condition.field &&
         existing.op === condition.op &&
         normalizeRuleMatchValue(existing.value) === normalizeRuleMatchValue(condition.value)
@@ -751,12 +732,16 @@ function TransactionForm({
           : hadInitialSplits
             ? { splits: { share_type: 'equal', splits: [] } }
             : {}
+        const pnlExclusionPayload = transaction
+          ? { exclude_from_pnl: excludeFromReports }
+          : {}
         const txData = isSynced
           ? {
               category_id: categoryId || null,
               payee_id: payeeId || null,
               notes: notes.trim() || null,
               is_ignored: isIgnored,
+              ...pnlExclusionPayload,
               ...overridePayload,
               ...splitsPayload,
             } as TransactionEditPayload
@@ -771,6 +756,7 @@ function TransactionForm({
               account_id: accountId || undefined,
               notes: notes.trim() || null,
               is_ignored: isIgnored,
+              ...pnlExclusionPayload,
               // Creation defaults to "posted" server-side; the user can
               // override to "pending" right in the form (date & status row).
               status,
@@ -906,6 +892,15 @@ function TransactionForm({
             className="bg-card"
           />
         )}
+        {transaction?.original_description &&
+          transaction.original_description !== transaction.description && (
+            <p className="text-xs text-muted-foreground">
+              {t('transactions.originalDescription')}: {transaction.original_description}
+            </p>
+          )}
+        {/* Rows that pre-date the original_description column have no
+            provenance to show, so the raw payee stays the only hint at what
+            the bank actually sent. */}
         {isSynced && transaction?.payee && transaction.payee !== transaction.description && (
           <p className="text-xs text-muted-foreground">{transaction.payee}</p>
         )}
@@ -1051,7 +1046,7 @@ function TransactionForm({
             onChange={setCategoryId}
             categories={categories}
             groups={categoryGroups}
-            placeholder={t('transactions.noCategory')}
+            currentCategory={seed?.category}
             allowNone={true}
             className="bg-card"
           />
@@ -1112,6 +1107,25 @@ function TransactionForm({
           placeholder={t('transactions.notesPlaceholder')}
         />
       </div>
+
+      {transaction && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
+            checked={excludeFromReports}
+            onChange={(event) => setExcludeFromReports(event.target.checked)}
+          />
+          <span>
+            <span className="block text-sm font-medium">
+              {t('transactions.excludeFromReports')}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {t('transactions.excludeFromReportsHint')}
+            </span>
+          </span>
+        </label>
+      )}
 
       {/* Manual bill-cycle override (issue #92). CC accounts only. Empty
           input = use auto bucketing (Pluggy bill_id when available, cycle
@@ -1415,6 +1429,16 @@ function AddTransactionToRuleDialog({
   const [openCombobox, setOpenCombobox] = useState(false)
   const [matchOp, setMatchOp] = useState<'contains' | 'starts_with'>('contains')
   const [matchText, setMatchText] = useState(transactionDescription)
+  const { data: allCategories } = useQuery({
+    queryKey: ['categories', 'management'],
+    queryFn: categoriesApi.listIncludingHidden,
+  })
+  const { data: allCategoryGroups } = useQuery({
+    queryKey: ['categoryGroups', 'management'],
+    queryFn: categoryGroupsApi.listIncludingHidden,
+  })
+  const displayCategories = allCategories ?? categories
+  const displayCategoryGroups = allCategoryGroups ?? categoryGroups
 
   const effectiveRuleId = ruleId && rules.some(rule => rule.id === ruleId)
     ? ruleId
@@ -1429,11 +1453,11 @@ function AddTransactionToRuleDialog({
       let categoryName = t('transactions.uncategorized')
 
       if (categoryId !== 'uncategorized') {
-        const category = categories.find(c => c.id === categoryId)
+        const category = findCategoryReference(displayCategories, categoryId)
         if (category) {
           categoryName = category.name
           if (category.group_id) {
-            const group = categoryGroups.find(g => g.id === category.group_id)
+            const group = displayCategoryGroups.find(g => g.id === category.group_id)
             if (group) {
               categoryName = `${group.name} > ${category.name}`
             }
@@ -1456,7 +1480,7 @@ function AddTransactionToRuleDialog({
       categoryId,
       ...data,
     }))
-  }, [rules, categories, categoryGroups, t])
+  }, [rules, displayCategories, displayCategoryGroups, t])
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -1548,9 +1572,9 @@ function AddTransactionToRuleDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-[140px_1fr] gap-3">
+          <div className="grid grid-cols-[auto_1fr] gap-3">
             <div className="space-y-2">
-              <Label>{t('transactions.matchOperator')}</Label>
+              <Label className="whitespace-nowrap">{t('transactions.matchOperator')}</Label>
               <Select
                 value={matchOp}
                 onValueChange={(value) => setMatchOp(value as 'contains' | 'starts_with')}
