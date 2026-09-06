@@ -463,6 +463,8 @@ async def process_receipt(
                 return receipt
             if result.outcome in ("portal_down", "timeout", "http_error"):
                 _reschedule(receipt, result.outcome, now, detail=result.detail)
+                if result.page is not None:
+                    _store_raw(receipt, result.page.html, now, ttl_days=raw_ttl_days)
                 return receipt
             page = result.page
             if page is None:
@@ -487,13 +489,16 @@ async def process_receipt(
                 parser_version=adapter.parser_version, now=now, raw_ttl_days=raw_ttl_days,
             )
             return receipt
+        # Every page we could not use is kept too: it is the only evidence of
+        # what the portal actually said, and the TTL bounds the cost.
+        if kind != PageKind.AUTHORIZED:
+            _store_raw(receipt, page.html, now, ttl_days=raw_ttl_days)
         if kind == PageKind.NOT_FOUND_YET:
             _reschedule(receipt, "not_published", now)
         elif kind == PageKind.CANCELLED:
             receipt.status = "cancelled"
             receipt.status_reason = "cancelled_by_sefaz"
             receipt.next_attempt_at = None
-            _store_raw(receipt, page.html, now, ttl_days=raw_ttl_days)
         elif kind == PageKind.CAPTCHA:
             # No automatic retry: the portal wants a person. The UI offers
             # "paste the page" for exactly this state.
@@ -502,7 +507,11 @@ async def process_receipt(
             receipt.next_attempt_at = None
             receipt.last_error = "portal presented a challenge"
         else:
-            _reschedule(receipt, "portal_down", now, detail=f"unrecognised page from {page.url}")
+            snippet = " ".join(page.html.split())[:160]
+            _reschedule(
+                receipt, "portal_down", now,
+                detail=f"unrecognised page from {page.url} (HTTP {page.status_code}): {snippet}",
+            )
         return receipt
     finally:
         receipt.locked_at = None
