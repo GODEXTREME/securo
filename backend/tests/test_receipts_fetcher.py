@@ -146,3 +146,19 @@ async def test_timeout_counts_as_a_failure():
 
     result = await _fetcher(handler).fetch(URL, HOSTS, "ES")
     assert result.outcome == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_a_redirect_does_not_spend_a_second_rate_limit_token():
+    """Regression: the ES portal answers http→https with a redirect. The
+    interval is per fetch, not per hop — counting the hop as a second
+    request made every real fetch come back `rate_limited` and the receipt
+    retry every 30 s forever."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.scheme == "http":
+            return httpx.Response(301, headers={"location": str(req.url.copy_with(scheme="https"))})
+        return httpx.Response(200, text="danfe")
+
+    result = await _fetcher(handler, min_interval_ms=60_000).fetch(URL, HOSTS, "ES")
+    assert result.outcome == "page" and result.page is not None and result.page.html == "danfe"
