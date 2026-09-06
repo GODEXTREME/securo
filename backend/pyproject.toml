@@ -40,6 +40,7 @@ dependencies = [
     # legacy ZipCrypto scheme and cannot write an encrypted archive at all,
     # so AES-256 zips need this fork of it.
     "pyzipper>=0.4.0",
+    "beautifulsoup4>=4.12.0",
     # Bundled multilingual embedder — only imported on demand by the
     # agents knowledge-base path. ONNX runtime, ~120 MB model downloaded
     # on first use to /app/data/embedding_models. Users not on the

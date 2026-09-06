@@ -204,7 +204,9 @@ async def credit(session: AsyncSession, workspace, test_user) -> Transaction:
 
 
 async def create(session, workspace, user, **data):
-    payload = {"total": Decimal("1000.00"), "due_date": TODAY + timedelta(days=10)}
+    # Pin the issue date too: the service defaults it to the real today, and
+    # a due date relative to a fixed TODAY drifts into the past around it.
+    payload = {"total": Decimal("1000.00"), "issue_date": TODAY, "due_date": TODAY + timedelta(days=10)}
     payload.update(data)
     invoice = await svc.create_invoice(session, workspace.id, user.id, payload)
     await session.commit()
