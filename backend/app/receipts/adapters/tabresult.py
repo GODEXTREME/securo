@@ -54,7 +54,10 @@ _PAYMENT_TYPES: tuple[tuple[str, str], ...] = (
 )
 
 _CANCELLED_MARKERS = ("nfc-e cancelada", "nfce cancelada", "situação: cancelada", "evento de cancelamento")
-_CAPTCHA_MARKERS = ("g-recaptcha", "h-captcha", "hcaptcha", "captcha")
+# Cloudflare Turnstile is what Espírito Santo actually serves to an
+# automated request (fixture: es/turnstile_challenge.html). It never says
+# "captcha" anywhere in the page.
+_CAPTCHA_MARKERS = ("cf-turnstile", "turnstile", "g-recaptcha", "h-captcha", "hcaptcha", "captcha")
 _NOT_FOUND_MARKERS = (
     "não foi possível localizar",
     "nao foi possivel localizar",

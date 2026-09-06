@@ -69,6 +69,9 @@ class ReceiptRead(BaseModel):
     status_reason: Optional[str] = None
     attempts: int
     next_attempt_at: Optional[datetime] = None
+    #: Free text from the last attempt — the portal's answer, an HTTP or TLS
+    #: error, a parser code. What a person needs to tell the states apart.
+    last_error: Optional[str] = None
     source: Optional[str] = None
     store: Optional[StoreRead] = None
     issued_at: Optional[datetime] = None
@@ -101,6 +104,7 @@ class ReceiptRead(BaseModel):
             status_reason=receipt.status_reason,
             attempts=receipt.attempts,
             next_attempt_at=receipt.next_attempt_at,
+            last_error=receipt.last_error,
             source=receipt.source,
             store=StoreRead.model_validate(receipt.store) if receipt.store else None,
             issued_at=receipt.issued_at,

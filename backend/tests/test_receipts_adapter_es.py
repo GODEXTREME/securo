@@ -54,6 +54,13 @@ class TestEsAdapter:
     def test_allowed_hosts(self):
         assert EsAdapter().allowed_hosts == frozenset({"app.sefaz.es.gov.br"})
 
+    def test_the_real_portal_answer_is_a_challenge(self):
+        """The one page from this portal we have actually seen. It must be
+        CAPTCHA — anything else sends the receipt round the retry schedule
+        for nothing."""
+        real = (FIXTURE.parent / "turnstile_challenge.html").read_text(encoding="utf-8")
+        assert EsAdapter().classify(_page(real)) == PageKind.CAPTCHA
+
     def test_classify(self, html):
         adapter = EsAdapter()
         assert adapter.classify(_page(html)) == PageKind.AUTHORIZED
