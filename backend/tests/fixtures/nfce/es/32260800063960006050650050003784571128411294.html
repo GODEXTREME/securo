@@ -1,0 +1,339 @@
+<!-- Real page from app.sefaz.es.gov.br/ConsultaNFCe/QRCode.aspx, rendered by a
+     browser after the Turnstile challenge and saved via view-source on
+     2026-09-06. The consumer's CPF and the partner line under
+     "Informações de interesse do contribuinte" are masked. -->
+
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+ <meta charset="iso-8859-1">
+ <meta http-equiv="X-UA-Compatible" content="IE=edge">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <!-- Nao adicione nada antes destas meta-tags -->
+ <title>Consulta NFC-e</title>
+ <link rel="shortcut icon" type="image/png" href="https://internet.sefaz.es.gov.br/layout/img/favicon.png" />
+ <!--<link href="https://internet.sefaz.es.gov.br/layout/css/estilos.min.css" rel="stylesheet">-->
+ <link href="/ConsultaNFCe/Style/estilos.min.css" rel="stylesheet" type="text/css" />
+ <link href="/ConsultaNFCe/Style/padrao.configs.css" rel="stylesheet" type="text/css" />
+ <!-- Hack para funcionamento de HTML5 e Media Queries no IE8 -->
+ <!-- ATENÇÃO: Não funcionará se abrir o arquivo com duplo clique, via file:// -->
+ <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+        <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+    <![endif]-->
+ <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet" type="text/css">
+ <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
+ <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+ <script type="text/javascript">
+
+        function NovaConsulta() {
+            window.open("#");
+            window.top.close();
+        }
+
+ </script>
+
+ 
+ <script type="text/javascript">
+        jQuery(document).ready(function () {
+            $('#btnNovaConsulta').click(function () {
+                var re = new RegExp(/^.*\//);
+                window.location.href = re.exec(window.location.href);
+            });
+        });
+
+        function AbrirAbaImpressao() {
+            window.open("ImpressaoDANFE_NFCe.aspx");
+        }
+
+        function VisualizarAbas() {
+            window.open("ConsultaAbas.aspx");
+        }
+
+        function NovaConsulta() {                        
+            window.open("Default.aspx");     
+            window.top.close();
+        }
+
+
+ </script>
+ <script src="/ConsultaNFCe/Novo_Layout/js/index.js" type="text/javascript"></script>
+ <script src="/ConsultaNFCe/Novo_Layout/js/jqueryui.js" type="text/javascript"></script>
+ <script src="/ConsultaNFCe/Novo_Layout/js/jquery.mobile-1.4.5.min.js" type="text/javascript"></script>
+ <link href="/ConsultaNFCe/Novo_Layout/css/jquery.mobile-1.4.5.min.css" rel="stylesheet" type="text/css" /> 
+ <link href="/ConsultaNFCe/Novo_Layout/css/nfceMob.css" rel="stylesheet" type="text/css" /> 
+ 
+ 
+
+ <!-- Global site tag (gtag.js) - Google Analytics -->
+ <script async src="https://www.googletagmanager.com/gtag/js?id=UA-25354684-3"></script>
+ <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'UA-25354684-3');
+ </script>
+
+</head>
+<body>
+ <form method="post" action="./ConsultaDANFE_NFCe.aspx" id="ctl00">
+<div class="aspNetHidden">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="/wEPDwUGNDQ5NzY3ZGThB/9jttzsh08W9VHAUsMy/vHQ4A==" />
+</div>
+
+<div class="aspNetHidden">
+
+ <input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="FB71F6EF" />
+</div>
+ <div id="loading-page" class="hide">
+ <p><span>
+ <img src="https://cdn.sefaz.es.gov.br/layout/img/loading.gif" alt="Aguarde. Carregando!"></span></p>
+ </div>
+
+ <nav class="navbar navbar-default">
+ <div class="container">
+ <div class="navbar-header">
+ <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+ <span class="sr-only">Menu</span>
+ <span class="icon-bar"></span>
+ <span class="icon-bar"></span>
+ <span class="icon-bar"></span>
+ </button>
+ <a class="navbar-brand" href="https://internet.sefaz.es.gov.br">
+ <img src="/ConsultaNFCe/Imagens/logo-topo.png" alt="" class="img-responsive logotipo-topo" width="105"></a>
+ </div>
+
+ <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+ <ul class="nav navbar-nav">
+ <li><a href="https://internet.sefaz.es.gov.br/agenciavirtual/index.php">Agência Virtual</a></li>
+ <li><a href="https://internet.sefaz.es.gov.br/informacoes/index.php">Receita</a></li>
+ <li><a href="https://internet.sefaz.es.gov.br/contas/index.php">Tesouro</a></li>
+ <li><a href="https://internet.sefaz.es.gov.br/legislacao/index.php">Legislação</a></li>
+ </ul>
+
+ <ul class="nav navbar-nav navbar-right navegacao-direita">
+ <li><a href="https://internet.sefaz.es.gov.br/faleconosco/index.php"><i class="fa fa-comments"></i>Fale Conosco</a></li>
+ </ul>
+ </div>
+ </div>
+ </nav>
+
+ <div class="barra-menu" id="fixaMenu">
+ <div class="container">
+ <a href="#" onclick="NovaConsulta()" class="titulo-barra pull-left">NFC-e - Nota Fiscal de Consumidor Eletrônica</a>
+ </div>
+ </div>
+
+ <div class="container corpo">
+ <div class="row">
+ <div class="col-md-12 conteudo">
+ 
+ 
+ 
+ 
+ <span id="body_lblRetorno"></span>
+ 
+
+
+ <div id="body_borda" class="borda-op">
+ <span id="body_lbDataeHoraAtual" class="entradaDados"></span>
+ <button id="body_btnImprimirDANFE_NFCe" onclick="AbrirAbaImpressao()" class="botao-padrao cinza"><i class="fa fa-print"></i> Imprimir</button>
+ <button id="body_btnVisualizarAbas" onclick="VisualizarAbas()" class="botao-padrao cinza"><i class="fa fa-th-list" aria-hidden="true"></i> Visualizar em abas</button>
+ <button id="body_btnNovaConsulta" onclick="NovaConsulta()" class="botao-padrao azul"><i class="fa fa-search"></i> Nova consulta</button>
+ </div>
+
+ <div id="body_pnlImpressao">
+ 
+ 
+ <div class="" id="divXMl" style="margin: 20px auto 0 auto">
+ <div data-role="header" xmlns:n="http://www.portalfiscal.inf.br/nfe" xmlns:chave="http://exslt.org/chaveacesso" xmlns:r="http://www.serpro.gov.br/nfe/remessanfe.xsd">
+ <h1 class="tit">
+ <img src="Novo_Layout/imagens/logoNFCe.PNG" width="90" height="64" alt="NFC-e">
+ <p>DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETRÔNICA</p>
+ <p>
+ </p>
+ </h1>
+</div>
+<div data-role="content" xmlns:n="http://www.portalfiscal.inf.br/nfe" xmlns:chave="http://exslt.org/chaveacesso" xmlns:r="http://www.serpro.gov.br/nfe/remessanfe.xsd">
+ <div id="conteudo">
+ <div id="avisos">
+ </div>
+ <div class="txtCenter">
+ <div id="u20" class="txtTopo">WMB SUPERMERCADOS DO BRASIL LTDA.</div>
+ <div class="text">
+								CNPJ:
+								00.063.960/0060-50</div>
+ <div class="text">Av. Mascarenhas de Moraes,
+							1905,
+							,
+							Bento Ferreira,
+							Vitoria,
+							ES</div>
+ </div>
+ <table border="0" align="center" cellpadding="0" cellspacing="0" id="tabResult" data-filter="true">
+ <tr id="Item + 1">
+ <td valign="top">
+ <span class="txtTit">TRUFAS TRADICIONAL 4</span>
+ <span class="RCod">
+										(Código: S259790)
+ </span>
+ <br>
+ <span class="Rqtd">
+ <strong>Qtde.:</strong>2</span>
+ <span class="RUN">
+ <strong>UN: </strong>UNID</span>
+ <span class="RvlUnit">
+ <strong>Vl. Unit.:</strong> 44,98</span>
+ </td>
+ <td align="right" valign="top" class="txtTit noWrap">
+									Vl. Total<br><span class="valor">89,96</span></td>
+ </tr>
+ <tr id="Item + 2">
+ <td valign="top">
+ <span class="txtTit">SUCO DE LARANJA INTE</span>
+ <span class="RCod">
+										(Código: S254825)
+ </span>
+ <br>
+ <span class="Rqtd">
+ <strong>Qtde.:</strong>1</span>
+ <span class="RUN">
+ <strong>UN: </strong>UNID</span>
+ <span class="RvlUnit">
+ <strong>Vl. Unit.:</strong> 15,98</span>
+ </td>
+ <td align="right" valign="top" class="txtTit noWrap">
+									Vl. Total<br><span class="valor">15,98</span></td>
+ </tr>
+ <tr id="Item + 3">
+ <td valign="top">
+ <span class="txtTit">HAVAIANAS BRASIL PRE</span>
+ <span class="RCod">
+										(Código: S260353)
+ </span>
+ <br>
+ <span class="Rqtd">
+ <strong>Qtde.:</strong>1</span>
+ <span class="RUN">
+ <strong>UN: </strong>UNID</span>
+ <span class="RvlUnit">
+ <strong>Vl. Unit.:</strong> 39,99</span>
+ </td>
+ <td align="right" valign="top" class="txtTit noWrap">
+									Vl. Total<br><span class="valor">39,99</span></td>
+ </tr>
+ </table>
+ <div id="totalNota" class="txtRight">
+ <div id="linhaTotal">
+ <label>Qtd. total de itens:</label>
+ <span class="totalNumb">3</span>
+ </div>
+ <div id="linhaTotal" class="linhaShade">
+ <label>Valor a pagar R$:</label>
+ <span class="totalNumb txtMax">145,93</span>
+ </div>
+ <div id="linhaForma">
+ <label>Forma de pagamento:</label>
+ <span class="totalNumb txtTitR">Valor pago R$:</span>
+ </div>
+ <div id="linhaTotal">
+ <label class="tx">
+ </label>
+ <span class="totalNumb">NaN</span>
+ </div>
+ <div id="linhaTotal" class="spcTop">
+ <label class="txtObs">Informação dos Tributos Totais Incidentes (Lei Federal 12.741/2012) R$</label>
+ <span class="totalNumb txtObs">79,55</span>
+ </div>
+ </div>
+ </div>
+ <div id="infos" class="txtCenter">
+ <div data-role="collapsible" data-collapsed-icon="carat-d" data-expanded-icon="carat-u" data-collapsed="false">
+ <h4>Informações gerais da Nota</h4>
+ <ul data-role="listview" data-inset="false">
+ <li>
+ <strong>EMISSÃO NORMAL</strong>
+ <br>
+ <br>
+ <strong>Número: </strong>378457<strong> Série: </strong>5<strong> Emissão: </strong>29/08/2026 11:18:43  - Via Consumidor
+ <br><br><strong>Protocolo de Autorização: </strong>232260488249992       29/08/2026 11:18:43<br><br><strong>Ambiente de Produção - 
+									Versão XML: 4.00 - Versão XSLT: 2.03
+ </strong></li>
+ </ul>
+ </div>
+ <div data-role="collapsible" data-collapsed-icon="carat-d" data-expanded-icon="carat-u" data-collapsed="false">
+ <h4>Chave de acesso</h4>
+ <ul data-role="listview" data-inset="false">
+ <li>
+								Consulte pela Chave de Acesso em
+ 
+										http://app.sefaz.es.gov.br/consultaNFCe
+ <br><br><strong>Chave de acesso:</strong><br><span class="chave">3226 0800 0639 6000 6050 6500 5000 3784 5711 2841 1294</span></li>
+ </ul>
+ </div>
+ <div data-role="collapsible" data-collapsed-icon="carat-d" data-expanded-icon="carat-u" data-collapsed="false">
+ <h4>Consumidor</h4>
+ <ul data-role="listview" data-inset="false">
+ <li>
+ <strong>CPF: </strong>123.456.789-09</li>
+ <li>
+ <strong>Nome: </strong>
+ </li>
+ </ul>
+ </div>
+ <div data-role="collapsible" data-collapsed-icon="carat-d" data-expanded-icon="carat-u" data-collapsed="false">
+ <h4>Informações de interesse do contribuinte</h4>
+ <ul data-role="listview" data-inset="false">
+ <li>N. TC 939767664765828834643 Terminal: 005#Trib aprox. R$ Fed: 54,74 Est: 24,81 Mun: 0,00 IBPT 6ed75L#SOCIO: 00000000000000 NOME DO SOCIO#FALE CONOSCO: 4020-5050 / 0800-705-5050#CUPOM VALIDO PARA ASSISTENCIA TECNICA</li>
+ </ul>
+ </div>
+ <div data-role="collapsible" data-collapsed-icon="carat-d" data-expanded-icon="carat-u">
+ <h4>Informações de interesse do fisco</h4>
+ <ul data-role="listview" data-inset="false">
+ <li>vFCP: 0,00 vFCPST: 0,00</li>
+ </ul>
+ </div>
+ </div>
+</div>
+ 
+ 
+
+ 
+ </div>
+
+ 
+</div>
+
+ </div>
+ </div>
+ </div>
+
+ <div class="container-fluid rodape">
+ <div class="container">
+ <div class="row">
+ <div class="col-sm-10">
+ <p>© Copyright 2003 - 2016 Secretaria de Estado da Fazenda do Espírito Santo<br>
+                            Av. João Batista Parra . nº 600 . Ed. Aureliano Hoffman . Enseada do Suá . Vitória-ES . CEP: 29050-375 . CNPJ: 27.080.571/0001-30</p>
+ </div>
+ <div class="col-sm-2">
+ <img src="https://internet.sefaz.es.gov.br/imagens/brasao_negativo.png" alt="Secretaria de Estado da Fazenda do Espírito Santo" width="150">
+ </div>
+ </div>
+ </div>
+ </div>
+
+ </form>
+ <!-- jQuery (É necessário para o funcionamento dos plugins) -->
+ 
+ <script src="/ConsultaNFCe/Novo_Layout/js/jquery.mask.min.js" type="text/javascript"></script>
+ <script>
+        $(document).ready(function () {
+            $(".navbar-header .ui-btn").removeClass("ui-btn");
+
+            $("#txtConsulta").mask('9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999');
+        });
+ </script>
+</body>
+</html>

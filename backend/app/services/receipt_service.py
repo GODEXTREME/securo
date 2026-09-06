@@ -27,6 +27,7 @@ from app.receipts.adapters.base import FetchedPage, PageKind, ParseError, UFAdap
 from app.receipts.adapters.registry import ADAPTERS
 from app.receipts.canonical import CanonicalReceipt
 from app.receipts.fetcher import Fetcher, host_allowed
+from app.receipts.pasted import normalize_pasted
 from app.receipts.qr import NFCE_MODEL, QrPayload, parse_access_key, parse_qr_payload
 from app.services import notification_service
 
@@ -264,6 +265,7 @@ async def submit_html(
     adapter = adapters.get(receipt.c_uf)
     if adapter is None:
         raise ReceiptError("unsupported_uf")
+    html = normalize_pasted(html)
     page = FetchedPage(url=receipt.qr_url or "", status_code=200, html=html, fetched_at=now)
     kind = adapter.classify(page)
     if kind == PageKind.CANCELLED:

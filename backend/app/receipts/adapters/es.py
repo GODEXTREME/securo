@@ -8,10 +8,12 @@ retrying, and the user pastes the page their browser rendered after the
 challenge (`POST /receipts/{id}/html`). That paste path is the primary
 path for this state, not a fallback.
 
-`parse` still targets the shared tabResult template, which is what the
-post-challenge page is *believed* to be — unverified until a real DANFE
-from this portal lands in `tests/fixtures/nfce/es/`. Bump
-`parser_version` when it does.
+The page a browser renders after the challenge **is** the shared
+tabResult template (fixture `32260800063960006050650050003784571128411294.html`,
+captured 2026-09-06), with three quirks the parser now handles: the item
+cell carries no class and names the product in a `span.txtTit`; the
+totals block prints only "Valor a pagar", never the products total or a
+discount line; and the payment line can come out as `NaN`.
 """
 from __future__ import annotations
 
@@ -25,7 +27,7 @@ from app.receipts.uf_table import DEFAULT_CONSULTA_URLS, allowed_hosts_for
 class EsAdapter:
     c_uf = "32"
     uf = "ES"
-    parser_version = 1
+    parser_version = 2
     allowed_hosts = allowed_hosts_for("ES")
 
     def consulta_url(self, qr: QrPayload) -> str:

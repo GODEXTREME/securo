@@ -141,7 +141,7 @@ async def test_authorized_page_persists_everything(session, test_user, test_work
     r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=_serving(html), now=NOW, raw_ttl_days=90)
     assert r is not None and r.status == "authorized" and r.status_reason is None
     assert r.locked_at is None and r.next_attempt_at is None
-    assert r.source == "sefaz_html" and r.parser_version == 1
+    assert r.source == "sefaz_html" and r.parser_version == 2
     assert r.issued_on == datetime(2026, 8, 14).date()
     assert r.items_count == 4 and r.total == Decimal("42.01") and r.discount == Decimal("2.00")
     assert [i.ordinal for i in r.items] == [1, 2, 3, 4]
