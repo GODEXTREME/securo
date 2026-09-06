@@ -127,6 +127,64 @@ class TestEsAdapter:
         assert exc.value.code == "total_mismatch"
 
 
+REAL = FIXTURE.parent / "32260800063960006050650050003784571128411294.html"
+
+
+class TestEsRealPage:
+    """The page a browser renders after the Turnstile challenge, captured
+    2026-09-06 with the consumer's data masked. This is the layout the
+    portal actually serves; the synthetic fixture covers the paths this
+    particular note does not exercise (discount line, weighed item,
+    itemised payments)."""
+
+    def test_classifies_as_authorized(self):
+        assert EsAdapter().classify(_page(REAL.read_text(encoding="utf-8"))) == PageKind.AUTHORIZED
+
+    def test_parses_the_note(self):
+        r = EsAdapter().parse(REAL.read_text(encoding="utf-8"))
+        assert r.access_key == KEY and (r.number, r.series) == (378457, 5)
+        assert r.issued_at == datetime.fromisoformat("2026-08-29T11:18:43-03:00")
+        assert r.protocol == "232260488249992"
+        assert r.issuer.legal_name == "WMB SUPERMERCADOS DO BRASIL LTDA."
+        assert (r.issuer.street, r.issuer.number, r.issuer.district, r.issuer.city, r.issuer.uf) == (
+            "Av. Mascarenhas de Moraes", "1905", "Bento Ferreira", "Vitoria", "ES"
+        ), "the blank complement in the address must not shift the fields"
+        assert r.customer_cpf == "12345678909"
+        assert [(i.product_code, i.description, i.unit, i.quantity, i.unit_price, i.total) for i in r.items] == [
+            ("S259790", "TRUFAS TRADICIONAL 4", "UNID", Decimal("2"), Decimal("44.98"), Decimal("89.96")),
+            ("S254825", "SUCO DE LARANJA INTE", "UNID", Decimal("1"), Decimal("15.98"), Decimal("15.98")),
+            ("S260353", "HAVAIANAS BRASIL PRE", "UNID", Decimal("1"), Decimal("39.99"), Decimal("39.99")),
+        ]
+
+    def test_products_total_is_derived_when_the_portal_omits_it(self):
+        r = EsAdapter().parse(REAL.read_text(encoding="utf-8"))
+        assert r.totals.items_count == 3
+        assert r.totals.products_total == Decimal("145.93") == r.totals.total
+        assert r.totals.discount == Decimal("0")
+        assert r.totals.approx_taxes == Decimal("79.55")
+
+    def test_a_nan_payment_line_is_tolerated(self):
+        assert EsAdapter().parse(REAL.read_text(encoding="utf-8")).payments == []
+
+    def test_view_source_paste_unwraps_to_the_page(self):
+        from html import escape
+
+        from app.receipts.pasted import normalize_pasted
+
+        page = REAL.read_text(encoding="utf-8")
+        rows = "".join(
+            f'<tr><td class="line-number" value="{n}"></td><td class="line-content">{escape(line)}</td></tr>'
+            for n, line in enumerate(page.splitlines(), start=1)
+        )
+        viewer = f"<html><body><table>{rows}</table></body></html>"
+        # The viewer escapes the markup, so the DANFE is invisible to classify
+        # (the Turnstile markup the page still carries shows through instead).
+        assert EsAdapter().classify(_page(viewer)) != PageKind.AUTHORIZED
+        unwrapped = normalize_pasted(viewer)
+        assert EsAdapter().parse(unwrapped).number == 378457
+        assert normalize_pasted(page) == page, "a real page passes through untouched"
+
+
 class TestCanonicalModel:
     def _receipt(self, items: list[CanonicalItem] | None = None) -> CanonicalReceipt:
         if items is None:

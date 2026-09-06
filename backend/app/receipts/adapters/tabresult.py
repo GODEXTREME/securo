@@ -129,7 +129,7 @@ def parse_tabresult(html: str, *, expected_uf: str) -> CanonicalReceipt:
     if not items:
         raise ParseError("no_items")
 
-    totals, payments = _parse_totals(soup)
+    totals, payments = _parse_totals(soup, sum((item.total for item in items), ZERO))
     issuer = _parse_issuer(soup, expected_uf)
     info_text = _text(soup.select_one("#infos")) or _text(soup)
 
@@ -211,15 +211,21 @@ def _protocol(info_text: str) -> tuple[Optional[str], Optional[datetime]]:
 def _parse_items(table: Tag) -> list[CanonicalItem]:
     items: list[CanonicalItem] = []
     for row in table.select("tr"):
-        title_cell = row.select_one("td.txtTit")
+        cells = row.find_all("td", recursive=False)
         value_cell = row.select_one("span.valor")
-        if title_cell is None or value_cell is None:
+        if not cells or value_cell is None:
             continue
-        name_node = title_cell.select_one("h7") or title_cell.select_one("span.txtTit2") or title_cell
+        # The first cell carries the item; on the live portal it has no
+        # class of its own and the name sits in a `span.txtTit` inside it.
+        title_cell = cells[0]
+        name_node = (
+            title_cell.select_one("span.txtTit")
+            or title_cell.select_one("h7")
+            or title_cell.select_one("span.txtTit2")
+            or title_cell
+        )
         description = _text(name_node)
         if name_node is title_cell:
-            # No dedicated name node: the description is the text before the
-            # first "(Código:" marker.
             description = description.split("(Código", 1)[0].strip()
         code_text = _text(title_cell.select_one("span.RCod"))
         code_match = re.search(r"C[óo]digo\s*:?\s*([^)]+)", code_text)
@@ -245,7 +251,7 @@ def _parse_items(table: Tag) -> list[CanonicalItem]:
     return items
 
 
-def _parse_totals(soup: BeautifulSoup) -> tuple[Totals, list[Payment]]:
+def _parse_totals(soup: BeautifulSoup, items_sum: Decimal) -> tuple[Totals, list[Payment]]:
     block = soup.select_one("#totalNota")
     if block is None:
         raise ParseError("no_totals")
@@ -284,8 +290,20 @@ def _parse_totals(soup: BeautifulSoup) -> tuple[Totals, list[Payment]]:
             values["approx_taxes"] = amount
         elif in_payments:
             payments.append(Payment(type=_payment_type(label), label=label, amount=amount))
-    if "items_count" not in values or "products_total" not in values:
+    if "items_count" not in values or ("products_total" not in values and "total" not in values):
         raise ParseError("no_totals", f"labels found: {sorted(values)}")
+    if "products_total" not in values:
+        # The live ES portal prints only "Valor a pagar". The products total
+        # is the sum of the lines, and the gap to what was paid is a discount
+        # (or, rarely, an addition) the portal chose not to itemise.
+        products_total = items_sum
+        total = values["total"]
+        gap = products_total - total
+        values["products_total"] = products_total
+        if gap > ZERO and "discount" not in values:
+            values["discount"] = gap
+        elif gap < ZERO and "addition" not in values:
+            values["addition"] = -gap
     total = values.get("total", values["products_total"] - values.get("discount", ZERO))
     totals = Totals(
         items_count=int(values["items_count"]),
@@ -317,9 +335,12 @@ def _parse_issuer(soup: BeautifulSoup, expected_uf: str) -> Issuer:
         raise ParseError("no_issuer", f"name={name!r} cnpj={cnpj!r}")
     street = number = district = city = uf = None
     if address_lines:
+        # "Av. X, 1905, , Bento Ferreira, Vitoria, ES": street, number, an
+        # often-empty complement, district, city, state. Anchor on the right,
+        # where the fields are fixed, so the blank in the middle costs nothing.
         parts = [p.strip() for p in address_lines[0].split(",")]
-        if len(parts) >= 5:
-            street, number, district, city, uf = parts[0], parts[1], parts[2], parts[3], parts[4][:2].upper()
+        if len(parts) >= 5 and len(parts[-1]) == 2:
+            street, number, district, city, uf = parts[0], parts[1], parts[-3], parts[-2], parts[-1].upper()
         elif len(parts) == 4:
             street, number, district, city = parts
         else:
