@@ -80,9 +80,10 @@ class ReceiptRead(BaseModel):
     #: Free text from the last attempt — the portal's answer, an HTTP or TLS
     #: error, a parser code. What a person needs to tell the states apart.
     last_error: Optional[str] = None
-    source: Optional[str] = None
-    #: The URL inside the QR, for "open in your browser" on the paste path.
+    #: The URL the QR carried, when the note was scanned rather than typed.
+    #: What the UI opens in a browser tab when the portal wants a human.
     qr_url: Optional[str] = None
+    source: Optional[str] = None
     store: Optional[StoreRead] = None
     issued_at: Optional[datetime] = None
     issued_on: Optional[date] = None
@@ -115,8 +116,8 @@ class ReceiptRead(BaseModel):
             attempts=receipt.attempts,
             next_attempt_at=receipt.next_attempt_at,
             last_error=receipt.last_error,
-            source=receipt.source,
             qr_url=receipt.qr_url,
+            source=receipt.source,
             store=StoreRead.model_validate(receipt.store) if receipt.store else None,
             issued_at=receipt.issued_at,
             issued_on=receipt.issued_on,
