@@ -21,6 +21,9 @@ const TransactionsPage = lazy(() => import('@/pages/transactions'))
 const AccountsPage = lazy(() => import('@/pages/accounts'))
 const AccountDetailPage = lazy(() => import('@/pages/account-detail'))
 const CardsPage = lazy(() => import('@/pages/cards'))
+const ReceiptsPage = lazy(() => import('@/pages/receipts'))
+const ReceiptScanPage = lazy(() => import('@/pages/receipt-scan'))
+const ReceiptDetailPage = lazy(() => import('@/pages/receipt-detail'))
 const ImportPage = lazy(() => import('@/pages/import'))
 const RulesPage = lazy(() => import('@/pages/rules'))
 const CategoriesPage = lazy(() => import('@/pages/categories'))
@@ -111,6 +114,9 @@ function App() {
                   <Route path="/accounts/:id" element={<ModuleRoute module="accounts"><AccountDetailPage /></ModuleRoute>} />
                   {/* Fork pages have no upstream ModuleId, so they stay unwrapped. */}
                   <Route path="/cards" element={<CardsPage />} />
+                  <Route path="/receipts" element={<ReceiptsPage />} />
+                  <Route path="/receipts/scan" element={<ReceiptScanPage />} />
+                  <Route path="/receipts/:id" element={<ReceiptDetailPage />} />
                   <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
                   <Route path="/enable-banking" element={<OAuthCallbackPage />} />
                   <Route path="/import" element={<ModuleRoute module="import"><ImportPage /></ModuleRoute>} />

@@ -34,7 +34,7 @@ const linkKeys = (items: NavItem[]) =>
 // ModuleId. They are always visible, so the module invariants below apply
 // to the links that declare one.
 const FORK_ONLY_KEYS = [
-  'cards', 'installments', 'calendar', 'insights', 'forecast', 'healthScore',
+  'receipts', 'cards', 'installments', 'calendar', 'insights', 'forecast', 'healthScore',
   'retirement', 'fixedIncome', 'dividends', 'sinkingFunds', 'emergencyFund',
   'subscriptions', 'debt', 'loans', 'purchasePlanner', 'rewards',
 ]
@@ -71,6 +71,7 @@ describe('visibleNavItems', () => {
     // interleaved where the catalog places them.
     expect(linkKeys(personal)).toEqual([
       'transactions',
+      'receipts',
       'accounts',
       'cards',
       'installments',
@@ -106,8 +107,9 @@ describe('visibleNavItems', () => {
   it('adds invoices for a workspace that has it', () => {
     const business = visibleNavItems(navItems, all)
     expect(linkKeys(business)).toContain('invoices')
-    // And it does not disturb the rest of the order.
-    expect(linkKeys(business).indexOf('invoices')).toBe(1)
+    // And it does not disturb the rest of the order: right after the
+    // fork's receipts link, which always follows transactions.
+    expect(linkKeys(business).indexOf('invoices')).toBe(2)
   })
 
   it('hides a section header once its last link goes', () => {
