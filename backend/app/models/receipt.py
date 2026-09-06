@@ -42,6 +42,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
+    from app.models.product import Product
     from app.models.store import Store
     from app.models.transaction import Transaction
     from app.models.user import User
@@ -125,10 +126,6 @@ class Receipt(Base):
     payments: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     #: SHA-256 over salt + digits. Never the CPF.
     customer_cpf_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    #: Filled by the price service once the catalogue exists; the shape is
-    #: its to define. Persisted so the screen does not recompute it.
-    variation_summary: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
-
     raw_html: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     raw_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -181,7 +178,20 @@ class ReceiptItem(Base):
     unit_price_corrected: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4), nullable=True)
     corrected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Catalogue. Filled by the matcher after the note is authorised; null
+    # until then and for lines the matcher could not place.
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    size_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3), nullable=True)
+    size_unit: Mapped[Optional[str]] = mapped_column(String(4), nullable=True)
+    pack_count: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
+    normalized_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4), nullable=True)
+    base_unit: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
+    comparable: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
     receipt: Mapped["Receipt"] = relationship(back_populates="items")
+    product: Mapped[Optional["Product"]] = relationship(lazy="selectin")
 
     @property
     def effective_unit_price(self) -> Decimal:
@@ -208,6 +218,11 @@ class ReceiptLink(Base):
     transaction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True
     )
+    #: "Compared with what *this workspace* paid last time" — personal by
+    #: definition, so it lives on the link, not on the shared note. Shape is
+    #: the price service's (`price_service.compute_variation`). Persisted so
+    #: the screen does not recompute it.
+    variation_summary: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     scanned_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

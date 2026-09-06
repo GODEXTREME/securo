@@ -29,7 +29,7 @@ def _page(html: str, status: int = 200) -> FetchedPage:
 class TestParseBrl:
     @pytest.mark.parametrize(
         "raw,expected",
-        [("9,78", "9.78"), ("R$ 1.234,56", "1234.56"), ("0,585", "0.585"), ("4", "4"), ("Vl. Unit.: 4,89", "4.89"), ("-2,00", "-2.00")],
+        [("9,78", "9.78"), ("R$ 1.234,56", "1234.56"), ("0,585", "0.585"), ("4", "4"), ("Vl. Unit.: 4,89", "4.89"), ("-2,00", "-2.00"), ("2490,00", "2490.00"), ("12345", "12345")],
     )
     def test_reads_brazilian_numbers(self, raw, expected):
         assert parse_brl(raw) == Decimal(expected)

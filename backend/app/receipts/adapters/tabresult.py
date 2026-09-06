@@ -17,6 +17,7 @@ this template does not show the GTIN. Every item parsed here carries
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Optional
@@ -76,7 +77,10 @@ def parse_brl(raw: str | None) -> Optional[Decimal]:
     if raw is None:
         return None
     text = raw.replace("R$", "").replace("\xa0", " ").strip()
-    match = re.search(r"-?\d{1,3}(?:\.\d{3})*(?:,\d+)?|-?\d+(?:,\d+)?", text)
+    # Dotted thousands first ("1.234,56"), otherwise plain digits ("2490,00",
+    # "9,78", "3"): a 4-digit figure printed without a separator must not be
+    # cut at its first three digits.
+    match = re.search(r"-?\d{1,3}(?:\.\d{3})+(?:,\d+)?|-?\d+(?:,\d+)?", text)
     if not match:
         return None
     try:
@@ -98,6 +102,13 @@ def classify_tabresult(page: FetchedPage) -> PageKind:
     if any(marker in lowered for marker in _NOT_FOUND_MARKERS):
         return PageKind.NOT_FOUND_YET
     return PageKind.ERROR_PAGE
+
+
+_TAG_RE = re.compile(r"<[a-zA-Z!/]")
+
+
+def looks_like_html(text: str) -> bool:
+    return bool(_TAG_RE.search(text or ""))
 
 
 def _text(node: Tag | None) -> str:
@@ -135,42 +146,250 @@ def parse_tabresult(html: str, *, expected_uf: str) -> CanonicalReceipt:
 
     key_node = soup.select_one("span.chave")
     access_key = re.sub(r"\D", "", _text(key_node)) if key_node else None
+    info = _info_from_text(info_text, access_key=access_key)
+    return _build(expected_uf, info, issuer, totals, payments, items)
+
+
+@dataclass(frozen=True)
+class _Info:
+    access_key: str
+    number: int
+    series: int
+    issued_at: Optional[datetime]
+    protocol: Optional[str]
+    authorized_at: Optional[datetime]
+    customer_cpf: Optional[str]
+
+
+def _info_from_text(info_text: str, *, access_key: Optional[str] = None) -> _Info:
     if not access_key:
         found = re.search(r"(?:\d[\s.]?){44}", info_text)
         access_key = re.sub(r"\D", "", found.group(0)) if found else None
     if not access_key or len(access_key) != 44:
         raise ParseError("no_access_key")
-
     number = _int(_after("Número", info_text))
     series = _int(_after("Série", info_text))
     if number is None or series is None:
         raise ParseError("no_number_series")
-
     issued_at = _datetime(_after("Emissão", info_text))
     protocol, authorized_at = _protocol(info_text)
     cpf_match = re.search(r"CPF\s*:?\s*([\d.\-]{11,14})", info_text)
     customer_cpf = re.sub(r"\D", "", cpf_match.group(1)) if cpf_match else None
     if customer_cpf is not None and len(customer_cpf) != 11:
         customer_cpf = None
+    return _Info(access_key, number, series, issued_at, protocol, authorized_at, customer_cpf)
 
+
+def _build(
+    expected_uf: str, info: _Info, issuer: Issuer, totals: Totals, payments: list[Payment], items: list[CanonicalItem],
+    *, source: str = "sefaz_html",
+) -> CanonicalReceipt:
     try:
         return CanonicalReceipt(
-            access_key=access_key,
+            access_key=info.access_key,
             uf=expected_uf,
-            series=series,
-            number=number,
-            issued_at=issued_at,
-            protocol=protocol,
-            authorized_at=authorized_at,
+            series=info.series,
+            number=info.number,
+            issued_at=info.issued_at,
+            protocol=info.protocol,
+            authorized_at=info.authorized_at,
             issuer=issuer,
-            customer_cpf=customer_cpf,
+            customer_cpf=info.customer_cpf,
             totals=totals,
             payments=payments,
             items=items,
+            source=source,
         )
     except ValueError as exc:  # pydantic ValidationError is a ValueError
         code = _validation_code(exc)
         raise ParseError(code, str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# the same template, as text — what a phone's "select all → copy" gives
+# ---------------------------------------------------------------------------
+_TEXT_ITEM_RE = re.compile(
+    r"\(C[óo]digo:\s*(?P<code>[^)]+?)\s*\)\s*"
+    r"Qtde\.?\s*:\s*(?P<qty>[\d.,]+)\s*"
+    r"UN\s*:\s*(?P<unit>[A-Za-zÀ-ú]+)\s*"
+    r"Vl\.?\s*Unit\.?\s*:\s*(?P<price>[\d.,]+)\s*"
+    r"(?:Vl\.?\s*Total\s*:?\s*)?(?P<total>[\d.,]+)",
+    re.IGNORECASE | re.DOTALL,
+)
+_TEXT_TOTAL_LABELS: tuple[tuple[str, str], ...] = (
+    ("Qtd. total de itens", "items_count"),
+    ("Qtd total de itens", "items_count"),
+    ("Valor total R$", "products_total"),
+    ("Descontos R$", "discount"),
+    ("Desconto R$", "discount"),
+    ("Acréscimos R$", "addition"),
+    ("Acréscimo R$", "addition"),
+    ("Frete R$", "shipping"),
+    ("Valor a pagar R$", "total"),
+)
+
+
+def parse_tabresult_text(text: str, *, expected_uf: str) -> CanonicalReceipt:
+    """The rendered text of a tabResult page. Anchors on the labels, which
+    survive copy-and-paste; layout does not. Handles one field per line
+    (a view-source dump), one line per block (a phone's select-all), and
+    everything on a single line (some browsers collapse it)."""
+    text = text.replace("\xa0", " ")
+    lowered = text.lower()
+    if any(marker in lowered for marker in _CANCELLED_MARKERS):
+        raise ParseError("cancelled", "the pasted text says the note was cancelled")
+
+    issuer, body_start = _text_issuer(text, expected_uf)
+
+    items: list[CanonicalItem] = []
+    cursor = body_start
+    for match in _TEXT_ITEM_RE.finditer(text, body_start):
+        before = text[cursor:match.start()]
+        # The description is the last non-empty line before "(Código:"; on a
+        # single-line copy it is whatever sits after the previous total.
+        lines = [line.strip() for line in before.splitlines() if line.strip()]
+        description = lines[-1] if lines else before.strip()
+        description = re.sub(r"^(?:Vl\.?\s*Total\s*:?\s*[\d.,]+)\s*", "", description).strip()
+        if not description:
+            raise ParseError("item_fields", f"item {len(items) + 1} has no description")
+        quantity = parse_brl(match.group("qty"))
+        unit_price = parse_brl(match.group("price"))
+        total = parse_brl(match.group("total"))
+        if quantity is None or unit_price is None or total is None:
+            raise ParseError("item_fields", f"item {len(items) + 1} has an unreadable number")
+        items.append(
+            CanonicalItem(
+                ordinal=len(items) + 1,
+                product_code=match.group("code").strip(),
+                gtin=None,
+                description=description[:200],
+                unit=match.group("unit")[:6],
+                quantity=quantity,
+                unit_price=unit_price,
+                total=total,
+            )
+        )
+        cursor = match.end()
+    if not items:
+        raise ParseError("no_items", "no '(Código: …) Qtde.: … UN: … Vl. Unit.: … Vl. Total …' lines found")
+
+    values: dict[str, Decimal] = {}
+    for label, key in _TEXT_TOTAL_LABELS:
+        # The count is an integer; every other total is money with two
+        # decimals. Label and value may sit on different lines.
+        number = r"(\d+)" if key == "items_count" else r"(-?[\d.]+,\d{2})"
+        found = re.search(re.escape(label) + r"\s*:?\s*" + number, text)
+        if found and key not in values:
+            amount = parse_brl(found.group(1))
+            if amount is not None:
+                values[key] = amount
+    taxes = re.search(r"Tributos\s+Totais\s+Incidentes.*?R\$\s*:?\s*([\d.]+,\d{2})", text, re.IGNORECASE | re.DOTALL)
+    if taxes:
+        approx = parse_brl(taxes.group(1))
+        if approx is not None:
+            values["approx_taxes"] = approx
+    if "items_count" not in values or ("products_total" not in values and "total" not in values):
+        raise ParseError("no_totals", f"labels found: {sorted(values)}")
+    items_sum = sum((item.total for item in items), ZERO)
+    if "products_total" not in values:
+        values["products_total"] = items_sum
+        gap = items_sum - values["total"]
+        if gap > ZERO and "discount" not in values:
+            values["discount"] = gap
+        elif gap < ZERO and "addition" not in values:
+            values["addition"] = -gap
+    total = values.get("total", values["products_total"] - values.get("discount", ZERO))
+    totals = Totals(
+        items_count=int(values["items_count"]),
+        products_total=values["products_total"],
+        discount=values.get("discount", ZERO),
+        addition=values.get("addition", ZERO),
+        shipping=values.get("shipping", ZERO),
+        total=total,
+        approx_taxes=values.get("approx_taxes"),
+    )
+
+    payments = _text_payments(text)
+    info = _info_from_text(text)
+    return _build(expected_uf, info, issuer, totals, payments, items, source="pasted_text")
+
+
+_TEXT_PAYMENT_LINE_RE = re.compile(r"(?P<label>[A-Za-zÀ-ú][A-Za-zÀ-ú$ .()/-]{2,40}?)\s*:?\s+(?P<amount>[\d.]+,\d{2})")
+
+
+def _text_payments(text: str) -> list[Payment]:
+    block = re.search(
+        r"Forma de pagamento\s*:?(.*?)(?:Tributos|Informa[çc][õo]es|Chave de acesso|$)", text, re.IGNORECASE | re.DOTALL
+    )
+    payments: list[Payment] = []
+    if not block:
+        return payments
+    for found in _TEXT_PAYMENT_LINE_RE.finditer(block.group(1)):
+        label = found.group("label").rstrip(":").strip()
+        amount = parse_brl(found.group("amount"))
+        if amount is None or label.lower().startswith("valor pago"):
+            continue
+        if label.lower().startswith("troco"):
+            if payments:
+                payments[-1] = payments[-1].model_copy(update={"change": amount})
+            continue
+        payments.append(Payment(type=_payment_type(label), label=label, amount=amount))
+    return payments
+
+
+def _text_issuer(text: str, expected_uf: str) -> tuple[Issuer, int]:
+    """The issuer block, and the offset where the item lines begin (so a
+    single-line copy does not fold the header into the first description)."""
+    cnpj_match = re.search(r"CNPJ\s*:?\s*([\d./\-]{14,18})", text)
+    if not cnpj_match:
+        raise ParseError("no_issuer", "no CNPJ line")
+    cnpj = re.sub(r"\D", "", cnpj_match.group(1))
+    if len(cnpj) != 14:
+        raise ParseError("no_issuer", f"cnpj={cnpj!r}")
+    all_lines = text.splitlines()
+    line_index = next((i for i, line in enumerate(all_lines) if cnpj in re.sub(r"\D", "", line)), None)
+    if line_index is None:
+        raise ParseError("no_issuer", "CNPJ not on any line")
+    line = all_lines[line_index]
+    one_line = "Código" in line or "Codigo" in line
+    name = ""
+    address_line = ""
+    body_start = 0
+    if one_line:
+        # Everything is on this line. The name is what sits between the
+        # DANFE title and "CNPJ"; the address runs up to the state code.
+        value_at = line.find(cnpj_match.group(1))
+        pre = line[:value_at]
+        pre = re.sub(r"CNPJ\s*:?\s*$", "", pre.strip())
+        pre = re.split(r"ELETR[ÔO]NICA|NFC-e\b", pre, flags=re.IGNORECASE)[-1]
+        name = pre.strip(" :|-–")[-120:].strip()
+        post = line[value_at + len(cnpj_match.group(1)):]
+        address = re.match(r"\s*(.+?,\s*[A-Z]{2})(?=\s|$)", post)
+        if address:
+            address_line = address.group(1)
+            body_start = text.find(line) + value_at + len(cnpj_match.group(1)) + address.end()
+        else:
+            body_start = text.find(line) + value_at + len(cnpj_match.group(1))
+    else:
+        for i in range(line_index - 1, -1, -1):
+            candidate = all_lines[i].strip()
+            if candidate and not candidate.upper().startswith("CNPJ"):
+                name = candidate
+                break
+        pieces: list[str] = []
+        for i in range(line_index + 1, min(line_index + 12, len(all_lines))):
+            candidate = all_lines[i].strip()
+            if not candidate:
+                continue
+            if re.search(r"C[óo]digo:|Qtde|Vl\.", candidate):
+                break
+            pieces.append(candidate)
+            if (re.search(r"(?:,|\s)([A-Z]{2})$", candidate) and len(pieces) > 1) or len(candidate.split(",")) >= 5:
+                break
+        address_line = " ".join(pieces)
+    if not name:
+        raise ParseError("no_issuer", f"name={name!r} cnpj={cnpj!r}")
+    return _issuer_from_parts(name, cnpj, [address_line] if address_line else [], expected_uf), body_start
 
 
 def _validation_code(exc: ValueError) -> str:
@@ -333,6 +552,10 @@ def _parse_issuer(soup: BeautifulSoup, expected_uf: str) -> Issuer:
             address_lines.append(line)
     if not name or not cnpj or len(cnpj) != 14:
         raise ParseError("no_issuer", f"name={name!r} cnpj={cnpj!r}")
+    return _issuer_from_parts(name, cnpj, address_lines, expected_uf)
+
+
+def _issuer_from_parts(name: str, cnpj: str, address_lines: list[str], expected_uf: str) -> Issuer:
     street = number = district = city = uf = None
     if address_lines:
         # "Av. X, 1905, , Bento Ferreira, Vitoria, ES": street, number, an

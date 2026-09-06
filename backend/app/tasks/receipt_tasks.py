@@ -20,8 +20,9 @@ import redis.asyncio as redis_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.models.receipt import Receipt
 from app.receipts.fetcher import Fetcher, RedisGate
-from app.services import receipt_service
+from app.services import price_service, receipt_service
 from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
@@ -65,9 +66,30 @@ async def _sweep() -> int:
         async with session_maker() as session:
             due = await receipt_service.due_receipt_ids(session)
             stale = await receipt_service.stale_parse_error_ids(session)
+            unenriched = await price_service.unenriched_receipt_ids(session)
         for receipt_id in [*due, *stale]:
             fetch_receipt.delay(str(receipt_id))
-        return len(due) + len(stale)
+        for receipt_id in unenriched:
+            enrich_receipt.delay(str(receipt_id))
+        return len(due) + len(stale) + len(unenriched)
+    finally:
+        await engine.dispose()
+
+
+async def _enrich_one(receipt_id: uuid.UUID) -> int:
+    """Notes authorised before the catalogue existed, or whose enrichment
+    did not finish: place their lines and refresh every workspace's
+    variation. Never touches the portal."""
+    engine, session_maker = _make_session_maker()
+    try:
+        async with session_maker() as session:
+            receipt = await session.get(Receipt, receipt_id)
+            if receipt is None:
+                return 0
+            placed = await price_service.enrich_receipt(session, receipt)
+            await price_service.refresh_variations(session, receipt)
+            await session.commit()
+            return placed
     finally:
         await engine.dispose()
 
@@ -94,6 +116,13 @@ def sweep_due() -> int:
     if count:
         logger.info("receipt sweep dispatched %d", count)
     return count
+
+
+@celery_app.task(name="app.tasks.receipt_tasks.enrich_receipt")
+def enrich_receipt(receipt_id: str) -> int:
+    placed = asyncio.run(_enrich_one(uuid.UUID(receipt_id)))
+    logger.info("receipt %s: %d lines placed in the catalogue", receipt_id, placed)
+    return placed
 
 
 @celery_app.task(name="app.tasks.receipt_tasks.expire_raw_html")
