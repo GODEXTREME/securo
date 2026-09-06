@@ -51,6 +51,17 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.notification_tasks.generate_all_notifications",
         "schedule": 60 * 60,  # every hour; generation is idempotent via dedup_key
     },
+    "receipts-sweep-due": {
+        "task": "app.tasks.receipt_tasks.sweep_due",
+        # Every minute: a scan's first attempt is dispatched directly, this
+        # is the retry schedule and the safety net for a dead worker. The
+        # query is one indexed lookup; idle runs cost nothing.
+        "schedule": 60,
+    },
+    "receipts-expire-raw-html-daily": {
+        "task": "app.tasks.receipt_tasks.expire_raw_html",
+        "schedule": 60 * 60 * 24,
+    },
     "restamp-fallback-fx-daily": {
         "task": "app.tasks.fx_rate_tasks.restamp_fallback_fx",
         # Twice daily, after FX rate sync — heals transactions that were
@@ -65,6 +76,7 @@ celery_app.conf.include = [
     "app.tasks.asset_tasks",
     "app.tasks.fx_rate_tasks",
     "app.tasks.notification_tasks",
+    "app.tasks.receipt_tasks",
     # Optional agents module — registering the import is harmless when
     # AGENTS_ENABLED=false (the task just won't be dispatched).
     "app.agents.tasks.ingest",

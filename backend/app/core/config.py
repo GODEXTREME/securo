@@ -125,6 +125,15 @@ class Settings(BaseSettings):
     # external dependency on the Brazilian government endpoint).
     tesouro_direto_enabled: bool = True
 
+    # Consumer receipts (NFC-e). Every request to a state portal goes
+    # through `app.receipts.fetcher`, and these are its knobs.
+    receipts_fetch_timeout_seconds: float = 15.0
+    receipts_min_interval_ms: int = 2000
+    receipts_circuit_failures: int = 5
+    receipts_circuit_open_seconds: int = 900
+    receipts_raw_html_ttl_days: int = 90
+    receipts_user_agent: str = "Securo/receipts (+https://github.com/godextreme/securo)"
+
     @property
     def oidc_login_available(self) -> bool:
         return bool(self.oidc_enabled and self.oidc_client_id and self.oidc_discovery_url)

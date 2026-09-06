@@ -53,6 +53,7 @@ from app.api.installments import router as installments_router
 from app.api.sinking_funds import router as sinking_funds_router
 from app.api.calendar import router as calendar_router
 from app.api.saved_searches import router as saved_searches_router
+from app.api.receipts import router as receipts_router
 from app.api.roundups import router as roundups_router
 from app.api.loans import router as loans_router
 from app.api.retirement import router as retirement_router
@@ -223,6 +224,7 @@ app.include_router(installments_router)
 app.include_router(sinking_funds_router)
 app.include_router(calendar_router)
 app.include_router(saved_searches_router)
+app.include_router(receipts_router)
 app.include_router(roundups_router)
 app.include_router(loans_router)
 app.include_router(retirement_router)
