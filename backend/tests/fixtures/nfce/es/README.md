@@ -1,10 +1,12 @@
 # Fixtures — Espírito Santo (cUF 32)
 
-`synthetic_v2.html` is **hand-written** against the shared "tabResult"
-template the ES portal is understood to use. It exercises every selector
-the parser relies on, but it is not a page the portal produced.
+`turnstile_challenge.html` — **real**, captured 2026-09-06. What the portal
+answers an automated request with: a Cloudflare Turnstile challenge. The
+adapter must classify it as CAPTCHA.
 
-Replace it with a real page as soon as one is available: open the QR URL
-in a browser, save as "Web page, complete", and drop the `.html` here
-named by its access key. Keep the synthetic one until the real one covers
-the same cases (discount line, weighed item, two payment lines).
+`synthetic_v2.html` — **hand-written** against the shared "tabResult"
+template the post-challenge DANFE is believed to use. It exercises every
+selector the parser relies on, but no page from this portal has confirmed
+the layout yet. Replace it with a real DANFE as soon as one is available:
+open the QR URL in a browser, pass the challenge, save as "Web page,
+complete", and drop the `.html` here named by its access key.

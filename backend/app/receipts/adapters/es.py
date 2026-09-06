@@ -1,13 +1,17 @@
 """Espírito Santo (cUF 32): `app.sefaz.es.gov.br/ConsultaNFCe`.
 
-A binding over the shared tabResult template. The URL that came inside the
-QR is always preferred: it carries the signature the portal checks. When
-only the bare key is known, the fallback URL asks by `chNFe=`; the portal
-is expected to answer that with a challenge, which `classify` reports as
-CAPTCHA so the user can paste the page instead.
+What the portal really does, observed 2026-09-06: the QR URL is answered
+with 301 → 302 → `/ConsultaNFCe/QRCode.aspx?p=…`, and that page is a
+**Cloudflare Turnstile challenge**, not the DANFE. An automated request
+never sees the note. `classify` reports it as CAPTCHA, the receipt stops
+retrying, and the user pastes the page their browser rendered after the
+challenge (`POST /receipts/{id}/html`). That paste path is the primary
+path for this state, not a fallback.
 
-`parser_version` starts at 1 and is bumped with every change to what
-`parse` produces. Fixture: `tests/fixtures/nfce/es/`.
+`parse` still targets the shared tabResult template, which is what the
+post-challenge page is *believed* to be — unverified until a real DANFE
+from this portal lands in `tests/fixtures/nfce/es/`. Bump
+`parser_version` when it does.
 """
 from __future__ import annotations
 
