@@ -169,6 +169,12 @@ class Fetcher:
         if await self._gate.circuit_open(uf):
             return FetchResult("portal_down", detail=f"circuit open for {uf}")
 
+        # One token per fetch, not per hop: a portal's http→https redirect
+        # is not a second request from the portal's point of view.
+        first_host = urlsplit(url).hostname or ""
+        if not await self._gate.acquire(first_host, self._min_interval_ms):
+            return FetchResult("rate_limited", detail=f"interval not elapsed for {first_host}")
+
         current = url
         async with httpx.AsyncClient(
             timeout=self._timeout,
@@ -180,8 +186,6 @@ class Fetcher:
                 host = urlsplit(current).hostname or ""
                 if await self._resolver(host):
                     return FetchResult("blocked", detail=f"{host} resolves to a private address")
-                if not await self._gate.acquire(host, self._min_interval_ms):
-                    return FetchResult("rate_limited", detail=f"interval not elapsed for {host}")
                 try:
                     response = await client.get(current)
                 except httpx.TimeoutException:
