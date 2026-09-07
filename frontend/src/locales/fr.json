@@ -2447,6 +2447,20 @@
       "createFailed": "Création du jeton impossible.",
       "lastUsed": "utilisé le {{date}}",
       "neverUsed": "jamais utilisé"
+    },
+    "link": {
+      "title": "Transaction",
+      "hint": "Reliez cette note à l’opération qu’elle a produite. Seuls les débits proches en montant et en date sont proposés — le choix vous revient.",
+      "isLinked": "Reliée à une opération.",
+      "unlink": "Délier",
+      "linked": "Note reliée.",
+      "cleared": "Lien supprimé.",
+      "looking": "Recherche d’opérations…",
+      "none": "Aucune opération proche autour de cette date.",
+      "thisOne": "Celle-ci",
+      "off": "écart de {{amount}}",
+      "daysApart_one": "{{count}} jour d’écart",
+      "daysApart_other": "{{count}} jours d’écart"
     }
   },
   "invoices": {

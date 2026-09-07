@@ -86,6 +86,7 @@ import type {
   Product,
   ProductDetail,
   ProductPatch,
+  TransactionCandidate,
   CaptureTokenCreated,
 } from '@/types'
 
@@ -1907,6 +1908,12 @@ export const receipts = {
   /** Forget that this workspace scanned the note. The note itself stays. */
   remove: async (id: string): Promise<void> => {
     await api.delete(`/receipts/${id}`)
+  },
+  /** Debits this note could be. Read-only: the link is made by `update`,
+   *  by a person — an amount and a date agreeing is a reason to ask. */
+  transactionCandidates: async (id: string): Promise<TransactionCandidate[]> => {
+    const { data } = await api.get(`/receipts/${id}/transaction-candidates`)
+    return data.candidates
   },
   supportedUfs: async (): Promise<string[]> => {
     const { data } = await api.get('/receipts/supported-ufs')

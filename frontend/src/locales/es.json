@@ -2447,6 +2447,20 @@
       "createFailed": "No se pudo crear el token.",
       "lastUsed": "usado el {{date}}",
       "neverUsed": "nunca usado"
+    },
+    "link": {
+      "title": "Transacción",
+      "hint": "Vincula esta nota al cargo que generó. Solo sugerimos débitos con importe y fecha cercanos: la elección es tuya.",
+      "isLinked": "Vinculada a una transacción.",
+      "unlink": "Desvincular",
+      "linked": "Nota vinculada.",
+      "cleared": "Vínculo eliminado.",
+      "looking": "Buscando transacciones…",
+      "none": "Ninguna transacción parecida en esas fechas.",
+      "thisOne": "Es esta",
+      "off": "difiere {{amount}}",
+      "daysApart_one": "{{count}} día de diferencia",
+      "daysApart_other": "{{count}} días de diferencia"
     }
   },
   "invoices": {

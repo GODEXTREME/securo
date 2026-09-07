@@ -20,6 +20,8 @@ from app.schemas.receipt import (
     ScanResponse,
     SubmitHtmlRequest,
     SupportedUfsRead,
+    TransactionCandidateRead,
+    TransactionCandidatesRead,
 )
 from app.services import receipt_service
 
@@ -138,6 +140,27 @@ async def submit_receipt_html(
     link = await receipt_service.get_link(session, ctx.workspace.id, receipt_id)
     assert link is not None
     return ReceiptRead.from_pair(receipt, link)
+
+
+@router.get("/{receipt_id}/transaction-candidates", response_model=TransactionCandidatesRead)
+async def get_transaction_candidates(
+    receipt_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Which of this workspace's debits could be this note. Read-only: the
+    link itself is made by PATCH, by a person, one at a time — an amount
+    and a date agreeing is a good reason to ask, never to decide."""
+    rows = await receipt_service.transaction_candidates(session, ctx.workspace.id, receipt_id)
+    return TransactionCandidatesRead(
+        candidates=[
+            TransactionCandidateRead(
+                id=tx.id, description=tx.description, payee=tx.payee, date=tx.date,
+                amount=tx.amount, amount_difference=difference, days_apart=days,
+            )
+            for tx, difference, days in rows
+        ]
+    )
 
 
 @router.patch("/{receipt_id}", response_model=ReceiptRead)

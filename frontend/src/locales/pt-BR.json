@@ -2447,6 +2447,20 @@
       "createFailed": "Não foi possível criar o token.",
       "lastUsed": "usado em {{date}}",
       "neverUsed": "nunca usado"
+    },
+    "link": {
+      "title": "Transação",
+      "hint": "Ligue esta nota ao lançamento que ela gerou. Sugerimos apenas débitos com valor e data próximos — a escolha é sua.",
+      "isLinked": "Vinculada a um lançamento.",
+      "unlink": "Desvincular",
+      "linked": "Nota vinculada.",
+      "cleared": "Vínculo removido.",
+      "looking": "Procurando lançamentos…",
+      "none": "Nenhum lançamento parecido nos dias da compra.",
+      "thisOne": "É este",
+      "off": "difere {{amount}}",
+      "daysApart_one": "{{count}} dia de diferença",
+      "daysApart_other": "{{count}} dias de diferença"
     }
   },
   "invoices": {

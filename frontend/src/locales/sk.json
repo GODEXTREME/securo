@@ -2933,6 +2933,20 @@
       "createFailed": "Token sa nepodarilo vytvoriť.",
       "lastUsed": "použitý {{date}}",
       "neverUsed": "nikdy nepoužitý"
+    },
+    "link": {
+      "title": "Transakcia",
+      "hint": "Prepojte tento doklad s pohybom, ktorý vyvolal. Navrhujeme len debety blízke sumou a dátumom — voľba je vaša.",
+      "isLinked": "Prepojené s pohybom.",
+      "unlink": "Odpojiť",
+      "linked": "Doklad prepojený.",
+      "cleared": "Prepojenie odstránené.",
+      "looking": "Hľadám pohyby…",
+      "none": "Žiadny podobný pohyb v tých dňoch.",
+      "thisOne": "Tento",
+      "off": "rozdiel {{amount}}",
+      "daysApart_one": "{{count}} deň rozdiel",
+      "daysApart_other": "rozdiel v dňoch: {{count}}"
     }
   },
   "products": {

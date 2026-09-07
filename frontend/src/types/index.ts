@@ -1497,6 +1497,17 @@ export interface ScanResponse {
   already_linked: boolean
 }
 
+/** A debit this note could be, with the two numbers that say why. */
+export interface TransactionCandidate {
+  id: string
+  description: string
+  payee: string | null
+  date: string
+  amount: string
+  amount_difference: string
+  days_apart: number
+}
+
 /** A product in the catalogue. `scope` is derived: `global` once a GTIN
  *  is known — comparable in any store — `chain` until then. */
 export interface Product {

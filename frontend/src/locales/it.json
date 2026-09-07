@@ -2447,6 +2447,20 @@
       "createFailed": "Impossibile creare il token.",
       "lastUsed": "usato il {{date}}",
       "neverUsed": "mai usato"
+    },
+    "link": {
+      "title": "Transazione",
+      "hint": "Collega questa nota al movimento che ha generato. Suggeriamo solo addebiti vicini per importo e data: la scelta è tua.",
+      "isLinked": "Collegata a un movimento.",
+      "unlink": "Scollega",
+      "linked": "Nota collegata.",
+      "cleared": "Collegamento rimosso.",
+      "looking": "Cerco movimenti…",
+      "none": "Nessun movimento simile in quei giorni.",
+      "thisOne": "È questo",
+      "off": "differenza {{amount}}",
+      "daysApart_one": "{{count}} giorno di distanza",
+      "daysApart_other": "{{count}} giorni di distanza"
     }
   },
   "invoices": {

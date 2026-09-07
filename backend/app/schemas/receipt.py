@@ -188,5 +188,21 @@ class SubmitHtmlRequest(BaseModel):
     html: str = Field(min_length=1, max_length=2_000_000)
 
 
+class TransactionCandidateRead(BaseModel):
+    """A debit this note could be, with the two numbers that say why: how
+    far off the amount is, and how many days apart they are."""
+    id: uuid.UUID
+    description: str
+    payee: Optional[str] = None
+    date: date
+    amount: Decimal
+    amount_difference: Decimal
+    days_apart: int
+
+
+class TransactionCandidatesRead(BaseModel):
+    candidates: list[TransactionCandidateRead] = Field(default_factory=list)
+
+
 class SupportedUfsRead(BaseModel):
     ufs: list[str]
