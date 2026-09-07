@@ -65,6 +65,10 @@ describe('wantsPaste', () => {
     expect(wantsPaste(receipt('waiting_sefaz', 'qr_rejected'))).toBe(true)
   })
 
+  it('is offered when the portal will only talk to a browser', () => {
+    expect(wantsPaste(receipt('waiting_sefaz', 'needs_browser'))).toBe(true)
+  })
+
   it('stays out of the way while the worker is still going to retry', () => {
     expect(wantsPaste(receipt('waiting_sefaz', 'not_published'))).toBe(false)
     expect(wantsPaste(receipt('waiting_sefaz', 'rate_limited'))).toBe(false)

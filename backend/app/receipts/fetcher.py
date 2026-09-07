@@ -13,7 +13,8 @@ lives here and nowhere else:
   - **Circuit breaker** per state: `circuit_failures` consecutive
     timeouts/5xx open it for `circuit_open_seconds`, during which nothing
     is sent and the receipt is simply rescheduled.
-  - A short timeout and an identifiable User-Agent.
+  - A short timeout and a User-Agent that names us (see
+    `DEFAULT_USER_AGENT` for why it is shaped the way it is).
 
 The gate (rate limit + circuit) is an injected object so the module is
 tested with an in-memory one; production uses Redis.
@@ -139,6 +140,19 @@ def host_allowed(url: str, allowed_hosts: frozenset[str]) -> bool:
     return parts.hostname.lower() in allowed_hosts
 
 
+#: What the portals actually answer. Rio de Janeiro serves anything that
+#: does not look like a browser a block page written as an IP-reputation
+#: notice — `Securo/receipts` alone was refused, and so was the
+#: conventional `Mozilla/5.0 (compatible; …)` form that crawlers use. The
+#: browser envelope is what gets through, so our name rides at the end of
+#: it: the request still says who is making it, to anyone who reads the
+#: whole string or the link in it.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/128.0.0.0 Safari/537.36 Securo/1.0 (+https://github.com/godextreme/securo)"
+)
+
+
 class Fetcher:
     def __init__(
         self,
@@ -148,7 +162,7 @@ class Fetcher:
         min_interval_ms: int = 2000,
         circuit_failures: int = 5,
         circuit_open_seconds: int = 900,
-        user_agent: str = "Securo/receipts",
+        user_agent: str = DEFAULT_USER_AGENT,
         max_redirects: int = 3,
         transport: httpx.AsyncBaseTransport | None = None,
         resolver: Resolver = resolves_to_private,

@@ -2474,6 +2474,7 @@
       "rate_limited": "Portal stanowy ogranicza zapytania — ponowna próba wkrótce.",
       "captcha": "Portal stanowy poprosił o weryfikację człowieka — otwórz go w przeglądarce i wklej stronę tutaj.",
       "qr_rejected": "Portal odrzucił kod QR — zeskanuj go ponownie albo otwórz paragon w przeglądarce i wklej tu stronę.",
+      "needs_browser": "Portal odpowiada tylko przeglądarce — otwórz paragon w swojej i użyj przechwytywania jednym dotknięciem albo wklej tu stronę.",
       "http_error": "Portal stanowy zwrócił błąd — automatyczna ponowna próba.",
       "timeout": "Portal stanowy odpowiadał zbyt długo — automatyczna ponowna próba.",
       "parser_failed": "Strona została odebrana, ale nie można jej odczytać. Zostanie odczytana ponownie, gdy czytnik się poprawi, albo wklej stronę tutaj.",

@@ -75,6 +75,12 @@ _NOT_FOUND_MARKERS = (
 #: The portal's verdict on the QR itself, not on the note. ES words it
 #: "QR Code Inválido"; the accentless and hyphenated spellings are cheap to
 #: cover and cost nothing when they never appear.
+#: F5 Shape, which Rio de Janeiro puts in front of its portal: a script
+#: that computes a cookie before the page will load. The real DANFE
+#: carries these too, so this is only ever reached after the tabResult
+#: check below has already answered AUTHORIZED.
+_BROWSER_WALL_MARKERS = ("/tspd/", "apm_do_not_touch")
+
 _QR_REJECTED_MARKERS = (
     "qr code inválido",
     "qr code invalido",
@@ -114,6 +120,8 @@ def classify_tabresult(page: FetchedPage) -> PageKind:
     # the QR is the more useful of the two — it says the URL is the problem.
     if any(marker in lowered for marker in _QR_REJECTED_MARKERS):
         return PageKind.QR_REJECTED
+    if any(marker in lowered for marker in _BROWSER_WALL_MARKERS):
+        return PageKind.NEEDS_BROWSER
     if any(marker in lowered for marker in _CAPTCHA_MARKERS):
         return PageKind.CAPTCHA
     if any(marker in lowered for marker in _NOT_FOUND_MARKERS):

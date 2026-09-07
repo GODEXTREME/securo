@@ -2342,6 +2342,7 @@
       "rate_limited": "The state portal is throttling requests — retrying shortly.",
       "captcha": "The state portal asked for a human check — open it in your browser and paste the page here.",
       "qr_rejected": "The state portal refused the QR code — scan it again, or open the note in your browser and paste the page here.",
+      "needs_browser": "The state portal only answers a browser — open the note in yours and use one-tap capture, or paste the page here.",
       "http_error": "The state portal returned an error — retrying automatically.",
       "timeout": "The state portal took too long to answer — retrying automatically.",
       "parser_failed": "The page was received but could not be read. It will be read again when the reader improves, or paste the page here.",

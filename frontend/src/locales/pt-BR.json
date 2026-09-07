@@ -2343,6 +2343,7 @@
       "rate_limited": "O portal da Sefaz está limitando as consultas — nova tentativa em instantes.",
       "captcha": "O portal da Sefaz pediu uma verificação humana — abra no navegador e cole a página aqui.",
       "qr_rejected": "O portal da Sefaz recusou o QR code — escaneie de novo ou abra a nota no navegador e cole a página aqui.",
+      "needs_browser": "O portal da Sefaz só responde a um navegador — abra a nota no seu e use a captura rápida, ou cole a página aqui.",
       "http_error": "O portal da Sefaz devolveu um erro — tentando de novo automaticamente.",
       "timeout": "O portal da Sefaz demorou demais para responder — tentando de novo automaticamente.",
       "parser_failed": "A página foi recebida, mas não foi possível lê-la. Será lida de novo quando o leitor melhorar, ou cole a página aqui.",

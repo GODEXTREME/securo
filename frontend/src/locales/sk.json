@@ -2829,6 +2829,7 @@
       "rate_limited": "Štátny portál obmedzuje požiadavky — nový pokus čoskoro.",
       "captcha": "Štátny portál požiadal o overenie človekom — otvorte ho v prehliadači a vložte stránku sem.",
       "qr_rejected": "Portál odmietol QR kód — naskenujte ho znova alebo otvorte doklad v prehliadači a vložte stránku sem.",
+      "needs_browser": "Portál odpovedá len prehliadaču — otvorte doklad vo svojom a použite zachytenie jedným ťuknutím, alebo vložte stránku sem.",
       "http_error": "Štátny portál vrátil chybu — automaticky sa skúša znova.",
       "timeout": "Štátny portál odpovedal príliš dlho — automaticky sa skúša znova.",
       "parser_failed": "Stránka bola prijatá, ale nepodarilo sa ju prečítať. Prečíta sa znova, keď sa čítačka zlepší, alebo vložte stránku sem.",

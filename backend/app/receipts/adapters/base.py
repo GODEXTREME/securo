@@ -28,6 +28,11 @@ class PageKind(StrEnum):
     #: The portal asked for a human. Automatic retries are pointless;
     #: the user can paste the page instead.
     CAPTCHA = "captcha"
+    #: The portal will only talk to a browser. Not a challenge for a
+    #: person — Rio de Janeiro's F5 script asks for JavaScript, nobody
+    #: for a click — but the same dead end for a fetcher, and the same
+    #: way out: the page comes from the person's own browser.
+    NEEDS_BROWSER = "needs_browser"
     #: The portal read the QR and refused it. The key may still be sound:
     #: the signature at the end of the URL carries no check digit, so a
     #: misread lands here. Asking again with the same URL cannot help.

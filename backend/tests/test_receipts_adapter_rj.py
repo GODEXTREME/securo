@@ -101,6 +101,24 @@ class TestRealPage:
         assert r.customer_cpf == "00000000000"
 
 
+class TestWhatThePortalAnswersAMachine:
+    """The two pages a fetcher actually gets, and why neither is worth
+    retrying eight times."""
+
+    def test_the_f5_interstitial_is_named_as_such(self):
+        wall = (
+            '<html><head><script src="/TSPD/?type=18"></script>'
+            "<APM_DO_NOT_TOUCH></APM_DO_NOT_TOUCH></head><body></body></html>"
+        )
+        assert RjAdapter().classify(_page(wall)) == PageKind.NEEDS_BROWSER
+
+    def test_the_real_note_is_not_mistaken_for_it(self, html):
+        """The DANFE carries the same scripts. Reading the page before
+        the wall is the whole point of the check order."""
+        assert "/TSPD/" in html and "APM_DO_NOT_TOUCH" in html
+        assert RjAdapter().classify(_page(html)) == PageKind.AUTHORIZED
+
+
 class TestQrPayload:
     def test_the_three_field_payload_is_this_state(self):
         payload = parse_qr_payload(

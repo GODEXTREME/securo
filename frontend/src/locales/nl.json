@@ -2695,6 +2695,7 @@
       "rate_limited": "Het portaal van de staat beperkt verzoeken — binnenkort opnieuw.",
       "captcha": "Het portaal van de staat vroeg om een menselijke controle — open het in je browser en plak de pagina hier.",
       "qr_rejected": "Het portaal heeft de QR-code geweigerd — scan hem opnieuw, of open de bon in je browser en plak de pagina hier.",
+      "needs_browser": "Het portaal antwoordt alleen een browser — open de bon in de jouwe en gebruik vastleggen met één tik, of plak de pagina hier.",
       "http_error": "Het portaal van de staat gaf een fout — automatisch opnieuw proberen.",
       "timeout": "Het portaal van de staat deed er te lang over — automatisch opnieuw proberen.",
       "parser_failed": "De pagina is ontvangen maar kon niet worden gelezen. Ze wordt opnieuw gelezen zodra de lezer beter wordt, of plak de pagina hier.",
