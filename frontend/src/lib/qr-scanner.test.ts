@@ -14,7 +14,11 @@ const ponyfill = vi.hoisted(() => ({
 vi.mock('barcode-detector/ponyfill', () => ponyfill)
 vi.mock('zxing-wasm/reader/zxing_reader.wasm?url', () => ({ default: '/static/zxing_reader-abc123.wasm' }))
 
-type G = typeof globalThis & { BarcodeDetector?: unknown }
+type G = { BarcodeDetector?: unknown }
+
+/** The ponyfill's types declare a real `BarcodeDetector` on the global, so
+ *  the stubs below are installed through a widened view of it. */
+const g = globalThis as unknown as G
 
 async function load() {
   // A fresh module per test: the ponyfill promise is cached at module scope.
@@ -27,7 +31,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  delete (globalThis as G).BarcodeDetector
+  delete g.BarcodeDetector
 })
 
 describe('createQrDetector', () => {
@@ -36,7 +40,7 @@ describe('createQrDetector', () => {
       this.native = true
     }) as unknown as { getSupportedFormats: () => Promise<string[]> }
     native.getSupportedFormats = vi.fn().mockResolvedValue(['qr_code', 'ean_13'])
-    ;(globalThis as G).BarcodeDetector = native
+    ;g.BarcodeDetector = native
 
     const { createQrDetector } = await load()
     const detector = await createQrDetector()
@@ -49,7 +53,7 @@ describe('createQrDetector', () => {
   it('skips a native reader that does not do QR codes', async () => {
     const native = vi.fn() as unknown as { getSupportedFormats: () => Promise<string[]> }
     native.getSupportedFormats = vi.fn().mockResolvedValue(['ean_13'])
-    ;(globalThis as G).BarcodeDetector = native
+    ;g.BarcodeDetector = native
 
     const { createQrDetector } = await load()
     await createQrDetector()
@@ -78,6 +82,56 @@ describe('createQrDetector', () => {
     const { createQrDetector } = await load()
     await Promise.all([createQrDetector(), createQrDetector()])
     expect(ponyfill.prepareZXingModule).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('createBarcodeDetector', () => {
+  it('asks for the retail GS1 formats and nothing else', async () => {
+    const { createBarcodeDetector } = await load()
+    await createBarcodeDetector()
+    expect(ponyfill.BarcodeDetector).toHaveBeenCalledWith({
+      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'],
+    })
+  })
+
+  it('takes the formats a native reader does know, and skips the rest', async () => {
+    const native = vi.fn(function (this: { native: boolean }) {
+      this.native = true
+    }) as unknown as { getSupportedFormats: () => Promise<string[]> }
+    // A reader that does EAN but not UPC-E is still worth a megabyte saved.
+    native.getSupportedFormats = vi.fn().mockResolvedValue(['qr_code', 'ean_13', 'ean_8'])
+    g.BarcodeDetector = native
+
+    const { createBarcodeDetector } = await load()
+    await createBarcodeDetector()
+
+    expect(native).toHaveBeenCalledWith({ formats: ['ean_13', 'ean_8'] })
+    expect(ponyfill.prepareZXingModule).not.toHaveBeenCalled()
+  })
+
+  it('falls back when the native reader knows none of them', async () => {
+    const native = vi.fn() as unknown as { getSupportedFormats: () => Promise<string[]> }
+    native.getSupportedFormats = vi.fn().mockResolvedValue(['qr_code'])
+    g.BarcodeDetector = native
+
+    const { createBarcodeDetector } = await load()
+    await createBarcodeDetector()
+
+    expect(native).not.toHaveBeenCalled()
+    expect(ponyfill.BarcodeDetector).toHaveBeenCalledWith({
+      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'],
+    })
+  })
+
+  it('keeps the QR reader and the barcode reader apart', async () => {
+    const { createQrDetector, createBarcodeDetector } = await load()
+    await Promise.all([createQrDetector(), createBarcodeDetector()])
+    // One WebAssembly module, two detectors over it.
+    expect(ponyfill.prepareZXingModule).toHaveBeenCalledTimes(1)
+    expect(ponyfill.BarcodeDetector).toHaveBeenCalledTimes(2)
+    const asked = ponyfill.BarcodeDetector.mock.calls.map((call) => (call[0] as { formats: string[] }).formats)
+    expect(asked).toContainEqual(['qr_code'])
+    expect(asked).toContainEqual(['ean_13', 'ean_8', 'upc_a', 'upc_e'])
   })
 })
 

@@ -45,6 +45,8 @@ const InvoiceDetailPage = lazy(() => import('@/pages/invoice-detail'))
 const SharedInvoicePage = lazy(() => import('@/pages/shared-invoice'))
 const WorkspaceSettingsPage = lazy(() => import('@/pages/workspace-settings'))
 const ReceiptCaptureSetupPage = lazy(() => import('@/pages/receipt-capture-setup'))
+const ProductScanPage = lazy(() => import('@/pages/product-scan'))
+const ProductDetailPage = lazy(() => import('@/pages/product-detail'))
 const OAuthCallbackPage = lazy(() => import('@/pages/oauth-callback'))
 const OIDCCallbackPage = lazy(() => import('@/pages/oidc-callback'))
 const NotificationsPage = lazy(() => import('@/pages/notifications'))
@@ -119,6 +121,8 @@ function App() {
                   <Route path="/receipts/scan" element={<ReceiptScanPage />} />
                   <Route path="/receipts/setup" element={<ReceiptCaptureSetupPage />} />
                   <Route path="/receipts/:id" element={<ReceiptDetailPage />} />
+                  <Route path="/products/scan" element={<ProductScanPage />} />
+                  <Route path="/products/:id" element={<ProductDetailPage />} />
                   <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
                   <Route path="/enable-banking" element={<OAuthCallbackPage />} />
                   <Route path="/import" element={<ModuleRoute module="import"><ImportPage /></ModuleRoute>} />
