@@ -1497,6 +1497,75 @@ export interface ScanResponse {
   already_linked: boolean
 }
 
+/** A product in the catalogue. `scope` is derived: `global` once a GTIN
+ *  is known — comparable in any store — `chain` until then. */
+export interface Product {
+  id: string
+  name: string
+  brand: string | null
+  category: string | null
+  gtin: string | null
+  scope: 'global' | 'chain'
+  chain_root: string | null
+  size_value: string | null
+  size_unit: string | null
+  pack_count: number | null
+  image_url: string | null
+  merged_into_id: string | null
+}
+
+export interface PricePoint {
+  observed_on: string
+  store_id: string
+  store_name: string | null
+  unit: string
+  quantity: string
+  unit_price: string
+  /** Per kilo, litre or unit — what makes two sizes comparable. */
+  normalized_price: string | null
+  base_unit: string | null
+  is_outlier: boolean
+  source: string
+  /** This workspace bought it, as opposed to someone else on the instance. */
+  mine: boolean
+}
+
+export interface ProductDetail {
+  product: Product
+  last_paid: PricePoint | null
+  best_price_30d: PricePoint | null
+  history: PricePoint[]
+}
+
+/** A recent line of this workspace whose product has no barcode yet. */
+export interface CandidateItem {
+  receipt_id: string
+  receipt_item_id: string
+  ordinal: number
+  description: string
+  product_id: string | null
+  product_name: string | null
+  store_name: string | null
+  issued_on: string | null
+  unit_price: string
+}
+
+export interface GtinLookup {
+  gtin: string
+  product: ProductDetail | null
+  /** Only filled when `product` is null. */
+  candidates: CandidateItem[]
+}
+
+export interface ProductPatch {
+  name?: string
+  brand?: string | null
+  category?: string | null
+  size_value?: string | null
+  size_unit?: string | null
+  pack_count?: number | null
+}
+
 /** A bookmarklet's credential. The secret is not part of it: it exists
  *  only in the answer that created the token, and in the bookmark. */
 export interface CaptureToken {

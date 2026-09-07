@@ -1,5 +1,5 @@
 /**
- * One QR reader for every browser the app meets.
+ * One code reader for every browser the app meets.
  *
  * Chrome on Android ships `BarcodeDetector`; Safari on iOS — the device this
  * feature is mostly used on — ships nothing. Where the native API exists and
@@ -9,6 +9,7 @@
  * finance app should not phone a CDN to read a receipt, and a CSP that only
  * allows `'self'` would block it anyway.
  */
+import type { BarcodeFormat } from 'barcode-detector'
 
 export interface DetectedQr {
   rawValue: string
@@ -18,47 +19,88 @@ export interface QrDetector {
   detect(source: ImageBitmapSource): Promise<DetectedQr[]>
 }
 
+/** The QR on a receipt. */
+export const QR_FORMATS = ['qr_code'] as const
+
+/**
+ * The barcode on a product. The retail GS1 set and nothing else: a
+ * shelf label or a courier sticker in the same frame should not be read
+ * as a product, and `normalize_gtin` on the server accepts exactly the
+ * lengths these formats produce.
+ */
+export const PRODUCT_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'] as const
+
+/** Ours is a subset of what the ponyfill reads; naming its type here is
+ *  what makes adding a format to the lists above a type error if the
+ *  ponyfill does not know it. */
+export type CodeFormat = Extract<BarcodeFormat, (typeof QR_FORMATS)[number] | (typeof PRODUCT_FORMATS)[number]>
+
 // lib.dom has no BarcodeDetector yet; this is the slice of the spec used here.
 interface NativeBarcodeDetectorCtor {
-  new (options?: { formats?: string[] }): QrDetector
-  getSupportedFormats?: () => Promise<string[]>
+  new (options?: { formats?: CodeFormat[] }): QrDetector
+  getSupportedFormats?: () => Promise<readonly string[]>
 }
 
-async function nativeQrDetector(): Promise<QrDetector | null> {
-  const ctor = (globalThis as { BarcodeDetector?: NativeBarcodeDetectorCtor }).BarcodeDetector
+async function nativeDetector(wanted: readonly CodeFormat[]): Promise<QrDetector | null> {
+  const ctor = (globalThis as unknown as { BarcodeDetector?: NativeBarcodeDetectorCtor }).BarcodeDetector
   if (typeof ctor !== 'function') return null
   try {
-    const formats = ctor.getSupportedFormats ? await ctor.getSupportedFormats() : ['qr_code']
-    if (!formats.includes('qr_code')) return null
-    return new ctor({ formats: ['qr_code'] })
+    const supported = ctor.getSupportedFormats ? await ctor.getSupportedFormats() : [...wanted]
+    // Partial support is still support: a native reader that knows EAN-13
+    // but not UPC-E is better than loading a megabyte of WebAssembly.
+    const usable = wanted.filter((format) => supported.includes(format))
+    return usable.length > 0 ? new ctor({ formats: usable }) : null
   } catch {
     return null
   }
 }
 
-let ponyfillReady: Promise<QrDetector> | null = null
+//: The WebAssembly is prepared once for the page. Two readers over one
+//: module: the receipt scanner wants QR, the product scanner wants the
+//: retail barcodes, and neither should pay for the other's download.
+let ponyfillModule: Promise<typeof import('barcode-detector/ponyfill')> | null = null
+const ponyfills = new Map<string, Promise<QrDetector>>()
 
-function ponyfillQrDetector(): Promise<QrDetector> {
-  ponyfillReady ??= (async () => {
-    const [{ BarcodeDetector, prepareZXingModule }, { default: wasmUrl }] = await Promise.all([
+function loadPonyfill(): Promise<typeof import('barcode-detector/ponyfill')> {
+  ponyfillModule ??= (async () => {
+    const [mod, { default: wasmUrl }] = await Promise.all([
       import('barcode-detector/ponyfill'),
       // Vite copies the binary into the build and hands back its hashed URL.
       import('zxing-wasm/reader/zxing_reader.wasm?url'),
     ])
-    prepareZXingModule({
+    mod.prepareZXingModule({
       overrides: {
         locateFile: (path: string, prefix: string) =>
           path.endsWith('.wasm') ? wasmUrl : prefix + path,
       },
     })
-    return new BarcodeDetector({ formats: ['qr_code'] })
+    return mod
   })()
-  return ponyfillReady
+  return ponyfillModule
 }
 
-/** Native where it reads QR codes, the ponyfill everywhere else. */
-export async function createQrDetector(): Promise<QrDetector> {
-  return (await nativeQrDetector()) ?? ponyfillQrDetector()
+function ponyfillDetector(formats: readonly CodeFormat[]): Promise<QrDetector> {
+  const key = [...formats].sort().join(',')
+  const existing = ponyfills.get(key)
+  if (existing) return existing
+  const ready = loadPonyfill().then(({ BarcodeDetector }) => new BarcodeDetector({ formats: [...formats] }))
+  ponyfills.set(key, ready)
+  return ready
+}
+
+/** Native where it reads these formats, the ponyfill everywhere else. */
+export async function createDetector(formats: readonly CodeFormat[]): Promise<QrDetector> {
+  return (await nativeDetector(formats)) ?? ponyfillDetector(formats)
+}
+
+/** The receipt scanner's reader. */
+export function createQrDetector(): Promise<QrDetector> {
+  return createDetector(QR_FORMATS)
+}
+
+/** The product scanner's reader. */
+export function createBarcodeDetector(): Promise<QrDetector> {
+  return createDetector(PRODUCT_FORMATS)
 }
 
 /** The first non-empty payload in a frame, or null. */

@@ -427,7 +427,15 @@ function ItemRow({
       <span className="mt-0.5 w-6 shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">{item.ordinal}</span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium leading-snug">{item.description}</p>
-        {showProductName && <p className="text-xs text-muted-foreground">{item.product_name}</p>}
+        {/* The line names what the till printed; the product is what the
+            catalogue made of it, and the only way to its price history. */}
+        {item.product_id ? (
+          <Link to={`/products/${item.product_id}`} className="text-xs text-muted-foreground hover:underline">
+            {showProductName ? item.product_name : t('products.seeHistory')}
+          </Link>
+        ) : (
+          showProductName && <p className="text-xs text-muted-foreground">{item.product_name}</p>
+        )}
         <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
           {t('receipts.lineMath', { qty, unit: item.unit, price: unitPrice })}
           {corrected && (

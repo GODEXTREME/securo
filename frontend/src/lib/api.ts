@@ -82,6 +82,10 @@ import type {
   ReceiptStatus,
   ScanResponse,
   CaptureToken,
+  GtinLookup,
+  Product,
+  ProductDetail,
+  ProductPatch,
   CaptureTokenCreated,
 } from '@/types'
 
@@ -1915,6 +1919,34 @@ export const receipts = {
  * called from here — it is called from the state portal's page, by the
  * bookmarklet, which is the whole point of the mechanism.
  */
+export const products = {
+  /** The barcode scanner's question. A known GTIN answers with the product
+   *  and its history; an unknown one answers with your recent lines that
+   *  have no barcode, so you can say which one it is. */
+  byGtin: async (gtin: string): Promise<GtinLookup> => {
+    const { data } = await api.get(`/products/by-gtin/${encodeURIComponent(gtin)}`)
+    return data
+  },
+  get: async (id: string, days = 365): Promise<ProductDetail> => {
+    const { data } = await api.get(`/products/${id}`, { params: { days } })
+    return data
+  },
+  suggestions: async (id: string): Promise<Product[]> => {
+    const { data } = await api.get(`/products/${id}/suggestions`)
+    return data.suggestions
+  },
+  /** "This product is that barcode." The product becomes global; if a
+   *  global product already has the GTIN, the two become one. */
+  linkGtin: async (id: string, gtin: string): Promise<Product> => {
+    const { data } = await api.post(`/products/${id}/aliases`, { kind: 'gtin', value: gtin })
+    return data
+  },
+  update: async (id: string, patch: ProductPatch): Promise<Product> => {
+    const { data } = await api.patch(`/products/${id}`, patch)
+    return data
+  },
+}
+
 export const receiptCapture = {
   tokens: async (): Promise<CaptureToken[]> => {
     const { data } = await api.get('/receipt-capture/tokens')
