@@ -2812,6 +2812,19 @@
       "off": "διαφορά {{amount}}",
       "daysApart_one": "{{count}} ημέρα διαφορά",
       "daysApart_other": "{{count}} ημέρες διαφορά"
+    },
+    "summary": {
+      "title": "Σύνοψη",
+      "days": "{{count}} ημ.",
+      "spent": "Δαπάνη σε αποδείξεις",
+      "versusLast": "Σε σχέση με την προηγούμενη φορά",
+      "comparedItems_one": "{{count}} προϊόν ξαναγοράστηκε",
+      "comparedItems_other": "{{count}} προϊόντα ξαναγοράστηκαν",
+      "nothingRepeated": "Τίποτα δεν ξαναγοράστηκε ακόμη",
+      "nothingRepeatedHint": "Η σύγκριση εμφανίζεται μόλις ξαναγοράσετε κάτι που υπάρχει ήδη στο ιστορικό.",
+      "movers": "Οι μεγαλύτερες μεταβολές τιμών",
+      "stores": "Πού ξοδέψατε",
+      "perUnit": "διαφορά ανά μονάδα"
     }
   },
   "products": {

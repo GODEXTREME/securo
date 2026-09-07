@@ -2462,6 +2462,19 @@
       "off": "Abweichung {{amount}}",
       "daysApart_one": "{{count}} Tag Abstand",
       "daysApart_other": "{{count}} Tage Abstand"
+    },
+    "summary": {
+      "title": "Übersicht",
+      "days": "{{count}} T",
+      "spent": "Für Belege ausgegeben",
+      "versusLast": "Gegenüber dem letzten Mal",
+      "comparedItems_one": "{{count}} Artikel erneut gekauft",
+      "comparedItems_other": "{{count}} Artikel erneut gekauft",
+      "nothingRepeated": "Noch nichts zweimal gekauft",
+      "nothingRepeatedHint": "Der Vergleich erscheint, sobald Sie etwas erneut kaufen, das schon im Verlauf steht.",
+      "movers": "Größte Preisänderungen",
+      "stores": "Wo Sie ausgegeben haben",
+      "perUnit": "Differenz pro Einheit"
     }
   },
   "invoices": {

@@ -2948,6 +2948,19 @@
       "off": "rozdiel {{amount}}",
       "daysApart_one": "{{count}} deň rozdiel",
       "daysApart_other": "rozdiel v dňoch: {{count}}"
+    },
+    "summary": {
+      "title": "Zhrnutie",
+      "days": "{{count}} d",
+      "spent": "Minuté na doklady",
+      "versusLast": "Oproti minule",
+      "comparedItems_one": "{{count}} položka kúpená znova",
+      "comparedItems_other": "opakované nákupy: {{count}}",
+      "nothingRepeated": "Zatiaľ nič zopakované",
+      "nothingRepeatedHint": "Porovnanie sa objaví, keď znova kúpite niečo, čo už je v histórii.",
+      "movers": "Najväčšie zmeny cien",
+      "stores": "Kde ste minuli",
+      "perUnit": "rozdiel na jednotku"
     }
   },
   "products": {

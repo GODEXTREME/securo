@@ -2462,6 +2462,19 @@
       "off": "difere {{amount}}",
       "daysApart_one": "{{count}} dia de diferença",
       "daysApart_other": "{{count}} dias de diferença"
+    },
+    "summary": {
+      "title": "Resumo",
+      "days": "{{count}} d",
+      "spent": "Gasto em talões",
+      "versusLast": "Contra a última compra",
+      "comparedItems_one": "{{count}} artigo repetido",
+      "comparedItems_other": "{{count}} artigos repetidos",
+      "nothingRepeated": "Nada repetido ainda",
+      "nothingRepeatedHint": "A comparação aparece quando comprar de novo um artigo que já está no histórico.",
+      "movers": "O que mais mudou de preço",
+      "stores": "Onde gastou",
+      "perUnit": "diferença por unidade"
     }
   },
   "invoices": {

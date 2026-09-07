@@ -2462,6 +2462,19 @@
       "off": "écart de {{amount}}",
       "daysApart_one": "{{count}} jour d’écart",
       "daysApart_other": "{{count}} jours d’écart"
+    },
+    "summary": {
+      "title": "Résumé",
+      "days": "{{count}} j",
+      "spent": "Dépensé en tickets",
+      "versusLast": "Par rapport à la dernière fois",
+      "comparedItems_one": "{{count}} article racheté",
+      "comparedItems_other": "{{count}} articles rachetés",
+      "nothingRepeated": "Rien de racheté pour l’instant",
+      "nothingRepeatedHint": "La comparaison apparaît dès que vous rachetez un article déjà dans l’historique.",
+      "movers": "Les plus fortes variations",
+      "stores": "Où vous avez dépensé",
+      "perUnit": "écart par unité"
     }
   },
   "invoices": {

@@ -19,11 +19,14 @@ from app.schemas.receipt import (
     ScanRequest,
     ScanResponse,
     SubmitHtmlRequest,
+    MoverRead,
+    StoreSpendRead,
+    SummaryRead,
     SupportedUfsRead,
     TransactionCandidateRead,
     TransactionCandidatesRead,
 )
-from app.services import receipt_service
+from app.services import receipt_service, receipt_summary
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,34 @@ def _enqueue(receipt_id: uuid.UUID) -> None:
 @router.get("/supported-ufs", response_model=SupportedUfsRead)
 async def get_supported_ufs(ctx: WorkspaceContext = Depends(current_workspace)):
     return SupportedUfsRead(ufs=supported_ufs())
+
+
+@router.get("/summary", response_model=SummaryRead)
+async def get_summary(
+    days: int = Query(90, ge=1, le=1825),
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """What the notes add up to over a window. Declared before `/{receipt_id}`
+    for the same reason the capture routes have their own prefix: that path
+    would swallow this one."""
+    data = await receipt_summary.summary(session, ctx.workspace.id, days=days)
+    return SummaryRead(
+        since=data.since, until=data.until, receipts=data.receipts,
+        total_spent=data.total_spent, compared_items=data.compared_items,
+        delta_total=data.delta_total,
+        movers=[
+            MoverRead(
+                product_id=m.product_id, name=m.name, delta_unit=m.delta_unit,
+                delta_pct=m.delta_pct, store_name=m.store_name, observed_on=m.observed_on,
+            )
+            for m in data.movers
+        ],
+        stores=[
+            StoreSpendRead(store_id=s.store_id, name=s.name, total=s.total, receipts=s.receipts)
+            for s in data.stores
+        ],
+    )
 
 
 @router.post("/scan", response_model=ScanResponse, status_code=status.HTTP_201_CREATED)

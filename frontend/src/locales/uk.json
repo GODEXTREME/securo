@@ -2470,6 +2470,19 @@
       "off": "різниця {{amount}}",
       "daysApart_one": "{{count}} день різниці",
       "daysApart_other": "різниця в днях: {{count}}"
+    },
+    "summary": {
+      "title": "Зведення",
+      "days": "{{count}} д",
+      "spent": "Витрачено за чеками",
+      "versusLast": "Порівняно з минулим разом",
+      "comparedItems_one": "{{count}} товар куплено знову",
+      "comparedItems_other": "повторних покупок: {{count}}",
+      "nothingRepeated": "Поки нічого не повторювалося",
+      "nothingRepeatedHint": "Порівняння з’явиться, коли ви знову купите те, що вже є в історії.",
+      "movers": "Найпомітніші зміни цін",
+      "stores": "Де витрачено",
+      "perUnit": "різниця за одиницю"
     }
   },
   "invoices": {

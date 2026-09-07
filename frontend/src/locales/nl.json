@@ -2814,6 +2814,19 @@
       "off": "verschil {{amount}}",
       "daysApart_one": "{{count}} dag ertussen",
       "daysApart_other": "{{count}} dagen ertussen"
+    },
+    "summary": {
+      "title": "Overzicht",
+      "days": "{{count}} d",
+      "spent": "Uitgegeven aan bonnen",
+      "versusLast": "Tegenover de vorige keer",
+      "comparedItems_one": "{{count}} artikel opnieuw gekocht",
+      "comparedItems_other": "{{count}} artikelen opnieuw gekocht",
+      "nothingRepeated": "Nog niets twee keer gekocht",
+      "nothingRepeatedHint": "De vergelijking verschijnt zodra je iets opnieuw koopt dat al in de geschiedenis staat.",
+      "movers": "Grootste prijsverschillen",
+      "stores": "Waar je uitgaf",
+      "perUnit": "verschil per eenheid"
     }
   },
   "products": {
