@@ -2792,7 +2792,7 @@
     "pastePage": "Vložiť stránku",
     "discard": "Zahodiť",
     "discardTitle": "Odstrániť tento bloček?",
-    "discardDesc": "Zmizne z vášho zoznamu a súčtov. Samotný bloček zostáva uložený a neskôr ho možno naskenovať znova.",
+    "discardDesc": "Zmizne z vášho zoznamu a súčtov. Samotný bloček zostáva uložený a neskôr ho možno naskenovať znova. Opätovné naskenovanie zobrazí ten istý doklad bez otázky portálu — pre nový pokus použite „Skúsiť znova“. Označenie „nie je môj nákup“ a porovnanie cien tohto prepojenia sa vytvoria nanovo.",
     "discarded": "Bloček odstránený.",
     "delete": "Odstrániť z mojich bločkov",
     "notFound": "Tento bloček nie je vo vašom zozname.",

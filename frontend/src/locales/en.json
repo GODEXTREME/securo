@@ -2305,7 +2305,7 @@
     "pastePage": "Paste page",
     "discard": "Discard",
     "discardTitle": "Remove this receipt?",
-    "discardDesc": "It leaves your list and your totals. The receipt itself is kept and can be scanned again later.",
+    "discardDesc": "It leaves your list and your totals. The receipt itself is kept and can be scanned again later. Scanning it again shows the same note without asking the state — for another attempt, use \"Try again\". This link's \"not my purchase\" mark and price comparison are rebuilt.",
     "discarded": "Receipt removed.",
     "delete": "Remove from my receipts",
     "notFound": "This receipt is not in your list.",

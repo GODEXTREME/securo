@@ -2306,7 +2306,7 @@
     "pastePage": "Pegar página",
     "discard": "Descartar",
     "discardTitle": "¿Quitar este ticket?",
-    "discardDesc": "Sale de tu lista y de tus totales. El ticket en sí se conserva y puede escanearse de nuevo más tarde.",
+    "discardDesc": "Sale de tu lista y de tus totales. El ticket en sí se conserva y puede escanearse de nuevo más tarde. Escanearla de nuevo muestra la misma nota sin consultar a la Sefaz: para otro intento, usa \"Reintentar\". La marca \"no es mi compra\" y la comparación de precios de este vínculo se rehacen.",
     "discarded": "Ticket quitado.",
     "delete": "Quitar de mis tickets",
     "notFound": "Este ticket no está en tu lista.",

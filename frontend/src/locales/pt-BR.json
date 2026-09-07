@@ -2306,7 +2306,7 @@
     "pastePage": "Colar página",
     "discard": "Descartar",
     "discardTitle": "Remover esta nota?",
-    "discardDesc": "Ela sai da sua lista e dos seus totais. A nota em si continua guardada e pode ser escaneada de novo.",
+    "discardDesc": "Ela sai da sua lista e dos seus totais. A nota em si continua guardada e pode ser escaneada de novo. Escanear de novo mostra a mesma nota, sem consultar a Sefaz — para uma nova tentativa, use \"Tentar de novo\". A marcação \"não é compra minha\" e a comparação de preços deste vínculo são refeitas.",
     "discarded": "Nota removida.",
     "delete": "Remover das minhas notas",
     "notFound": "Esta nota não está na sua lista.",
