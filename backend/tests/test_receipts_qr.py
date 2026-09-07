@@ -76,6 +76,15 @@ class TestQrPayload:
         assert p.signature == "4020a74fad969d92f6bb16ba1a7b4a177771fb3e"
         assert not p.contingency and p.has_signature
 
+    def test_three_fields_without_a_signature(self):
+        """Rio de Janeiro's QR stops at the environment. The portal answers
+        it, so it is a payload — one with nothing signed in it."""
+        p = parse_qr_payload(f"https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p={KEY}|3|1")
+        assert p.key.key == KEY
+        assert p.version == 300 and p.tp_amb == 1
+        assert p.c_id_token is None and p.signature is None
+        assert not p.has_signature and not p.contingency
+
     def test_v3_and_six_digit_token(self):
         p = parse_qr_payload(f"https://x.gov.br/q?p={KEY}|3|1|000001|abc")
         assert p.version == 300 and p.c_id_token == "000001"
@@ -117,7 +126,7 @@ class TestQrPayload:
         [
             ("", "empty"),
             ("nada aqui", "unrecognized"),
-            (f"http://x.gov.br/q?p={KEY}|2|1", "qr_fields"),
+            (f"http://x.gov.br/q?p={KEY}|2|1|1", "qr_fields"),
             (f"http://x.gov.br/q?p={KEY}|9|1|1|x", "qr_version"),
             (f"http://x.gov.br/q?p={KEY}|2|3|1|x", "qr_tpamb"),
             ("http://x.gov.br/q?foo=bar", "qr_format"),
