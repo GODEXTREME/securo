@@ -18,7 +18,7 @@ beforeEach(() => {
 
 describe('ReceiptPastePanel', () => {
   it('explains the flow and opens the QR link in a new tab', () => {
-    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL }} />)
+    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} />)
 
     expect(screen.getByText(t('receipts.paste.intro'))).toBeInTheDocument()
     const link = screen.getByRole('link', { name: t('receipts.paste.open') })
@@ -28,10 +28,17 @@ describe('ReceiptPastePanel', () => {
   })
 
   it('says so when the receipt was typed by key and has no link', () => {
-    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: null }} />)
+    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: null, status_reason: 'captcha' }} />)
 
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
     expect(screen.getByText(t('receipts.paste.noUrl'))).toBeInTheDocument()
+  })
+
+  it('withholds a link the portal has already refused', () => {
+    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'qr_rejected' }} />)
+
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.getByText(t('receipts.paste.qrRefused'))).toBeInTheDocument()
   })
 
   it('sends what was pasted, verbatim, and hands back the receipt the server returned', async () => {
@@ -39,7 +46,7 @@ describe('ReceiptPastePanel', () => {
     api.receipts.submitHtml.mockResolvedValue(authorized)
     const onDone = vi.fn()
     const { user, queryClient } = renderWithProviders(
-      <ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL }} onDone={onDone} />,
+      <ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} onDone={onDone} />,
     )
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
@@ -64,7 +71,7 @@ describe('ReceiptPastePanel', () => {
     api.receipts.submitHtml.mockRejectedValue({
       response: { status: 422, data: { detail: { code: 'page_captcha' } } },
     })
-    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL }} />)
+    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} />)
 
     await user.click(screen.getByRole('textbox', { name: t('receipts.paste.title') }))
     await user.paste('<html>turnstile</html>')
@@ -76,7 +83,7 @@ describe('ReceiptPastePanel', () => {
 
   it('falls back to a generic line for a failure it cannot name', async () => {
     api.receipts.submitHtml.mockRejectedValue(new Error('Network Error'))
-    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL }} />)
+    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} />)
 
     await user.click(screen.getByRole('textbox', { name: t('receipts.paste.title') }))
     await user.paste('whatever')
@@ -87,7 +94,7 @@ describe('ReceiptPastePanel', () => {
 
   it('reports a cancelled note as read, not as a failure', async () => {
     api.receipts.submitHtml.mockResolvedValue({ id: 'r1', status: 'cancelled', items: [] })
-    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL }} />)
+    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} />)
 
     await user.click(screen.getByRole('textbox', { name: t('receipts.paste.title') }))
     await user.paste(PAGE)

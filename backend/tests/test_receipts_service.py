@@ -253,6 +253,37 @@ async def test_captcha_stops_automatic_retries_and_paste_resolves_it(session, te
 
 
 @pytest.mark.asyncio
+async def test_a_refused_qr_falls_back_to_the_key(session, test_user, test_workspace, html):
+    """The portal refuses the URL's signature but the key is sound, so the
+    key's own consultation route is worth one request inside the same
+    attempt."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        if "chNFe" in str(request.url):
+            return httpx.Response(200, text=html)
+        return httpx.Response(200, text="<html><body>QR Code Inválido.</body></html>")
+
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
+    r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=_fetcher(handler), now=NOW)
+    assert r is not None and r.status == "authorized"
+    assert len(seen) == 2 and "chNFe" in seen[1], "the key route is tried once, after the QR"
+
+
+@pytest.mark.asyncio
+async def test_a_refused_qr_with_no_second_route_settles(session, test_user, test_workspace):
+    """When the key route is refused too, the QR's verdict stands: no
+    automatic retry, and the paste panel is the way out."""
+    fetcher = _serving("<html><body>QR Code Inválido.</body></html>")
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
+    r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=fetcher, now=NOW)
+    assert r is not None and r.status == "waiting_sefaz" and r.status_reason == "qr_rejected"
+    assert r.next_attempt_at is None
+    assert await receipt_service.due_receipt_ids(session, now=NOW + timedelta(days=1)) == []
+
+
+@pytest.mark.asyncio
 async def test_pasted_page_that_is_not_the_note_is_refused(session, test_user, test_workspace, html):
     out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
     with pytest.raises(ReceiptError) as exc:

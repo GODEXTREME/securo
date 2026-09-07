@@ -67,6 +67,12 @@ class TestEsAdapter:
         assert adapter.classify(_page("<html>Não foi possível localizar a NFC-e</html>")) == PageKind.NOT_FOUND_YET
         assert adapter.classify(_page("<div class='g-recaptcha'></div>")) == PageKind.CAPTCHA
         assert adapter.classify(_page(html.replace("<body>", "<body><b>NFC-e CANCELADA</b>"))) == PageKind.CANCELLED
+        assert adapter.classify(_page("<html>QR Code Inválido.</html>")) == PageKind.QR_REJECTED
+        assert adapter.classify(_page("<html>QR CODE INVALIDO</html>")) == PageKind.QR_REJECTED
+        # The page a person sees carries both the verdict and the widget;
+        # the verdict is the one that says what to do about it.
+        both = "<html><div class='cf-turnstile'></div>QR Code Inválido.</html>"
+        assert adapter.classify(_page(both)) == PageKind.QR_REJECTED
         assert adapter.classify(_page("<html>manutenção</html>", 503)) == PageKind.ERROR_PAGE
         assert adapter.classify(_page("<html>something else</html>")) == PageKind.ERROR_PAGE
 

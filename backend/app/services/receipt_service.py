@@ -10,7 +10,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, cast
@@ -496,6 +496,7 @@ async def process_receipt(
             return receipt
 
         page: Optional[FetchedPage] = None
+        fetched = False
         if previous == "parse_error" and receipt.raw_html:
             page = FetchedPage(
                 url=receipt.qr_url or "", status_code=200,
@@ -504,6 +505,7 @@ async def process_receipt(
             )
         else:
             url = receipt.qr_url or adapter.consulta_url(_payload_from(receipt))
+            fetched = True
             result = await fetcher.fetch(url, adapter.allowed_hosts, receipt.uf)
             if result.outcome == "blocked":
                 _finish_invalid(receipt, "unsupported_host", result.detail)
@@ -522,6 +524,18 @@ async def process_receipt(
                 return receipt
 
         kind = adapter.classify(page)
+        if kind == PageKind.QR_REJECTED and fetched:
+            fallback = _key_only_url(receipt, adapter)
+            if fallback != page.url:
+                # The portal read the QR and refused it, so asking again the
+                # same way is pointless — but the key is not the part that
+                # was refused. Spend one more request on the route a person
+                # would use. A second failure keeps the first verdict.
+                again = await fetcher.fetch(fallback, adapter.allowed_hosts, receipt.uf)
+                if again.page is not None:
+                    fallback_kind = adapter.classify(again.page)
+                    if fallback_kind != PageKind.QR_REJECTED:
+                        page, kind = again.page, fallback_kind
         if kind == PageKind.AUTHORIZED:
             try:
                 canonical = adapter.parse(page.html)
@@ -550,6 +564,14 @@ async def process_receipt(
             receipt.status_reason = "cancelled_by_sefaz"
             receipt.next_attempt_at = None
             await price_service.void_points(session, receipt, now=now)
+        elif kind == PageKind.QR_REJECTED:
+            # No automatic retry: the same URL earns the same answer every
+            # time. Scanning the code again replaces it, and the page can
+            # always be pasted.
+            receipt.status = "waiting_sefaz"
+            receipt.status_reason = "qr_rejected"
+            receipt.next_attempt_at = None
+            receipt.last_error = "portal refused the QR code"
         elif kind == PageKind.CAPTCHA:
             # No automatic retry: the portal wants a person. The UI offers
             # "paste the page" for exactly this state.
@@ -584,6 +606,12 @@ async def expire_raw_html(session: AsyncSession, *, now: Optional[datetime] = No
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+def _key_only_url(receipt: Receipt, adapter: UFAdapter) -> str:
+    """The consultation URL built from the access key alone — no QR, no
+    signature. What a person types into the portal's own form."""
+    return adapter.consulta_url(replace(_payload_from(receipt), url=None))
+
+
 def _payload_from(receipt: Receipt) -> QrPayload:
     return QrPayload(
         key=parse_access_key(receipt.access_key), url=receipt.qr_url, version=receipt.qr_version,

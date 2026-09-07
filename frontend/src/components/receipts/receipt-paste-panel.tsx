@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import type { Receipt } from '@/types'
 
 interface ReceiptPastePanelProps {
-  receipt: Pick<Receipt, 'id' | 'qr_url'>
+  receipt: Pick<Receipt, 'id' | 'qr_url' | 'status_reason'>
   /** Called with the receipt as the backend returned it after reading the page. */
   onDone?: (receipt: Receipt) => void
   className?: string
@@ -58,7 +58,12 @@ export function ReceiptPastePanel({ receipt, onDone, className }: ReceiptPastePa
       </p>
       <p className="text-xs text-muted-foreground">{t('receipts.paste.intro')}</p>
 
-      {receipt.qr_url ? (
+      {/* A URL the portal has already refused is not worth offering: it
+          would open the same "QR Code Inválido" every time. The key is
+          what the person consults with instead. */}
+      {receipt.status_reason === 'qr_rejected' ? (
+        <p className="text-xs text-muted-foreground">{t('receipts.paste.qrRefused')}</p>
+      ) : receipt.qr_url ? (
         <Button asChild variant="outline" size="sm" className="gap-1.5">
           <a href={receipt.qr_url} target="_blank" rel="noopener noreferrer">
             <ExternalLink size={14} />
