@@ -166,7 +166,37 @@ services:
     ports:
       - "${AGENTS_MCP_EXTERNAL_HOST_PORT:-127.0.0.1:8765}:8765"
 
+  # A real browser, for the states whose portal will not answer a server.
+  # Espírito Santo serves a Cloudflare challenge and Rio de Janeiro an F5
+  # script; both answer a browser on the same network, and a plain fetch
+  # reaches neither note. Off unless you ask for it:
+  #
+  #   docker compose --profile receipts-browser up -d
+  #   RECEIPTS_BROWSER_CDP_URL=http://kasm-chrome:9222
+  #   RECEIPTS_BROWSER_UFS=RJ
+  #
+  # The DevTools port is deliberately not published. Whoever reaches it
+  # drives this browser, so it stays on the compose network, where only
+  # the backend and the worker are. The screen is published, because a
+  # challenge that wants a person needs a person to see it: open
+  # https://localhost:6902, user `kasm_user`, password KASM_VNC_PW. Pass
+  # the challenge once and the cookie lives in the profile volume.
+  kasm-chrome:
+    image: kasmweb/chrome:${KASM_CHROME_VERSION:-1.19.0}
+    profiles: [receipts-browser]
+    restart: unless-stopped
+    environment:
+      VNC_PW: ${KASM_VNC_PW:-change-me}
+      APP_ARGS: "--start-maximized --remote-debugging-port=9222 --remote-allow-origins=* --remote-debugging-address=0.0.0.0"
+    # Chrome crashes on a small /dev/shm, and a DANFE is not a small page.
+    shm_size: "2gb"
+    ports:
+      - "${KASM_EXTERNAL_HOST_PORT:-127.0.0.1:6902}:6901"
+    volumes:
+      - kasm_profile:/home/kasm-user
+
 volumes:
+  kasm_profile:
   pgdata:
   attachments:
   agent_knowledge:

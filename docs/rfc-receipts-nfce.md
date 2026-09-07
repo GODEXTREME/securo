@@ -187,7 +187,14 @@ that browser, and the cookie their click leaves in the profile is what
 the next fetch reuses.
 
 It is **off unless configured** (`receipts_browser_cdp_url` and
-`receipts_browser_ufs`), and the safety around it is unchanged: the host
+`receipts_browser_ufs`). The browser ships as a compose service behind
+the `receipts-browser` profile, so it exists only for instances that ask
+for it — and its DevTools port is not published: whoever reaches that
+port drives the browser, so it stays on the compose network. The screen
+is published, because a challenge that wants a person needs a person to
+see it.
+
+The safety around it is unchanged: the host
 allowlist is checked before the tab is opened — a browser follows
 redirects and runs scripts, so that check matters more here, not less —
 and the circuit breaker still speaks for the state.
