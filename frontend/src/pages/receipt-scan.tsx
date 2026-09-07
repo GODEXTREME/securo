@@ -262,11 +262,14 @@ export default function ReceiptScanPage() {
         <p className="flex items-center gap-2 text-sm font-medium">
           <ImagePlus size={15} className="text-muted-foreground" /> {t('receipts.orPhoto')}
         </p>
+        {/* No `capture`: it would send the phone straight to the camera, and
+            the camera is the loop above. This button is for the photo already
+            in the roll — the receipt someone snapped at the till. Without it
+            the picker still offers the camera as one of its choices. */}
         <input
           ref={fileRef}
           type="file"
           accept="image/*"
-          capture="environment"
           className="sr-only"
           aria-label={t('receipts.choosePhoto')}
           disabled={busy}
