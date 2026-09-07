@@ -2343,6 +2343,7 @@
       "rate_limited": "El portal del estado está limitando las consultas — reintento en breve.",
       "captcha": "El portal del estado pidió una verificación humana — ábrelo en el navegador y pega la página aquí.",
       "qr_rejected": "El portal de la Sefaz rechazó el código QR: escanéalo de nuevo o abre la nota en el navegador y pega la página aquí.",
+      "needs_browser": "El portal solo responde a un navegador: abre la nota en el tuyo y usa la captura con un toque, o pega la página aquí.",
       "http_error": "El portal del estado devolvió un error — reintentando automáticamente.",
       "timeout": "El portal del estado tardó demasiado en responder — reintentando automáticamente.",
       "parser_failed": "La página se recibió, pero no se pudo leer. Se volverá a leer cuando el lector mejore, o pega la página aquí.",

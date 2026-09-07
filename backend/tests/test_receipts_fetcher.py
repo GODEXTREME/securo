@@ -162,3 +162,23 @@ async def test_a_redirect_does_not_spend_a_second_rate_limit_token():
 
     result = await _fetcher(handler, min_interval_ms=60_000).fetch(URL, HOSTS, "ES")
     assert result.outcome == "page" and result.page is not None and result.page.html == "danfe"
+
+
+@pytest.mark.asyncio
+async def test_the_user_agent_names_us_inside_a_browser_envelope():
+    """Rio de Janeiro refuses anything that does not look like a browser —
+    `Securo/receipts` and the conventional `(compatible; …)` form both got
+    a block page. The envelope is what gets through; the name and the link
+    ride at the end so the request still says who is making it."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("user-agent", ""))
+        return httpx.Response(200, text="<html>ok</html>")
+
+    fetcher = Fetcher(MemoryGate(), min_interval_ms=0, transport=httpx.MockTransport(handler), resolver=_public)
+    await fetcher.fetch("https://app.sefaz.es.gov.br/x", frozenset({"app.sefaz.es.gov.br"}), "ES")
+
+    assert len(seen) == 1
+    assert seen[0].startswith("Mozilla/5.0 ")
+    assert "Securo/1.0" in seen[0] and "github.com/godextreme/securo" in seen[0]

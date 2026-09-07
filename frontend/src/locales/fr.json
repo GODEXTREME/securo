@@ -2343,6 +2343,7 @@
       "rate_limited": "Le portail de l'État limite les requêtes — nouvelle tentative sous peu.",
       "captcha": "Le portail de l'État demande une vérification humaine — ouvrez-le dans votre navigateur et collez la page ici.",
       "qr_rejected": "Le portail de l'État a refusé le QR code — scannez-le à nouveau, ou ouvrez la note dans votre navigateur et collez la page ici.",
+      "needs_browser": "Le portail ne répond qu’à un navigateur — ouvrez la note dans le vôtre et utilisez la capture en un geste, ou collez la page ici.",
       "http_error": "Le portail de l'État a renvoyé une erreur — nouvelle tentative automatique.",
       "timeout": "Le portail de l'État a mis trop de temps à répondre — nouvelle tentative automatique.",
       "parser_failed": "La page a été reçue mais n'a pas pu être lue. Elle sera relue quand le lecteur s'améliorera, ou collez la page ici.",

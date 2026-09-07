@@ -637,6 +637,14 @@ async def process_receipt(
             receipt.status_reason = "qr_rejected"
             receipt.next_attempt_at = None
             receipt.last_error = "portal refused the QR code"
+        elif kind == PageKind.NEEDS_BROWSER:
+            # No automatic retry, for the same reason a challenge earns
+            # none: the answer will not change until a browser runs the
+            # script the portal serves. Capture or paste is the way out.
+            receipt.status = "waiting_sefaz"
+            receipt.status_reason = "needs_browser"
+            receipt.next_attempt_at = None
+            receipt.last_error = "portal serves a browser check"
         elif kind == PageKind.CAPTCHA:
             # No automatic retry: the portal wants a person. The UI offers
             # "paste the page" for exactly this state.

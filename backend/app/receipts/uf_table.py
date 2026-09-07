@@ -49,7 +49,7 @@ DEFAULT_CONSULTA_URLS: dict[str, str] = {
     "PE": "http://nfce.sefaz.pe.gov.br/nfce/consulta",
     "PI": "http://www.sefaz.pi.gov.br/nfce/qrcode",
     "PR": "http://www.fazenda.pr.gov.br/nfce/qrcode",
-    "RJ": "http://www4.fazenda.rj.gov.br/consultaNFCe/QRCode",
+    "RJ": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
     "RN": "http://nfce.set.rn.gov.br/consultarNFCe.aspx",
     "RO": "http://www.nfce.sefin.ro.gov.br/consultanfce/consulta.jsp",
     "RR": "https://www.sefaz.rr.gov.br/nfce/servlet/qrcode",
@@ -72,6 +72,14 @@ def host_of(url: str) -> str | None:
     return host.lower() if host else None
 
 
+#: Hosts a state still answers on after moving its portal. A QR is
+#: printed on paper and outlives a migration, so the old host stays
+#: allowed even though nothing is sent to it by default.
+LEGACY_HOSTS: dict[str, frozenset[str]] = {
+    "RJ": frozenset({"www4.fazenda.rj.gov.br"}),
+}
+
+
 def allowed_hosts_for(uf: str, overrides: dict[str, str] | None = None) -> frozenset[str]:
     """Hosts the fetcher may contact for a state: the default portal's and,
     when an override is configured, that one's too. Both stay valid so a
@@ -82,6 +90,7 @@ def allowed_hosts_for(uf: str, overrides: dict[str, str] | None = None) -> froze
         host = host_of(url) if url else None
         if host:
             hosts.add(host)
+    hosts |= LEGACY_HOSTS.get(uf, frozenset())
     return frozenset(hosts)
 
 

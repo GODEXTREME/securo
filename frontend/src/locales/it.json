@@ -2343,6 +2343,7 @@
       "rate_limited": "Il portale dello stato sta limitando le richieste — nuovo tentativo a breve.",
       "captcha": "Il portale dello stato ha chiesto una verifica umana — aprilo nel browser e incolla la pagina qui.",
       "qr_rejected": "Il portale ha rifiutato il codice QR — scansionalo di nuovo, oppure apri la nota nel browser e incolla qui la pagina.",
+      "needs_browser": "Il portale risponde solo a un browser: apri la nota nel tuo e usa la cattura con un tocco, oppure incolla qui la pagina.",
       "http_error": "Il portale dello stato ha restituito un errore — nuovo tentativo automatico.",
       "timeout": "Il portale dello stato ha impiegato troppo a rispondere — nuovo tentativo automatico.",
       "parser_failed": "La pagina è stata ricevuta ma non è stato possibile leggerla. Sarà riletta quando il lettore migliorerà, oppure incolla la pagina qui.",

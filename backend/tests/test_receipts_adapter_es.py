@@ -40,7 +40,8 @@ class TestParseBrl:
 
 class TestEsAdapter:
     def test_registered(self):
-        assert adapter_for("32") is not None and supported_ufs() == ["ES"]
+        # This file is about ES; which other states exist is not its business.
+        assert adapter_for("32") is not None and "ES" in supported_ufs()
         assert adapter_for("35") is None
 
     def test_prefers_the_qr_url(self):
