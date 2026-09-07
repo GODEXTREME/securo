@@ -15,13 +15,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from typing import Optional
 
 import redis.asyncio as redis_asyncio
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
 from app.models.receipt import Receipt
-from app.receipts.fetcher import Fetcher, RedisGate
+from app.receipts.browser import BrowserFetcher, HttpWsCdp
+from app.receipts.fetcher import Fetcher, PageSource, RedisGate
 from app.services import price_service, receipt_service
 from app.worker import celery_app
 
@@ -34,10 +37,34 @@ def _make_session_maker():
     return engine, async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
-def _make_fetcher(redis_client: redis_asyncio.Redis) -> Fetcher:
+def browser_ufs(raw: str) -> frozenset[str]:
+    """The states configured to go through a browser."""
+    return frozenset(part.strip().upper() for part in raw.split(",") if part.strip())
+
+
+def _make_fetcher(redis_client: redis_asyncio.Redis, uf: Optional[str] = None) -> PageSource:
+    """The HTTP fetcher, or a browser for the states configured to need
+    one. Unconfigured — the default — this is only ever the former."""
     settings = get_settings()
+    gate = RedisGate(redis_client)
+    if (
+        uf is not None
+        and settings.receipts_browser_cdp_url
+        and uf.upper() in browser_ufs(settings.receipts_browser_ufs)
+    ):
+        return BrowserFetcher(
+            transport=HttpWsCdp(
+                settings.receipts_browser_cdp_url,
+                timeout_seconds=settings.receipts_browser_timeout_seconds,
+            ),
+            gate=gate,
+            timeout_seconds=settings.receipts_browser_timeout_seconds,
+            settle_seconds=settings.receipts_browser_settle_seconds,
+            circuit_failures=settings.receipts_circuit_failures,
+            circuit_open_seconds=settings.receipts_circuit_open_seconds,
+        )
     return Fetcher(
-        RedisGate(redis_client),
+        gate,
         timeout_seconds=settings.receipts_fetch_timeout_seconds,
         min_interval_ms=settings.receipts_min_interval_ms,
         circuit_failures=settings.receipts_circuit_failures,
@@ -51,8 +78,12 @@ async def _fetch_one(receipt_id: uuid.UUID) -> str:
     redis_client = redis_asyncio.from_url(get_settings().redis_url, decode_responses=True)
     try:
         async with session_maker() as session:
+            # The state decides which fetcher, and only the row knows the
+            # state — so it is read before the fetcher is built. One
+            # column, on a row this task is about to load anyway.
+            uf = await session.scalar(select(Receipt.uf).where(Receipt.id == receipt_id))
             receipt = await receipt_service.process_receipt(
-                session, receipt_id, fetcher=_make_fetcher(redis_client)
+                session, receipt_id, fetcher=_make_fetcher(redis_client, uf)
             )
             return receipt.status if receipt is not None else "skipped"
     finally:

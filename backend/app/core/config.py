@@ -141,6 +141,19 @@ class Settings(BaseSettings):
     #: value, because the worker passes this setting in.
     receipts_user_agent: str = DEFAULT_USER_AGENT
 
+    #: Where a browser is listening on the Chrome DevTools Protocol, e.g.
+    #: `http://kasm-chrome-nfe:9222`. Empty disables browser fetching
+    #: entirely: without it nothing about the existing path changes.
+    receipts_browser_cdp_url: str = ""
+    #: Which states go through that browser, comma-separated ("ES,RJ").
+    #: Both portals refuse a plain request today, but the setting is a
+    #: list rather than a switch because that is a fact about portals,
+    #: not about the app, and it will stop being true state by state.
+    receipts_browser_ufs: str = ""
+    receipts_browser_timeout_seconds: float = 30.0
+    #: How long to let a page's own scripts run before reading it.
+    receipts_browser_settle_seconds: float = 3.0
+
     @property
     def oidc_login_available(self) -> bool:
         return bool(self.oidc_enabled and self.oidc_client_id and self.oidc_discovery_url)
