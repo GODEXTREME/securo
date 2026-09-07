@@ -92,6 +92,24 @@ def _rejection(
     return None
 
 
+#: Statuses where the note's content is already known. The stored URL only
+#: ever serves to go and fetch it, so a later scan has nothing to offer.
+SETTLED_STATUSES = frozenset({"authorized", "cancelled"})
+
+
+def _replaces_qr_url(
+    receipt: Receipt, url: Optional[str], adapters: dict[str, UFAdapter]
+) -> bool:
+    """Whether a scan's URL should replace the one already stored."""
+    if not url or url == receipt.qr_url or receipt.status in SETTLED_STATUSES:
+        return False
+    adapter = adapters.get(receipt.c_uf)
+    # The URL is user input and the UI offers it as a link, so it is held to
+    # the same allowlist as a fetch. An unknown state has no allowlist to
+    # check it against; keep whatever is stored.
+    return adapter is not None and host_allowed(url, adapter.allowed_hosts)
+
+
 # ---------------------------------------------------------------------------
 # scanning and linking
 # ---------------------------------------------------------------------------
@@ -139,9 +157,12 @@ async def scan(
         session.add(receipt)
         await session.flush()
         created = True
-    elif receipt.qr_url is None and payload.url:
-        # A key typed first and its QR scanned later: keep the signed URL,
-        # it is the one the portal answers without a challenge.
+    elif _replaces_qr_url(receipt, payload.url, adapters):
+        # A key typed first and its QR scanned later, or the same QR read
+        # again. The URL's signature is the one part of it no check digit
+        # protects, so a misread yields a link the portal refuses while the
+        # key still validates — and rescanning is how a person fixes that.
+        # Until the note settles there is nothing to lose by the newer read.
         receipt.qr_url = payload.url
         receipt.qr_version = payload.version or receipt.qr_version
 
