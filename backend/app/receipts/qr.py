@@ -214,6 +214,15 @@ def _hex_datetime(raw: str | None) -> datetime | None:
 
 def _parse_positional(url: str, p: str) -> QrPayload:
     fields = [f.strip() for f in p.split("|")]
+    if len(fields) == 3:
+        # Rio de Janeiro stops at the environment: key, version, tpAmb, and
+        # no token or hash. The portal answers it, so it is a payload like
+        # any other — just one the state signs nothing in.
+        ch, ver, amb = fields
+        return QrPayload(
+            key=parse_access_key(ch), url=url, version=_version(ver), tp_amb=_tp_amb(amb),
+            c_id_token=None, signature=None,
+        )
     if len(fields) == 5:
         ch, ver, amb, token, sig = fields
         return QrPayload(
@@ -228,7 +237,7 @@ def _parse_positional(url: str, p: str) -> QrPayload:
             issued_at=_hex_datetime(dh), total=_decimal(vnf), icms=_decimal(vicms),
             dig_val=dig or None,
         )
-    raise QrError("qr_fields", f"expected 5 or 9 fields, got {len(fields)}")
+    raise QrError("qr_fields", f"expected 3, 5 or 9 fields, got {len(fields)}")
 
 
 def _parse_named(url: str, query: dict[str, list[str]]) -> QrPayload:
