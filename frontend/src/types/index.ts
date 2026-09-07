@@ -1343,3 +1343,155 @@ export interface InvoiceFacets {
     draft: number
   }
 }
+
+// ---------------------------------------------------------------------------
+// Consumer receipts (NFC-e). Mirrors backend/app/schemas/receipt.py.
+// Amounts are decimal strings, never floats: the backend serialises
+// Decimal as text so R$ 4,79 stays R$ 4,79.
+// ---------------------------------------------------------------------------
+
+export type ReceiptStatus =
+  | 'invalid'
+  | 'pending'
+  | 'fetching'
+  | 'waiting_sefaz'
+  | 'authorized'
+  | 'parse_error'
+  | 'cancelled'
+  | 'gave_up'
+
+export type ReceiptStatusReason =
+  | 'not_published'
+  | 'portal_down'
+  | 'rate_limited'
+  | 'captcha'
+  | 'http_error'
+  | 'timeout'
+  | 'parser_failed'
+  | 'key_mismatch'
+  | 'invalid_dv'
+  | 'unsupported_uf'
+  | 'unsupported_host'
+  | 'not_nfce'
+  | 'homolog'
+  | 'cancelled_by_sefaz'
+  | 'needs_qr'
+
+/** One CNPJ. Instance-wide: the same store row backs every workspace. */
+export interface Store {
+  id: string
+  cnpj: string
+  cnpj_root: string
+  legal_name: string
+  trade_name: string | null
+  street: string | null
+  number: string | null
+  district: string | null
+  city: string | null
+  uf: string | null
+  zip: string | null
+}
+
+export interface ReceiptItem {
+  id: string
+  ordinal: number
+  product_code: string
+  gtin: string | null
+  description: string
+  ncm: string | null
+  cfop: string | null
+  unit: string
+  quantity: string
+  unit_price: string
+  total: string
+  discount: string
+  unit_price_corrected: string | null
+  effective_unit_price: string
+  // Added by the catalogue: absent from an older backend, null until the
+  // item is matched to a product. Rendered when present.
+  product_id?: string | null
+  product_name?: string | null
+  /** `chain` means the match came from a store-internal code, so the
+   *  price history only spans branches of the same chain. */
+  product_scope?: 'global' | 'chain' | null
+  normalized_price?: string | null
+  base_unit?: 'kg' | 'l' | 'un' | null
+  comparable?: boolean
+}
+
+/** The workspace's view of a note: the personal facts. */
+export interface ReceiptLink {
+  not_my_purchase: boolean
+  transaction_id: string | null
+  scanned_at: string
+}
+
+export interface ReceiptPayment {
+  type: string | null
+  label: string | null
+  brand: string | null
+  amount: number
+  change: number
+}
+
+export interface VariationItem {
+  ordinal: number
+  previous_unit_price: string
+  previous_on: string
+  previous_store_name: string | null
+  /** Positive: this time cost more per unit. */
+  delta_unit: string
+  delta_pct: number | null
+  comparable: boolean
+}
+
+export interface VariationSummary {
+  compared_items: number
+  total_items: number
+  /** Positive: paid more than last time, over the compared items. */
+  delta_total: string
+  items: VariationItem[]
+}
+
+export interface Receipt {
+  id: string
+  access_key: string
+  uf: string
+  series: number
+  number: number
+  issuer_cnpj: string
+  status: ReceiptStatus
+  status_reason: ReceiptStatusReason | null
+  attempts: number
+  next_attempt_at: string | null
+  last_error: string | null
+  /** The URL the QR carried; null when the key was typed. */
+  qr_url?: string | null
+  source: string | null
+  store: Store | null
+  issued_at: string | null
+  issued_on: string | null
+  authorized_at: string | null
+  protocol: string | null
+  items_count: number | null
+  products_total: string | null
+  discount: string | null
+  addition: string | null
+  shipping: string | null
+  total: string | null
+  approx_taxes: string | null
+  payments: ReceiptPayment[] | null
+  variation_summary?: VariationSummary | null
+  first_scanned_at: string
+  /** Empty in list responses; the detail carries them. */
+  items: ReceiptItem[]
+  link: ReceiptLink
+}
+
+export interface ScanResponse {
+  receipt: Receipt
+  /** The key was new to the instance and has just been queued. */
+  created: boolean
+  /** This workspace had already scanned it. */
+  already_linked: boolean
+}

@@ -46,6 +46,14 @@ class ReceiptItemRead(BaseModel):
     discount: Decimal
     unit_price_corrected: Optional[Decimal] = None
     effective_unit_price: Decimal
+    # Catalogue. Null until the matcher has run.
+    product_id: Optional[uuid.UUID] = None
+    product_name: Optional[str] = None
+    #: `global` (has a GTIN, comparable anywhere) or `chain` (this chain only).
+    product_scope: Optional[str] = None
+    normalized_price: Optional[Decimal] = None
+    base_unit: Optional[str] = None
+    comparable: bool = True
 
 
 class ReceiptLinkRead(BaseModel):
@@ -72,6 +80,9 @@ class ReceiptRead(BaseModel):
     #: Free text from the last attempt — the portal's answer, an HTTP or TLS
     #: error, a parser code. What a person needs to tell the states apart.
     last_error: Optional[str] = None
+    #: The URL the QR carried, when the note was scanned rather than typed.
+    #: What the UI opens in a browser tab when the portal wants a human.
+    qr_url: Optional[str] = None
     source: Optional[str] = None
     store: Optional[StoreRead] = None
     issued_at: Optional[datetime] = None
@@ -105,6 +116,7 @@ class ReceiptRead(BaseModel):
             attempts=receipt.attempts,
             next_attempt_at=receipt.next_attempt_at,
             last_error=receipt.last_error,
+            qr_url=receipt.qr_url,
             source=receipt.source,
             store=StoreRead.model_validate(receipt.store) if receipt.store else None,
             issued_at=receipt.issued_at,
@@ -119,14 +131,14 @@ class ReceiptRead(BaseModel):
             total=receipt.total,
             approx_taxes=receipt.approx_taxes,
             payments=receipt.payments,
-            variation_summary=receipt.variation_summary,
+            variation_summary=link.variation_summary,
             first_scanned_at=receipt.first_scanned_at,
-            items=[_item_read(item) for item in receipt.items] if with_items else [],
+            items=[item_read(item) for item in receipt.items] if with_items else [],
             link=ReceiptLinkRead.model_validate(link),
         )
 
 
-def _item_read(item: ReceiptItem) -> ReceiptItemRead:
+def item_read(item: ReceiptItem) -> ReceiptItemRead:
     return ReceiptItemRead(
         id=item.id,
         ordinal=item.ordinal,
@@ -142,6 +154,12 @@ def _item_read(item: ReceiptItem) -> ReceiptItemRead:
         discount=item.discount,
         unit_price_corrected=item.unit_price_corrected,
         effective_unit_price=item.effective_unit_price,
+        product_id=item.product_id,
+        product_name=item.product.name if item.product else None,
+        product_scope=item.product.scope if item.product else None,
+        normalized_price=item.normalized_price,
+        base_unit=item.base_unit,
+        comparable=item.comparable,
     )
 
 

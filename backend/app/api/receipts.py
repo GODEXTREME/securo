@@ -12,6 +12,7 @@ from app.receipts.adapters.registry import supported_ufs
 from app.receipts.qr import QrError
 from app.schemas.receipt import (
     ReceiptItemRead,
+    item_read,
     ReceiptItemUpdate,
     ReceiptLinkUpdate,
     ReceiptRead,
@@ -174,12 +175,7 @@ async def update_receipt_item(
     )
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
-    return ReceiptItemRead(
-        id=item.id, ordinal=item.ordinal, product_code=item.product_code, gtin=item.gtin,
-        description=item.description, ncm=item.ncm, cfop=item.cfop, unit=item.unit,
-        quantity=item.quantity, unit_price=item.unit_price, total=item.total, discount=item.discount,
-        unit_price_corrected=item.unit_price_corrected, effective_unit_price=item.effective_unit_price,
-    )
+    return item_read(item)
 
 
 @router.delete("/{receipt_id}", status_code=status.HTTP_204_NO_CONTENT)

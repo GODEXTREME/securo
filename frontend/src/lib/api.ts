@@ -77,6 +77,10 @@ import type {
   InstallmentSeriesInput,
   TransactionApplyScope,
   InvoiceAttachment,
+  Receipt,
+  ReceiptItem,
+  ReceiptStatus,
+  ScanResponse,
 } from '@/types'
 
 const api = axios.create({
@@ -1825,6 +1829,82 @@ export const savedSearches = {
   },
   remove: async (id: string): Promise<void> => {
     await api.delete(`/saved-searches/${id}`)
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Consumer receipts (NFC-e): scan the QR, let the worker fetch the note from
+// the state portal, paste the page yourself when the portal wants a human.
+// Error codes come back as `{ detail: { code } }`; see lib/receipt-status.
+// ---------------------------------------------------------------------------
+
+export interface ReceiptListParams {
+  /** Only what the "waiting on the state" block lists. */
+  pending?: boolean
+  status?: ReceiptStatus
+  store_id?: string
+  from?: string
+  to?: string
+  limit?: number
+  offset?: number
+}
+
+export interface ReceiptLinkPatch {
+  not_my_purchase?: boolean
+  transaction_id?: string
+  /** Explicit, because `transaction_id: null` cannot be told apart from
+   *  "not sent" in a PATCH. */
+  clear_transaction?: boolean
+}
+
+export const receipts = {
+  /** `payload` is whatever was read or typed: the QR URL, a bare 44-digit
+   *  key, or pasted text containing either. */
+  scan: async (payload: string): Promise<ScanResponse> => {
+    const { data } = await api.post('/receipts/scan', { payload })
+    return data
+  },
+  list: async (params: ReceiptListParams = {}): Promise<Receipt[]> => {
+    const { data } = await api.get('/receipts', { params })
+    return data
+  },
+  get: async (id: string): Promise<Receipt> => {
+    const { data } = await api.get(`/receipts/${id}`)
+    return data
+  },
+  retry: async (id: string): Promise<Receipt> => {
+    const { data } = await api.post(`/receipts/${id}/retry`)
+    return data
+  },
+  /** The page the user's browser rendered: raw HTML, Chrome's view-source
+   *  dump, or the plain text a phone gives from "select all → copy". Sent
+   *  as-is; the backend normalises. */
+  submitHtml: async (id: string, html: string): Promise<Receipt> => {
+    const { data } = await api.post(`/receipts/${id}/html`, { html })
+    return data
+  },
+  update: async (id: string, patch: ReceiptLinkPatch): Promise<Receipt> => {
+    const { data } = await api.patch(`/receipts/${id}`, patch)
+    return data
+  },
+  /** `null` restores the printed price. */
+  updateItem: async (
+    id: string,
+    ordinal: number,
+    unitPriceCorrected: string | null,
+  ): Promise<ReceiptItem> => {
+    const { data } = await api.patch(`/receipts/${id}/items/${ordinal}`, {
+      unit_price_corrected: unitPriceCorrected,
+    })
+    return data
+  },
+  /** Forget that this workspace scanned the note. The note itself stays. */
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/receipts/${id}`)
+  },
+  supportedUfs: async (): Promise<string[]> => {
+    const { data } = await api.get('/receipts/supported-ufs')
+    return data.ufs
   },
 }
 

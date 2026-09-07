@@ -29,6 +29,8 @@ async def test_scan_creates_and_dispatches(client, auth_headers, test_workspace,
     body = res.json()
     assert body["created"] and not body["already_linked"]
     assert body["receipt"]["status"] == "pending" and body["receipt"]["number"] == 378457
+    # The UI opens this in a browser tab when the portal wants a human.
+    assert body["receipt"]["qr_url"] == URL
     assert enqueued == [uuid.UUID(body["receipt"]["id"])]
 
     again = await client.post("/api/receipts/scan", json={"payload": KEY}, headers=auth_headers)

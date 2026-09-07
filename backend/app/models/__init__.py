@@ -36,6 +36,8 @@ from app.models.invoice import Invoice, InvoiceAllocation, InvoiceLine, InvoiceS
 from app.models.invoice_attachment import InvoiceAttachment
 from app.models.store import Store
 from app.models.receipt import Receipt, ReceiptItem, ReceiptLink
+from app.models.product import Product, ProductAlias
+from app.models.price_point import PricePoint
 
 # Side-effect import: register the before_insert listener that auto-stamps
 # workspace_id from user_id on financial entities. Imported last so all
@@ -84,6 +86,9 @@ __all__ = [
     "Receipt",
     "ReceiptItem",
     "ReceiptLink",
+    "Product",
+    "ProductAlias",
+    "PricePoint",
     "collection_accounts",
     "collection_asset_groups",
     "Notification",

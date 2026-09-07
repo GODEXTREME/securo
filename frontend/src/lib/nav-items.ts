@@ -20,6 +20,7 @@ import {
   PiggyBank,
   Receipt,
   Repeat,
+  ScanLine,
   SlidersHorizontal,
   Split,
   Tag,
@@ -52,6 +53,9 @@ export const navItems: NavItem[] = [
   // inside the ACCOUNTS section since it's account-scoped data.
   { type: 'separator', labelKey: 'nav.groupAccounts' },
   { type: 'link', key: 'transactions', path: '/transactions', icon: ArrowLeftRight, module: 'transactions' },
+  // Consumer receipts (NFC-e) sit next to transactions: each one is a
+  // purchase, and the page is where a scanned QR ends up.
+  { type: 'link', key: 'receipts', path: '/receipts', icon: ScanLine },
   { type: 'link', key: 'invoices', path: '/invoices', icon: Receipt, module: 'invoices' },
   { type: 'link', key: 'accounts', path: '/accounts', icon: Building2, module: 'accounts' },
   { type: 'link', key: 'cards', path: '/cards', icon: CreditCard },

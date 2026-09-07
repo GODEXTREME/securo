@@ -29,7 +29,8 @@ from app.receipts.canonical import CanonicalReceipt
 from app.receipts.fetcher import Fetcher, host_allowed
 from app.receipts.pasted import normalize_pasted
 from app.receipts.qr import NFCE_MODEL, QrPayload, parse_access_key, parse_qr_payload
-from app.services import notification_service
+from app.receipts.adapters.tabresult import looks_like_html, parse_tabresult_text
+from app.services import notification_service, price_service
 
 #: Wait after the n-th failed attempt. Eight attempts in all (one immediate,
 #: seven retries), about 45 hours end to end: a note that is not published
@@ -156,6 +157,10 @@ async def scan(
             receipt_id=receipt.id, workspace_id=workspace_id, user_id=user_id, scanned_at=now
         )
         session.add(link)
+        await session.flush()
+        if receipt.status == "authorized":
+            await session.refresh(receipt)
+            link.variation_summary = await price_service.compute_variation(session, receipt, workspace_id)
     await session.commit()
     await session.refresh(receipt)
     await session.refresh(link)
@@ -266,11 +271,28 @@ async def submit_html(
     if adapter is None:
         raise ReceiptError("unsupported_uf")
     html = normalize_pasted(html)
+    if not looks_like_html(html):
+        # What a phone gives after "select all → copy": the rendered text.
+        # Every adapter today is the tabResult template, whose labels
+        # survive the copy, so one text parser serves them all for now.
+        try:
+            canonical = parse_tabresult_text(html, expected_uf=receipt.uf)
+            _check_key(receipt, canonical)
+        except ParseError as exc:
+            raise ReceiptError(exc.code, str(exc)) from exc
+        await _apply_canonical(
+            session, receipt, canonical, html, source="pasted_text",
+            parser_version=adapter.parser_version, now=now,
+        )
+        await session.commit()
+        await session.refresh(receipt)
+        return receipt
     page = FetchedPage(url=receipt.qr_url or "", status_code=200, html=html, fetched_at=now)
     kind = adapter.classify(page)
     if kind == PageKind.CANCELLED:
         receipt.status = "cancelled"
         receipt.status_reason = "cancelled_by_sefaz"
+        await price_service.void_points(session, receipt, now=now)
         _store_raw(receipt, html, now)
         await session.commit()
         await session.refresh(receipt)
@@ -338,6 +360,11 @@ async def update_item(
         return None
     item.unit_price_corrected = unit_price_corrected
     item.corrected_at = (now or _now()) if unit_price_corrected is not None else None
+    await session.flush()
+    receipt = link.receipt
+    if receipt.status == "authorized":
+        await price_service.enrich_receipt(session, receipt)
+        await price_service.refresh_variations(session, receipt)
     await session.commit()
     await session.refresh(item)
     return item
@@ -501,6 +528,7 @@ async def process_receipt(
             receipt.status = "cancelled"
             receipt.status_reason = "cancelled_by_sefaz"
             receipt.next_attempt_at = None
+            await price_service.void_points(session, receipt, now=now)
         elif kind == PageKind.CAPTCHA:
             # No automatic retry: the portal wants a person. The UI offers
             # "paste the page" for exactly this state.
@@ -669,6 +697,11 @@ async def _apply_canonical(
         )
     _store_raw(receipt, html, now, ttl_days=raw_ttl_days)
     await session.flush()
+    await session.refresh(receipt, ["items", "links"])
+
+    # The whole point: lines → products → price points → "vs. last time".
+    await price_service.enrich_receipt(session, receipt)
+    await price_service.refresh_variations(session, receipt)
 
     for link in receipt.links:
         await notification_service.create_notification(
