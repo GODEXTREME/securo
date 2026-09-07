@@ -114,7 +114,9 @@ async def test_retry_html_patch_and_delete(client, auth_headers, enqueued):
 @pytest.mark.asyncio
 async def test_supported_ufs(client, auth_headers):
     res = await client.get("/api/receipts/supported-ufs", headers=auth_headers)
-    assert res.status_code == 200 and res.json() == {"ufs": ["ES"]}
+    # Exact on purpose: this is the list the scanner shows, so a state
+    # registered by accident should fail here rather than ship.
+    assert res.status_code == 200 and res.json() == {"ufs": ["ES", "RJ"]}
 
 
 class TestTransactionCandidates:

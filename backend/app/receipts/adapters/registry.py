@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from app.receipts.adapters.base import UFAdapter
 from app.receipts.adapters.es import EsAdapter
+from app.receipts.adapters.rj import RjAdapter
 
 ADAPTERS: dict[str, UFAdapter] = {
     EsAdapter.c_uf: EsAdapter(),
+    RjAdapter.c_uf: RjAdapter(),
 }
 
 
