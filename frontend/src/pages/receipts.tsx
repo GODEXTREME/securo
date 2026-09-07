@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ChevronRight, ClipboardPaste, Clock, RefreshCw, ScanLine, Store as StoreIcon, Trash2 } from 'lucide-react'
+import { ChevronRight, ClipboardPaste, Clock, RefreshCw, ScanLine, Store as StoreIcon, Trash2, Zap } from 'lucide-react'
 import { receipts as receiptsApi } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
@@ -69,9 +69,14 @@ export default function ReceiptsPage() {
   const settled = receipts.filter((r) => !isPending(r.status))
 
   const scanButton = canWrite ? (
-    <Button className="gap-1.5" onClick={() => navigate('/receipts/scan')}>
-      <ScanLine size={16} /> {t('receipts.scan')}
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate('/receipts/setup')}>
+        <Zap size={16} /> {t('receipts.capture.link')}
+      </Button>
+      <Button className="gap-1.5" onClick={() => navigate('/receipts/scan')}>
+        <ScanLine size={16} /> {t('receipts.scan')}
+      </Button>
+    </div>
   ) : undefined
 
   return (

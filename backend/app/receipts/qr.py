@@ -135,6 +135,11 @@ class QrPayload:
 
 _URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 _KEY_RE = re.compile(r"\d{44}")
+#: 44 digits that may be printed in groups, as the portals show them.
+#: Only spaces and dots separate them — anything else ends the run, so a
+#: page full of other numbers cannot be stitched into a key by accident.
+_GROUPED_KEY_RE = re.compile(r"\d(?:[ .\u00a0]*\d){43}")
+_TAG_RE = re.compile(r"<[^>]+>")
 _VERSIONS = {"1": 100, "100": 100, "2": 200, "200": 200, "3": 300, "300": 300}
 
 
@@ -269,4 +274,27 @@ def policy_rejection(payload: QrPayload) -> str | None:
         return "homolog"
     if not payload.key.is_nfce:
         return "not_nfce"
+    return None
+
+
+def find_access_key(text: str) -> AccessKey | None:
+    """The first valid access key printed anywhere in a page, or None.
+
+    What lets the bookmarklet work without knowing which note it is
+    looking at: the DANFE prints its own key, so the page identifies
+    itself. Every candidate is checked — a run of digits that fails the
+    check digit or names no state is not a key, it is a coincidence.
+    """
+    # The portals print the key in groups, and one of them wraps each group
+    # in its own <a href="tel:…">. Reading the markup as text would break
+    # the run, so a tag-stripped pass follows the plain one.
+    for candidate in (text, _TAG_RE.sub(" ", text)):
+        for match in _GROUPED_KEY_RE.finditer(candidate):
+            digits = _SEPARATORS.sub("", match.group(0))
+            if len(digits) != 44:
+                continue
+            try:
+                return parse_access_key(digits)
+            except QrError:
+                continue
     return None

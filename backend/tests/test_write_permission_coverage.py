@@ -88,6 +88,13 @@ ALLOWLIST: dict[tuple[str, str], str] = {
     ("POST", "/api/agents/connections"): "the requester's own LLM credentials",
     ("PATCH", "/api/agents/connections/{conn_id}"): "the requester's own LLM credentials",
     ("DELETE", "/api/agents/connections/{conn_id}"): "the requester's own LLM credentials",
+    # The bookmarklet's endpoint. It cannot depend on the session gate: the
+    # request leaves a page on the state portal's origin, so no cookie of
+    # ours reaches it. It carries a capture token instead, and that token
+    # is minted only through `current_writable_workspace` (POST
+    # /api/receipt-capture/tokens, which this test does check) and names the
+    # one workspace it may write to. The gate moved to the credential.
+    ("POST", "/api/receipt-capture"): "authenticated by a capture token minted under the write gate",
     ("POST", "/api/agents/connections/{conn_id}/test"): "probes the requester's own credential",
     # Global, not workspace data: FX rates are shared by the whole instance.
     # Any authenticated user may refresh them, and nothing per-workspace is

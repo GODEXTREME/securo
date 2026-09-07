@@ -1496,3 +1496,19 @@ export interface ScanResponse {
   /** This workspace had already scanned it. */
   already_linked: boolean
 }
+
+/** A bookmarklet's credential. The secret is not part of it: it exists
+ *  only in the answer that created the token, and in the bookmark. */
+export interface CaptureToken {
+  id: string
+  /** The first characters of the secret — enough to tell two apart. */
+  prefix: string
+  label: string | null
+  created_at: string
+  last_used_at: string | null
+}
+
+export interface CaptureTokenCreated {
+  token: CaptureToken
+  secret: string
+}

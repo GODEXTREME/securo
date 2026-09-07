@@ -2422,6 +2422,31 @@
       "item_fields": "Bei einem Artikel auf dieser Seite fehlt ein Feld.",
       "transaction_not_found": "Diese Transaktion existiert in diesem Arbeitsbereich nicht.",
       "generic": "Etwas ist schiefgelaufen. Versuchen Sie es erneut."
+    },
+    "capture": {
+      "link": "Schnellerfassung",
+      "title": "Erfassen mit einem Tipp",
+      "intro": "Wo das Portal eines Bundesstaats keinem Server antwortet, antwortet Ihr Browser — er hat die Prüfung bereits bestanden. Dieses Lesezeichen liest die Seite des Belegs vor Ihnen und schickt sie an Securo.",
+      "step1": "Erstellen Sie unten ein Token und kopieren Sie den Code.",
+      "step2": "Speichern Sie im Browser eine beliebige Seite als Lesezeichen, bearbeiten Sie es und fügen Sie den Code anstelle der Adresse ein.",
+      "step3": "Öffnen Sie den Beleg über seinen QR-Code und tippen Sie auf das Lesezeichen. Mehr nicht — kein Markieren, Kopieren, Einfügen.",
+      "newToken": "Neues Token",
+      "labelPlaceholder": "Name (z. B. iPhone)",
+      "create": "Erstellen",
+      "readyTitle": "Jetzt kopieren",
+      "readyHint": "Dieser Code wird einmal gezeigt. Ist er weg, erstellen Sie einen neuen.",
+      "copy": "Code kopieren",
+      "copied": "Code kopiert.",
+      "copyFailed": "Kopieren nicht möglich.",
+      "existing": "Aktive Tokens",
+      "none": "Noch keine Tokens.",
+      "unnamed": "Ohne Namen",
+      "revoke": "Widerrufen",
+      "revoked": "Token widerrufen.",
+      "revokeFailed": "Widerruf nicht möglich.",
+      "createFailed": "Token konnte nicht erstellt werden.",
+      "lastUsed": "benutzt am {{date}}",
+      "neverUsed": "nie benutzt"
     }
   },
   "invoices": {

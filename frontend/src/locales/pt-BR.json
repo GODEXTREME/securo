@@ -2422,6 +2422,31 @@
       "item_fields": "Um item dessa página está sem um campo.",
       "transaction_not_found": "Essa transação não existe neste espaço de trabalho.",
       "generic": "Algo deu errado. Tente de novo."
+    },
+    "capture": {
+      "link": "Captura rápida",
+      "title": "Captura com um toque",
+      "intro": "Nos estados cujo portal não responde a um servidor, o seu navegador responde — ele já passou pela verificação. Este favorito lê a página da nota que está na sua frente e manda para o Securo.",
+      "step1": "Crie um token abaixo e copie o código.",
+      "step2": "No navegador, salve qualquer página como favorito, edite-o e cole o código no lugar do endereço.",
+      "step3": "Abra a nota pelo QR code e toque nesse favorito. Pronto — sem selecionar, sem copiar, sem colar.",
+      "newToken": "Novo token",
+      "labelPlaceholder": "Nome (ex.: iPhone)",
+      "create": "Criar",
+      "readyTitle": "Copie agora",
+      "readyHint": "Este código aparece uma única vez. Se perder, crie outro.",
+      "copy": "Copiar código",
+      "copied": "Código copiado.",
+      "copyFailed": "Não foi possível copiar.",
+      "existing": "Tokens ativos",
+      "none": "Nenhum token ainda.",
+      "unnamed": "Sem nome",
+      "revoke": "Revogar",
+      "revoked": "Token revogado.",
+      "revokeFailed": "Não foi possível revogar.",
+      "createFailed": "Não foi possível criar o token.",
+      "lastUsed": "usado em {{date}}",
+      "neverUsed": "nunca usado"
     }
   },
   "invoices": {

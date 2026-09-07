@@ -2908,6 +2908,31 @@
       "item_fields": "Položke na tejto stránke chýba pole.",
       "transaction_not_found": "Táto transakcia v tomto pracovnom priestore neexistuje.",
       "generic": "Niečo sa pokazilo. Skúste to znova."
+    },
+    "capture": {
+      "link": "Rýchle zachytenie",
+      "title": "Zachytenie jedným ťuknutím",
+      "intro": "Tam, kde portál štátu neodpovie serveru, odpovie váš prehliadač — ten už overením prešiel. Táto záložka prečíta stránku dokladu pred vami a pošle ju do Securo.",
+      "step1": "Vytvorte nižšie token a skopírujte kód.",
+      "step2": "V prehliadači uložte ľubovoľnú stránku ako záložku, upravte ju a vložte kód namiesto adresy.",
+      "step3": "Otvorte doklad z jeho QR kódu a ťuknite na záložku. To je všetko — bez označovania, kopírovania a vkladania.",
+      "newToken": "Nový token",
+      "labelPlaceholder": "Názov (napr. iPhone)",
+      "create": "Vytvoriť",
+      "readyTitle": "Skopírujte ho teraz",
+      "readyHint": "Tento kód sa zobrazí raz. Ak ho stratíte, vytvorte nový.",
+      "copy": "Kopírovať kód",
+      "copied": "Kód skopírovaný.",
+      "copyFailed": "Kopírovanie zlyhalo.",
+      "existing": "Aktívne tokeny",
+      "none": "Zatiaľ žiadne tokeny.",
+      "unnamed": "Bez názvu",
+      "revoke": "Zrušiť",
+      "revoked": "Token zrušený.",
+      "revokeFailed": "Zrušenie zlyhalo.",
+      "createFailed": "Token sa nepodarilo vytvoriť.",
+      "lastUsed": "použitý {{date}}",
+      "neverUsed": "nikdy nepoužitý"
     }
   }
 }
