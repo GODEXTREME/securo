@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ClipboardPaste, ExternalLink } from 'lucide-react'
+import { ClipboardPaste, Copy, ExternalLink } from 'lucide-react'
 import { receipts as receiptsApi } from '@/lib/api'
 import { apiErrorKey } from '@/lib/receipt-status'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,22 @@ export function ReceiptPastePanel({ receipt, onDone, className }: ReceiptPastePa
   const queryClient = useQueryClient()
   const [text, setText] = useState('')
   const [errorKey, setErrorKey] = useState<string | null>(null)
+
+  /** iOS reports a home-screen install here; every other platform leaves
+   *  it undefined, which reads as false. */
+  const standalone =
+    typeof navigator !== 'undefined' &&
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+
+  const copyUrl = async () => {
+    if (!receipt.qr_url) return
+    try {
+      await navigator.clipboard.writeText(receipt.qr_url)
+      toast.success(t('receipts.paste.linkCopied'))
+    } catch {
+      toast.error(t('receipts.capture.copyFailed'))
+    }
+  }
 
   const submit = useMutation({
     mutationFn: (html: string) => receiptsApi.submitHtml(receipt.id, html),
@@ -64,12 +80,29 @@ export function ReceiptPastePanel({ receipt, onDone, className }: ReceiptPastePa
       {receipt.status_reason === 'qr_rejected' ? (
         <p className="text-xs text-muted-foreground">{t('receipts.paste.qrRefused')}</p>
       ) : receipt.qr_url ? (
-        <Button asChild variant="outline" size="sm" className="gap-1.5">
-          <a href={receipt.qr_url} target="_blank" rel="noopener noreferrer">
-            <ExternalLink size={14} />
-            {t('receipts.paste.open')}
-          </a>
-        </Button>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href={receipt.qr_url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink size={14} />
+                {t('receipts.paste.open')}
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void copyUrl()}>
+              <Copy size={14} />
+              {t('receipts.paste.copyLink')}
+            </Button>
+          </div>
+          {/* Installed to the home screen, iOS opens links in an in-app
+              browser: it renders the note, but it has no bookmarks, so the
+              capture bookmarklet is not reachable there. And the address it
+              ends on cannot be carried to Safari — the portal redirects to a
+              page whose `cid` names a server-side session, meaningless
+              anywhere else. The original QR link is the one that travels. */}
+          {standalone && (
+            <p className="text-xs text-muted-foreground">{t('receipts.paste.standaloneHint')}</p>
+          )}
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">{t('receipts.paste.noUrl')}</p>
       )}
