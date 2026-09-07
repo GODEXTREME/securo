@@ -81,6 +81,8 @@ import type {
   ReceiptItem,
   ReceiptStatus,
   ScanResponse,
+  CaptureToken,
+  CaptureTokenCreated,
 } from '@/types'
 
 const api = axios.create({
@@ -1905,6 +1907,26 @@ export const receipts = {
   supportedUfs: async (): Promise<string[]> => {
     const { data } = await api.get('/receipts/supported-ufs')
     return data.ufs
+  },
+}
+
+/**
+ * The bookmarklet's credentials. The capture endpoint itself is never
+ * called from here — it is called from the state portal's page, by the
+ * bookmarklet, which is the whole point of the mechanism.
+ */
+export const receiptCapture = {
+  tokens: async (): Promise<CaptureToken[]> => {
+    const { data } = await api.get('/receipt-capture/tokens')
+    return data
+  },
+  /** The secret comes back once and is never retrievable again. */
+  createToken: async (label?: string): Promise<CaptureTokenCreated> => {
+    const { data } = await api.post('/receipt-capture/tokens', { label: label ?? null })
+    return data
+  },
+  revokeToken: async (id: string): Promise<void> => {
+    await api.delete(`/receipt-capture/tokens/${id}`)
   },
 }
 

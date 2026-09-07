@@ -2422,6 +2422,31 @@
       "item_fields": "Il manque un champ à un article de cette page.",
       "transaction_not_found": "Cette transaction n'existe pas dans cet espace de travail.",
       "generic": "Une erreur s'est produite. Réessayez."
+    },
+    "capture": {
+      "link": "Capture rapide",
+      "title": "Capture en un geste",
+      "intro": "Là où le portail de l'État ne répond pas à un serveur, votre navigateur répond — il a déjà passé la vérification. Ce favori lit la page de la note devant vous et l'envoie à Securo.",
+      "step1": "Créez un jeton ci-dessous et copiez le code.",
+      "step2": "Dans le navigateur, enregistrez n'importe quelle page en favori, modifiez-le et collez le code à la place de l'adresse.",
+      "step3": "Ouvrez la note depuis son QR code et touchez ce favori. C’est tout : rien à sélectionner, copier ni coller.",
+      "newToken": "Nouveau jeton",
+      "labelPlaceholder": "Nom (ex. iPhone)",
+      "create": "Créer",
+      "readyTitle": "Copiez-le maintenant",
+      "readyHint": "Ce code n’apparaît qu’une fois. Perdu, il faut en créer un autre.",
+      "copy": "Copier le code",
+      "copied": "Code copié.",
+      "copyFailed": "Copie impossible.",
+      "existing": "Jetons actifs",
+      "none": "Aucun jeton pour l’instant.",
+      "unnamed": "Sans nom",
+      "revoke": "Révoquer",
+      "revoked": "Jeton révoqué.",
+      "revokeFailed": "Révocation impossible.",
+      "createFailed": "Création du jeton impossible.",
+      "lastUsed": "utilisé le {{date}}",
+      "neverUsed": "jamais utilisé"
     }
   },
   "invoices": {

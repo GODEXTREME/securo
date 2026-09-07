@@ -2553,6 +2553,31 @@
       "item_fields": "Pozycji na tej stronie brakuje pola.",
       "transaction_not_found": "Ta transakcja nie istnieje w tym obszarze roboczym.",
       "generic": "Coś poszło nie tak. Spróbuj ponownie."
+    },
+    "capture": {
+      "link": "Szybkie przechwytywanie",
+      "title": "Przechwytywanie jednym dotknięciem",
+      "intro": "Tam gdzie portal stanowy nie odpowiada serwerowi, odpowiada Twoja przeglądarka — ona już przeszła weryfikację. Ta zakładka odczytuje stronę paragonu przed Tobą i wysyła ją do Securo.",
+      "step1": "Utwórz token poniżej i skopiuj kod.",
+      "step2": "W przeglądarce zapisz dowolną stronę jako zakładkę, edytuj ją i wklej kod zamiast adresu.",
+      "step3": "Otwórz paragon z kodu QR i dotknij tej zakładki. To wszystko — bez zaznaczania, kopiowania i wklejania.",
+      "newToken": "Nowy token",
+      "labelPlaceholder": "Nazwa (np. iPhone)",
+      "create": "Utwórz",
+      "readyTitle": "Skopiuj teraz",
+      "readyHint": "Ten kod pokazujemy raz. Jeśli go zgubisz, utwórz nowy.",
+      "copy": "Kopiuj kod",
+      "copied": "Kod skopiowany.",
+      "copyFailed": "Nie udało się skopiować.",
+      "existing": "Aktywne tokeny",
+      "none": "Brak tokenów.",
+      "unnamed": "Bez nazwy",
+      "revoke": "Unieważnij",
+      "revoked": "Token unieważniony.",
+      "revokeFailed": "Nie udało się unieważnić.",
+      "createFailed": "Nie udało się utworzyć tokenu.",
+      "lastUsed": "użyty {{date}}",
+      "neverUsed": "nigdy nieużywany"
     }
   },
   "invoices": {

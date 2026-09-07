@@ -44,6 +44,7 @@ const InvoicesPage = lazy(() => import('@/pages/invoices'))
 const InvoiceDetailPage = lazy(() => import('@/pages/invoice-detail'))
 const SharedInvoicePage = lazy(() => import('@/pages/shared-invoice'))
 const WorkspaceSettingsPage = lazy(() => import('@/pages/workspace-settings'))
+const ReceiptCaptureSetupPage = lazy(() => import('@/pages/receipt-capture-setup'))
 const OAuthCallbackPage = lazy(() => import('@/pages/oauth-callback'))
 const OIDCCallbackPage = lazy(() => import('@/pages/oidc-callback'))
 const NotificationsPage = lazy(() => import('@/pages/notifications'))
@@ -116,6 +117,7 @@ function App() {
                   <Route path="/cards" element={<CardsPage />} />
                   <Route path="/receipts" element={<ReceiptsPage />} />
                   <Route path="/receipts/scan" element={<ReceiptScanPage />} />
+                  <Route path="/receipts/setup" element={<ReceiptCaptureSetupPage />} />
                   <Route path="/receipts/:id" element={<ReceiptDetailPage />} />
                   <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
                   <Route path="/enable-banking" element={<OAuthCallbackPage />} />

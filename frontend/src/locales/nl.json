@@ -2774,6 +2774,31 @@
       "item_fields": "Bij een artikel op die pagina ontbreekt een veld.",
       "transaction_not_found": "Die transactie bestaat niet in deze werkruimte.",
       "generic": "Er ging iets mis. Probeer het opnieuw."
+    },
+    "capture": {
+      "link": "Snelle vastlegging",
+      "title": "Vastleggen met één tik",
+      "intro": "Waar het portaal van een staat geen server te woord staat, doet je browser dat wel — die is de controle al door. Deze bladwijzer leest de pagina van de bon voor je en stuurt hem naar Securo.",
+      "step1": "Maak hieronder een token en kopieer de code.",
+      "step2": "Sla in je browser een willekeurige pagina op als bladwijzer, bewerk die en plak de code in plaats van het adres.",
+      "step3": "Open de bon via de QR-code en tik op die bladwijzer. Meer niet — niets selecteren, kopiëren of plakken.",
+      "newToken": "Nieuw token",
+      "labelPlaceholder": "Naam (bijv. iPhone)",
+      "create": "Aanmaken",
+      "readyTitle": "Kopieer hem nu",
+      "readyHint": "Deze code zie je één keer. Kwijt is kwijt: maak dan een nieuwe.",
+      "copy": "Code kopiëren",
+      "copied": "Code gekopieerd.",
+      "copyFailed": "Kopiëren mislukt.",
+      "existing": "Actieve tokens",
+      "none": "Nog geen tokens.",
+      "unnamed": "Naamloos",
+      "revoke": "Intrekken",
+      "revoked": "Token ingetrokken.",
+      "revokeFailed": "Intrekken mislukt.",
+      "createFailed": "Token aanmaken mislukt.",
+      "lastUsed": "gebruikt op {{date}}",
+      "neverUsed": "nooit gebruikt"
     }
   }
 }

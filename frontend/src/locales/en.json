@@ -2421,6 +2421,31 @@
       "item_fields": "An item on that page is missing a field.",
       "transaction_not_found": "That transaction does not exist in this workspace.",
       "generic": "Something went wrong. Try again."
+    },
+    "capture": {
+      "link": "One-tap capture",
+      "title": "One-tap capture",
+      "intro": "Where a state portal will not answer a server, your browser will — it has already passed whatever was asked. This bookmark reads the note's page in front of you and sends it to Securo.",
+      "step1": "Create a token below and copy the code.",
+      "step2": "In your browser, save any page as a bookmark, edit it, and paste the code in place of the address.",
+      "step3": "Open the note from its QR code and tap that bookmark. That is all — no selecting, no copying, no pasting.",
+      "newToken": "New token",
+      "labelPlaceholder": "Name (e.g. iPhone)",
+      "create": "Create",
+      "readyTitle": "Copy it now",
+      "readyHint": "This code is shown once. Lose it and you create another.",
+      "copy": "Copy code",
+      "copied": "Code copied.",
+      "copyFailed": "Could not copy.",
+      "existing": "Active tokens",
+      "none": "No tokens yet.",
+      "unnamed": "Unnamed",
+      "revoke": "Revoke",
+      "revoked": "Token revoked.",
+      "revokeFailed": "Could not revoke.",
+      "createFailed": "Could not create the token.",
+      "lastUsed": "used {{date}}",
+      "neverUsed": "never used"
     }
   },
   "invoices": {
