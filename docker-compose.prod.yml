@@ -46,6 +46,11 @@ x-backend-env: &backend-env
   # zero cost. Run `docker compose -f docker-compose.prod.yml --profile
   # agents up` after enabling.
   AGENTS_ENABLED: ${AGENTS_ENABLED:-false}
+  # Receipts through a browser. Empty means the HTTP fetcher, as today.
+  RECEIPTS_BROWSER_CDP_URL: ${RECEIPTS_BROWSER_CDP_URL:-}
+  RECEIPTS_BROWSER_UFS: ${RECEIPTS_BROWSER_UFS:-}
+  RECEIPTS_BROWSER_TIMEOUT_SECONDS: ${RECEIPTS_BROWSER_TIMEOUT_SECONDS:-30}
+  RECEIPTS_BROWSER_SETTLE_SECONDS: ${RECEIPTS_BROWSER_SETTLE_SECONDS:-3}
   AGENTS_BUILTIN_MCP_URL: ${AGENTS_BUILTIN_MCP_URL:-http://mcp-server:8765/mcp}
   AGENTS_EXTRA_MCP_SERVERS: ${AGENTS_EXTRA_MCP_SERVERS:-}
   AGENTS_MCP_JWT_SECRET: ${AGENTS_MCP_JWT_SECRET:-dev-mcp-secret-change-in-production}

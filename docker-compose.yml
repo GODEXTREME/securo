@@ -48,6 +48,11 @@ x-backend-env: &backend-env
   # Agents/LLM feature — opt-in. Off by default so existing users pay
   # zero cost. Run `docker compose --profile agents up` after enabling.
   AGENTS_ENABLED: ${AGENTS_ENABLED:-false}
+  # Receipts through a browser. Empty means the HTTP fetcher, as today.
+  RECEIPTS_BROWSER_CDP_URL: ${RECEIPTS_BROWSER_CDP_URL:-}
+  RECEIPTS_BROWSER_UFS: ${RECEIPTS_BROWSER_UFS:-}
+  RECEIPTS_BROWSER_TIMEOUT_SECONDS: ${RECEIPTS_BROWSER_TIMEOUT_SECONDS:-30}
+  RECEIPTS_BROWSER_SETTLE_SECONDS: ${RECEIPTS_BROWSER_SETTLE_SECONDS:-3}
   AGENTS_BUILTIN_MCP_URL: ${AGENTS_BUILTIN_MCP_URL:-http://mcp-server:8765/mcp}
   # Public URL external agents use to reach the built-in MCP server, shown in
   # the "External MCP access" panel. Blank → the UI derives it from the browser
