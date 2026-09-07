@@ -2446,6 +2446,20 @@
       "createFailed": "Could not create the token.",
       "lastUsed": "used {{date}}",
       "neverUsed": "never used"
+    },
+    "link": {
+      "title": "Transaction",
+      "hint": "Tie this note to the charge it produced. Only debits close in amount and date are suggested — the choice is yours.",
+      "isLinked": "Linked to a transaction.",
+      "unlink": "Unlink",
+      "linked": "Note linked.",
+      "cleared": "Link removed.",
+      "looking": "Looking for transactions…",
+      "none": "No similar transaction around the purchase date.",
+      "thisOne": "This one",
+      "off": "off by {{amount}}",
+      "daysApart_one": "{{count}} day apart",
+      "daysApart_other": "{{count}} days apart"
     }
   },
   "invoices": {

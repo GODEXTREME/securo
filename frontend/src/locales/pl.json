@@ -2578,6 +2578,20 @@
       "createFailed": "Nie udało się utworzyć tokenu.",
       "lastUsed": "użyty {{date}}",
       "neverUsed": "nigdy nieużywany"
+    },
+    "link": {
+      "title": "Transakcja",
+      "hint": "Powiąż ten paragon z obciążeniem, które wywołał. Podpowiadamy tylko obciążenia zbliżone kwotą i datą — wybór należy do Ciebie.",
+      "isLinked": "Powiązany z transakcją.",
+      "unlink": "Odłącz",
+      "linked": "Paragon powiązany.",
+      "cleared": "Powiązanie usunięte.",
+      "looking": "Szukam transakcji…",
+      "none": "Brak podobnej transakcji w tych dniach.",
+      "thisOne": "To ta",
+      "off": "różnica {{amount}}",
+      "daysApart_one": "{{count}} dzień różnicy",
+      "daysApart_other": "różnica w dniach: {{count}}"
     }
   },
   "invoices": {

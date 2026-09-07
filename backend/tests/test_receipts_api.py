@@ -1,6 +1,7 @@
 """The receipts routes over HTTP: the write gate, the link gate, and the
 error codes the UI keys its messages on."""
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from app.models.receipt import Receipt
 FIXTURE = Path(__file__).parent / "fixtures" / "nfce" / "es" / "synthetic_v2.html"
 KEY = "32260800063960006050650050003784571128411294"
 URL = f"http://app.sefaz.es.gov.br/ConsultaNFCe?p={KEY}|2|1|1|4020a74fad969d92f6bb16ba1a7b4a177771fb3e"
+#: A second real key, for the tests that need two distinct notes.
+OTHER_KEY = "32260900937804000111650030005622551021215415"
 
 
 @pytest.fixture
@@ -112,3 +115,87 @@ async def test_retry_html_patch_and_delete(client, auth_headers, enqueued):
 async def test_supported_ufs(client, auth_headers):
     res = await client.get("/api/receipts/supported-ufs", headers=auth_headers)
     assert res.status_code == 200 and res.json() == {"ufs": ["ES"]}
+
+
+class TestTransactionCandidates:
+    """Which debits a note could be. The endpoint answers with the two
+    numbers that justify each guess; deciding stays with a person."""
+
+    async def _authorized(self, client, auth_headers) -> str:
+        res = await client.post("/api/receipts/scan", json={"payload": URL}, headers=auth_headers)
+        rid = res.json()["receipt"]["id"]
+        read = await client.post(
+            f"/api/receipts/{rid}/html", json={"html": FIXTURE.read_text(encoding="utf-8")}, headers=auth_headers
+        )
+        assert read.json()["status"] == "authorized"
+        return rid
+
+    async def _debit(self, session, test_workspace, test_account, test_user, description, amount, on):
+        from app.models.transaction import Transaction
+
+        txn = Transaction(
+            id=uuid.uuid4(), user_id=test_user.id, workspace_id=test_workspace.id,
+            account_id=test_account.id, description=description, amount=amount,
+            date=on, effective_date=on, type="debit", source="manual",
+        )
+        session.add(txn)
+        await session.commit()
+        return txn
+
+    @pytest.mark.asyncio
+    async def test_ranks_the_exact_amount_first(
+        self, client, auth_headers, session, test_workspace, test_account, test_user, enqueued
+    ):
+        rid = await self._authorized(client, auth_headers)
+        issued = (await session.get(Receipt, uuid.UUID(rid))).issued_on
+        # The note totals 42.01. A charge to the cent, one two days later
+        # that is close, and one nobody would confuse it with.
+        await self._debit(session, test_workspace, test_account, test_user, "MERCADO", Decimal("42.01"), issued)
+        await self._debit(
+            session, test_workspace, test_account, test_user, "OUTRO", Decimal("42.50"),
+            issued + timedelta(days=2),
+        )
+        await self._debit(session, test_workspace, test_account, test_user, "LONGE", Decimal("980.00"), issued)
+
+        res = await client.get(f"/api/receipts/{rid}/transaction-candidates", headers=auth_headers)
+        assert res.status_code == 200, res.text
+        found = res.json()["candidates"]
+        assert [c["description"] for c in found] == ["MERCADO", "OUTRO"], "the unrelated amount is not a candidate"
+        assert found[0]["amount_difference"] == "0.00" and found[0]["days_apart"] == 0
+        assert found[1]["days_apart"] == 2
+
+    @pytest.mark.asyncio
+    async def test_a_debit_another_note_already_claims_is_not_offered(
+        self, client, auth_headers, session, test_workspace, test_account, test_user, enqueued
+    ):
+        """One charge is one purchase. Offering it twice invites a link
+        that quietly replaces a correct one."""
+        rid = await self._authorized(client, auth_headers)
+        issued = (await session.get(Receipt, uuid.UUID(rid))).issued_on
+        txn = await self._debit(
+            session, test_workspace, test_account, test_user, "MERCADO", Decimal("42.01"), issued
+        )
+
+        # A second real key, so this exercises the exclusion rather than
+        # a scan that quietly fails.
+        other = await client.post(
+            "/api/receipts/scan", json={"payload": OTHER_KEY}, headers=auth_headers
+        )
+        assert other.status_code == 201, other.text
+        claimed = await client.patch(
+            f"/api/receipts/{other.json()['receipt']['id']}",
+            json={"transaction_id": str(txn.id)}, headers=auth_headers,
+        )
+        assert claimed.status_code == 200, claimed.text
+
+        res = await client.get(f"/api/receipts/{rid}/transaction-candidates", headers=auth_headers)
+        assert [c["description"] for c in res.json()["candidates"]] == []
+
+    @pytest.mark.asyncio
+    async def test_a_note_with_no_total_has_no_candidates(self, client, auth_headers, enqueued):
+        """Nothing to match on. Answering with the week's debits would be
+        guessing dressed as a suggestion."""
+        res = await client.post("/api/receipts/scan", json={"payload": URL}, headers=auth_headers)
+        rid = res.json()["receipt"]["id"]
+        got = await client.get(f"/api/receipts/{rid}/transaction-candidates", headers=auth_headers)
+        assert got.status_code == 200 and got.json()["candidates"] == []

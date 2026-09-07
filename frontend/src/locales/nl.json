@@ -2799,6 +2799,20 @@
       "createFailed": "Token aanmaken mislukt.",
       "lastUsed": "gebruikt op {{date}}",
       "neverUsed": "nooit gebruikt"
+    },
+    "link": {
+      "title": "Transactie",
+      "hint": "Koppel deze bon aan de afschrijving die eruit volgde. Alleen debets met vergelijkbaar bedrag en datum worden voorgesteld — jij kiest.",
+      "isLinked": "Gekoppeld aan een transactie.",
+      "unlink": "Ontkoppelen",
+      "linked": "Bon gekoppeld.",
+      "cleared": "Koppeling verwijderd.",
+      "looking": "Transacties zoeken…",
+      "none": "Geen vergelijkbare transactie rond die datum.",
+      "thisOne": "Deze",
+      "off": "verschil {{amount}}",
+      "daysApart_one": "{{count}} dag ertussen",
+      "daysApart_other": "{{count}} dagen ertussen"
     }
   },
   "products": {

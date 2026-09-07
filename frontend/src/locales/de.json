@@ -2447,6 +2447,20 @@
       "createFailed": "Token konnte nicht erstellt werden.",
       "lastUsed": "benutzt am {{date}}",
       "neverUsed": "nie benutzt"
+    },
+    "link": {
+      "title": "Transaktion",
+      "hint": "Verknüpfen Sie diesen Beleg mit der Buchung, die er ausgelöst hat. Vorgeschlagen werden nur Belastungen mit ähnlichem Betrag und Datum — die Wahl bleibt Ihnen.",
+      "isLinked": "Mit einer Buchung verknüpft.",
+      "unlink": "Verknüpfung lösen",
+      "linked": "Beleg verknüpft.",
+      "cleared": "Verknüpfung entfernt.",
+      "looking": "Suche nach Buchungen…",
+      "none": "Keine ähnliche Buchung um dieses Datum.",
+      "thisOne": "Diese",
+      "off": "Abweichung {{amount}}",
+      "daysApart_one": "{{count}} Tag Abstand",
+      "daysApart_other": "{{count}} Tage Abstand"
     }
   },
   "invoices": {

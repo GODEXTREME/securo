@@ -334,6 +334,71 @@ async def submit_html(
     return receipt
 
 
+#: How far from the note's date a card charge may sit and still be the
+#: same purchase. Two days covers the usual settlement lag; five leaves
+#: room for a weekend and a slow acquirer without turning the list into
+#: "every debit that week".
+CANDIDATE_DAYS = 5
+
+#: How far the amount may differ. Card and receipt normally agree to the
+#: cent; the window exists for a rounding or a small cash part, not to
+#: guess. Proportional above R$ 200, a flat R$ 2 below it.
+CANDIDATE_ABS_TOLERANCE = Decimal("2.00")
+CANDIDATE_REL_TOLERANCE = Decimal("0.01")
+
+
+async def transaction_candidates(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    receipt_id: uuid.UUID,
+    *,
+    limit: int = 10,
+) -> list[tuple[Transaction, Decimal, int]]:
+    """Debits this note could be. Returns each with its amount difference
+    and its distance in days, so the UI can show why it is a candidate
+    rather than asking for trust.
+
+    A note with no total cannot be matched on one, and a workspace that
+    already tied a transaction to another note should not be offered it
+    twice — one charge is one purchase.
+    """
+    link = await get_link(session, workspace_id, receipt_id)
+    if link is None:
+        return []
+    receipt = link.receipt
+    if receipt.total is None:
+        return []
+    total = Decimal(receipt.total)
+    on = receipt.issued_on or receipt.first_scanned_at.date()
+    tolerance = max(CANDIDATE_ABS_TOLERANCE, total * CANDIDATE_REL_TOLERANCE)
+
+    taken = select(ReceiptLink.transaction_id).where(
+        ReceiptLink.workspace_id == workspace_id,
+        ReceiptLink.transaction_id.is_not(None),
+        ReceiptLink.receipt_id != receipt_id,
+    )
+    rows = await session.execute(
+        select(Transaction)
+        .where(
+            Transaction.workspace_id == workspace_id,
+            Transaction.type == "debit",
+            Transaction.date >= on - timedelta(days=CANDIDATE_DAYS),
+            Transaction.date <= on + timedelta(days=CANDIDATE_DAYS),
+            func.abs(func.abs(Transaction.amount) - total) <= tolerance,
+            Transaction.id.not_in(taken),
+        )
+        .limit(200)
+    )
+    scored = [
+        (tx, abs(abs(Decimal(tx.amount)) - total), abs((tx.date - on).days))
+        for tx in rows.scalars().all()
+    ]
+    # Amount first: two debits the same day, one of them to the cent, is
+    # not a close call. Days break the tie.
+    scored.sort(key=lambda row: (row[1], row[2]))
+    return scored[:limit]
+
+
 async def update_link(
     session: AsyncSession,
     workspace_id: uuid.UUID,

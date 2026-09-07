@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { DeleteConfirmationDialog } from '@/components/delete-confirmation-dialog'
 import { ReceiptPastePanel } from '@/components/receipts/receipt-paste-panel'
+import { ReceiptTransactionLink } from '@/components/receipts/receipt-transaction-link'
 import { ReceiptStatusBadge, ReceiptStatusMessage } from '@/components/receipts/receipt-status'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
@@ -320,6 +321,13 @@ export default function ReceiptDetailPage() {
           </dl>
         </section>
       )}
+
+      <ReceiptTransactionLink
+        receipt={receipt}
+        locale={locale}
+        dateLocale={dateLocale}
+        canWrite={canWrite}
+      />
 
       {/* Yours to keep or not */}
       {canWrite && (
