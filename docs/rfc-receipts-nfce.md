@@ -162,12 +162,45 @@ days. It is the only evidence of what a portal actually said, and it is
 what let the ES parser be written against reality rather than against a
 guess.
 
+## Fetching through a browser
+
+Neither portal answers a request and both answer a browser. That is not
+a guess: a real Chrome on the same network reaches the Rio de Janeiro
+note, and everything that is not a browser does not. What was tried,
+against the RJ note, before settling on this:
+
+| | result |
+|---|---|
+| worker, identifying User-Agent | block page |
+| worker, browser User-Agent | F5 interstitial |
+| headless Chromium (Playwright) | navigation aborted |
+| Trawl (FlareSolverr-compatible) | F5 interstitial, in 131 ms — it never ran a browser |
+| FlareSolverr, against ES | "Error solving the challenge", 60 s timeout |
+| a real browser, headful | **the note** |
+
+So `BrowserFetcher` drives one over the Chrome DevTools Protocol: open a
+tab, let the page's own scripts run, take the HTML, close the tab. The
+browser is the operator's — a Kasm Chrome container is what this was
+written against — which is what makes it defensible. Nothing defeats a
+challenge. A challenge that wants a person is answered by a person, in
+that browser, and the cookie their click leaves in the profile is what
+the next fetch reuses.
+
+It is **off unless configured** (`receipts_browser_cdp_url` and
+`receipts_browser_ufs`), and the safety around it is unchanged: the host
+allowlist is checked before the tab is opened — a browser follows
+redirects and runs scripts, so that check matters more here, not less —
+and the circuit breaker still speaks for the state.
+
 ## What is not done
 
-- **RJ adapter.** The QR parses and the state is recognised; the portal's
-  page has not been read yet, so a note from there settles as
-  `unsupported_uf`.
-- **Automatic fetching anywhere.** No supported state currently answers
-  the worker. The machinery is there and correct; it is waiting for a
-  portal that will talk to it.
-- **Linking a receipt to a transaction**, and anything on the dashboard.
+- **The browser path against a live browser.** The CDP calls are written
+  from the protocol, tested against a fake, and have not been run
+  against Chrome. The shape of `/json/new` and `Runtime.evaluate` is the
+  part to distrust first.
+- **Automatic fetching without a browser.** No supported state answers
+  the worker over plain HTTP, and the table above is why. The HTTP path
+  is kept correct for the day one does.
+- **Suggested product merges in the UI.** The backend computes them
+  (`/suggestions`); nothing surfaces them, so today only a barcode
+  merges two products.

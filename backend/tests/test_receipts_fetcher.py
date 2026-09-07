@@ -182,3 +182,14 @@ async def test_the_user_agent_names_us_inside_a_browser_envelope():
     assert len(seen) == 1
     assert seen[0].startswith("Mozilla/5.0 ")
     assert "Securo/1.0" in seen[0] and "github.com/godextreme/securo" in seen[0]
+
+
+def test_the_configured_user_agent_is_the_fetchers_own():
+    """These were two separate strings, and the setting silently won: the
+    constant was corrected and every request kept sending the old value,
+    because the worker passes the setting in. One source of truth now, and
+    this is what holds it."""
+    from app.core.config import get_settings
+    from app.receipts.fetcher import DEFAULT_USER_AGENT
+
+    assert get_settings().receipts_user_agent == DEFAULT_USER_AGENT

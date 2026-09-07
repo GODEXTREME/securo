@@ -26,7 +26,7 @@ from app.models.transaction import Transaction
 from app.receipts.adapters.base import FetchedPage, PageKind, ParseError, UFAdapter
 from app.receipts.adapters.registry import ADAPTERS
 from app.receipts.canonical import CanonicalReceipt
-from app.receipts.fetcher import Fetcher, host_allowed
+from app.receipts.fetcher import PageSource, host_allowed
 from app.receipts.uf_table import current_portal_url
 from app.receipts.pasted import normalize_pasted
 from app.receipts.qr import NFCE_MODEL, QrPayload, parse_access_key, parse_qr_payload
@@ -520,7 +520,7 @@ async def process_receipt(
     session: AsyncSession,
     receipt_id: uuid.UUID,
     *,
-    fetcher: Fetcher,
+    fetcher: PageSource,
     adapters: dict[str, UFAdapter] = ADAPTERS,
     now: Optional[datetime] = None,
     raw_ttl_days: Optional[int] = None,

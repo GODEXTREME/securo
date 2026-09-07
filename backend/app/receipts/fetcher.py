@@ -45,6 +45,14 @@ class FetchResult:
     detail: Optional[str] = None
 
 
+class PageSource(Protocol):
+    """What the receipt worker needs from anything that can bring back a
+    page: HTTP for the states that answer a request, a browser for the
+    ones that only answer a browser."""
+
+    async def fetch(self, url: str, allowed_hosts: frozenset[str], uf: str) -> "FetchResult": ...
+
+
 class Gate(Protocol):
     async def acquire(self, host: str, min_interval_ms: int) -> bool: ...
     async def circuit_open(self, uf: str) -> bool: ...

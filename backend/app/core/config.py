@@ -5,11 +5,14 @@ from pathlib import Path
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.receipts.fetcher import DEFAULT_USER_AGENT
+
 # Use the same environment variable that systemd uses: https://systemd.io/CREDENTIALS/
 # If not defined, defaults to docker secrets defaults (https://docs.docker.com/compose/how-tos/use-secrets/)
 CREDENTIALS_DIRECTORY: list[Path] = [
     Path(p) for p in getenv("CREDENTIALS_DIRECTORY", "/run/secrets").split(":") if p
 ]
+
 
 
 class Settings(BaseSettings):
@@ -132,7 +135,24 @@ class Settings(BaseSettings):
     receipts_circuit_failures: int = 5
     receipts_circuit_open_seconds: int = 900
     receipts_raw_html_ttl_days: int = 90
-    receipts_user_agent: str = "Securo/receipts (+https://github.com/godextreme/securo)"
+    #: Defaults to the fetcher's own constant rather than repeating it.
+    #: The two were separate strings once, and the override silently won:
+    #: the constant was corrected and every request kept sending the old
+    #: value, because the worker passes this setting in.
+    receipts_user_agent: str = DEFAULT_USER_AGENT
+
+    #: Where a browser is listening on the Chrome DevTools Protocol, e.g.
+    #: `http://kasm-chrome-nfe:9222`. Empty disables browser fetching
+    #: entirely: without it nothing about the existing path changes.
+    receipts_browser_cdp_url: str = ""
+    #: Which states go through that browser, comma-separated ("ES,RJ").
+    #: Both portals refuse a plain request today, but the setting is a
+    #: list rather than a switch because that is a fact about portals,
+    #: not about the app, and it will stop being true state by state.
+    receipts_browser_ufs: str = ""
+    receipts_browser_timeout_seconds: float = 30.0
+    #: How long to let a page's own scripts run before reading it.
+    receipts_browser_settle_seconds: float = 3.0
 
     @property
     def oidc_login_available(self) -> bool:
