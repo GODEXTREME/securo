@@ -2306,7 +2306,7 @@
     "pastePage": "Seite einfügen",
     "discard": "Verwerfen",
     "discardTitle": "Diesen Bon entfernen?",
-    "discardDesc": "Er verschwindet aus Ihrer Liste und Ihren Summen. Der Bon selbst bleibt erhalten und kann später erneut gescannt werden.",
+    "discardDesc": "Er verschwindet aus Ihrer Liste und Ihren Summen. Der Bon selbst bleibt erhalten und kann später erneut gescannt werden. Erneutes Scannen zeigt denselben Beleg, ohne das Portal zu fragen — für einen neuen Versuch nutzen Sie „Erneut versuchen“. Die Markierung „nicht mein Einkauf“ und der Preisvergleich dieser Verknüpfung werden neu aufgebaut.",
     "discarded": "Bon entfernt.",
     "delete": "Aus meinen Bons entfernen",
     "notFound": "Dieser Bon ist nicht in Ihrer Liste.",

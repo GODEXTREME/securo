@@ -2306,7 +2306,7 @@
     "pastePage": "Colar página",
     "discard": "Descartar",
     "discardTitle": "Remover este talão?",
-    "discardDesc": "Sai da sua lista e dos seus totais. O talão em si é mantido e pode ser digitalizado de novo mais tarde.",
+    "discardDesc": "Sai da sua lista e dos seus totais. O talão em si é mantido e pode ser digitalizado de novo mais tarde. Ler de novo mostra o mesmo talão, sem consultar a Sefaz — para nova tentativa, use \"Tentar de novo\". A marcação \"não é compra minha\" e a comparação de preços desta ligação são refeitas.",
     "discarded": "Talão removido.",
     "delete": "Remover dos meus talões",
     "notFound": "Este talão não está na sua lista.",

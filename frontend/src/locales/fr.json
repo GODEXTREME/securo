@@ -2306,7 +2306,7 @@
     "pastePage": "Coller la page",
     "discard": "Retirer",
     "discardTitle": "Retirer ce ticket ?",
-    "discardDesc": "Il quitte votre liste et vos totaux. Le ticket lui-même est conservé et pourra être scanné à nouveau.",
+    "discardDesc": "Il quitte votre liste et vos totaux. Le ticket lui-même est conservé et pourra être scanné à nouveau. La scanner à nouveau affiche la même note sans interroger l’État — pour une nouvelle tentative, utilisez « Réessayer ». La mention « pas mon achat » et la comparaison de prix de ce lien sont refaites.",
     "discarded": "Ticket retiré.",
     "delete": "Retirer de mes tickets",
     "notFound": "Ce ticket n'est pas dans votre liste.",

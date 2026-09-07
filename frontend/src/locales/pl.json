@@ -2437,7 +2437,7 @@
     "pastePage": "Wklej stronę",
     "discard": "Odrzuć",
     "discardTitle": "Usunąć ten paragon?",
-    "discardDesc": "Zniknie z Twojej listy i sum. Sam paragon zostaje zachowany i można go później zeskanować ponownie.",
+    "discardDesc": "Zniknie z Twojej listy i sum. Sam paragon zostaje zachowany i można go później zeskanować ponownie. Ponowne zeskanowanie pokaże ten sam paragon bez pytania portalu — aby spróbować ponownie, użyj „Spróbuj ponownie”. Oznaczenie „to nie mój zakup” i porównanie cen tego powiązania zostaną odtworzone.",
     "discarded": "Paragon usunięty.",
     "delete": "Usuń z moich paragonów",
     "notFound": "Tego paragonu nie ma na Twojej liście.",

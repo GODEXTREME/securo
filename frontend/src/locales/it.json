@@ -2306,7 +2306,7 @@
     "pastePage": "Incolla pagina",
     "discard": "Scarta",
     "discardTitle": "Rimuovere questo scontrino?",
-    "discardDesc": "Esce dalla tua lista e dai tuoi totali. Lo scontrino in sé viene conservato e potrà essere scansionato di nuovo.",
+    "discardDesc": "Esce dalla tua lista e dai tuoi totali. Lo scontrino in sé viene conservato e potrà essere scansionato di nuovo. Scansionarla di nuovo mostra la stessa nota senza interrogare il portale: per un altro tentativo usa \"Riprova\". Il contrassegno \"non è un mio acquisto\" e il confronto prezzi di questo collegamento vengono rifatti.",
     "discarded": "Scontrino rimosso.",
     "delete": "Rimuovi dai miei scontrini",
     "notFound": "Questo scontrino non è nella tua lista.",

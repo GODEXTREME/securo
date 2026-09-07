@@ -2658,7 +2658,7 @@
     "pastePage": "Pagina plakken",
     "discard": "Verwijderen",
     "discardTitle": "Deze bon verwijderen?",
-    "discardDesc": "Hij verdwijnt uit je lijst en je totalen. De bon zelf blijft bewaard en kan later opnieuw worden gescand.",
+    "discardDesc": "Hij verdwijnt uit je lijst en je totalen. De bon zelf blijft bewaard en kan later opnieuw worden gescand. Opnieuw scannen toont dezelfde bon zonder het portaal te bevragen — gebruik \"Opnieuw proberen\" voor een nieuwe poging. De markering \"niet mijn aankoop\" en de prijsvergelijking van deze koppeling worden opnieuw opgebouwd.",
     "discarded": "Bon verwijderd.",
     "delete": "Uit mijn bonnen verwijderen",
     "notFound": "Deze bon staat niet in je lijst.",
