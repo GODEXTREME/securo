@@ -106,6 +106,35 @@ async def test_key_first_then_qr_keeps_the_signed_url(session, test_user, test_w
 
 
 @pytest.mark.asyncio
+async def test_rescanning_replaces_a_misread_url(session, test_user, test_workspace):
+    """The signature at the end of the URL has no check digit: a misread
+    gives a link the portal refuses while the key still validates. The
+    second read is the fix, so it wins."""
+    misread = URL.replace("4020a74f", "4020a74e")
+    await receipt_service.scan(session, test_workspace.id, test_user.id, misread)
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL)
+    assert out.receipt.qr_url == URL
+
+
+@pytest.mark.asyncio
+async def test_rescanning_an_authorized_note_keeps_its_url(session, test_user, test_workspace):
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL)
+    out.receipt.status = "authorized"
+    await session.commit()
+    other = URL.replace("4020a74f", "4020a74e")
+    again = await receipt_service.scan(session, test_workspace.id, test_user.id, other)
+    assert again.receipt.qr_url == URL
+
+
+@pytest.mark.asyncio
+async def test_rescanning_cannot_point_the_url_off_the_portal(session, test_user, test_workspace):
+    await receipt_service.scan(session, test_workspace.id, test_user.id, URL)
+    elsewhere = URL.replace("app.sefaz.es.gov.br", "sefaz.es.gov.br.example.com")
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, elsewhere)
+    assert out.receipt.qr_url == URL
+
+
+@pytest.mark.asyncio
 async def test_unparseable_input_raises(session, test_user, test_workspace):
     with pytest.raises(QrError) as exc:
         await receipt_service.scan(session, test_workspace.id, test_user.id, "nada")
