@@ -1376,6 +1376,7 @@ export type ReceiptStatusReason =
   | 'homolog'
   | 'cancelled_by_sefaz'
   | 'needs_qr'
+  | 'qr_rejected'
 
 /** One CNPJ. Instance-wide: the same store row backs every workspace. */
 export interface Store {

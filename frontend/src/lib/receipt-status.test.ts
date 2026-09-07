@@ -61,6 +61,10 @@ describe('wantsPaste', () => {
     expect(wantsPaste(receipt('waiting_sefaz', 'captcha'))).toBe(true)
   })
 
+  it('is offered when the portal refused the QR, since the key still works', () => {
+    expect(wantsPaste(receipt('waiting_sefaz', 'qr_rejected'))).toBe(true)
+  })
+
   it('stays out of the way while the worker is still going to retry', () => {
     expect(wantsPaste(receipt('waiting_sefaz', 'not_published'))).toBe(false)
     expect(wantsPaste(receipt('waiting_sefaz', 'rate_limited'))).toBe(false)

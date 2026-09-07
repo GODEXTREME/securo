@@ -28,6 +28,10 @@ class PageKind(StrEnum):
     #: The portal asked for a human. Automatic retries are pointless;
     #: the user can paste the page instead.
     CAPTCHA = "captcha"
+    #: The portal read the QR and refused it. The key may still be sound:
+    #: the signature at the end of the URL carries no check digit, so a
+    #: misread lands here. Asking again with the same URL cannot help.
+    QR_REJECTED = "qr_rejected"
     #: Maintenance, 5xx, or HTML we do not recognise at all.
     ERROR_PAGE = "error_page"
 

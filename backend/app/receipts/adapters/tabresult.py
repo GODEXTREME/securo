@@ -72,6 +72,19 @@ _NOT_FOUND_MARKERS = (
 )
 
 
+#: The portal's verdict on the QR itself, not on the note. ES words it
+#: "QR Code Inválido"; the accentless and hyphenated spellings are cheap to
+#: cover and cost nothing when they never appear.
+_QR_REJECTED_MARKERS = (
+    "qr code inválido",
+    "qr code invalido",
+    "qrcode inválido",
+    "qrcode invalido",
+    "qr-code inválido",
+    "qr-code invalido",
+)
+
+
 def parse_brl(raw: str | None) -> Optional[Decimal]:
     """`R$ 1.234,56` → Decimal('1234.56'). None when there is no number."""
     if raw is None:
@@ -97,6 +110,10 @@ def classify_tabresult(page: FetchedPage) -> PageKind:
         return PageKind.CANCELLED
     if 'id="tabresult"' in lowered:
         return PageKind.AUTHORIZED
+    # Before the challenge check: a page can carry both, and the verdict on
+    # the QR is the more useful of the two — it says the URL is the problem.
+    if any(marker in lowered for marker in _QR_REJECTED_MARKERS):
+        return PageKind.QR_REJECTED
     if any(marker in lowered for marker in _CAPTCHA_MARKERS):
         return PageKind.CAPTCHA
     if any(marker in lowered for marker in _NOT_FOUND_MARKERS):

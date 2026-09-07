@@ -48,7 +48,9 @@ export function canRetry(receipt: Pick<Receipt, 'status'>): boolean {
  * is a second chance either way.
  */
 export function wantsPaste(receipt: Pick<Receipt, 'status' | 'status_reason'>): boolean {
-  if (receipt.status === 'waiting_sefaz') return receipt.status_reason === 'captcha'
+  if (receipt.status === 'waiting_sefaz') {
+    return receipt.status_reason === 'captcha' || receipt.status_reason === 'qr_rejected'
+  }
   return receipt.status === 'gave_up' || receipt.status === 'parse_error'
 }
 
@@ -74,6 +76,7 @@ export const RECEIPT_REASONS: ReadonlySet<ReceiptStatusReason> = new Set<Receipt
   'homolog',
   'cancelled_by_sefaz',
   'needs_qr',
+  'qr_rejected',
 ])
 
 /**
