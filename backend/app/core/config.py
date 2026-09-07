@@ -5,11 +5,14 @@ from pathlib import Path
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.receipts.fetcher import DEFAULT_USER_AGENT
+
 # Use the same environment variable that systemd uses: https://systemd.io/CREDENTIALS/
 # If not defined, defaults to docker secrets defaults (https://docs.docker.com/compose/how-tos/use-secrets/)
 CREDENTIALS_DIRECTORY: list[Path] = [
     Path(p) for p in getenv("CREDENTIALS_DIRECTORY", "/run/secrets").split(":") if p
 ]
+
 
 
 class Settings(BaseSettings):
@@ -132,7 +135,11 @@ class Settings(BaseSettings):
     receipts_circuit_failures: int = 5
     receipts_circuit_open_seconds: int = 900
     receipts_raw_html_ttl_days: int = 90
-    receipts_user_agent: str = "Securo/receipts (+https://github.com/godextreme/securo)"
+    #: Defaults to the fetcher's own constant rather than repeating it.
+    #: The two were separate strings once, and the override silently won:
+    #: the constant was corrected and every request kept sending the old
+    #: value, because the worker passes this setting in.
+    receipts_user_agent: str = DEFAULT_USER_AGENT
 
     @property
     def oidc_login_available(self) -> bool:
