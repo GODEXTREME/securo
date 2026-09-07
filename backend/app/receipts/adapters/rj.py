@@ -45,6 +45,11 @@ class RjAdapter:
             return qr.url
         base = DEFAULT_CONSULTA_URLS["RJ"]
         version = qr.version // 100 or DEFAULT_QR_VERSION
+        if qr.has_signature:
+            # Older receipts carry the five-field form. Rebuilding them as
+            # three would drop the signature the portal checks.
+            p = "|".join([qr.key.key, str(version), str(qr.tp_amb), qr.c_id_token or "1", qr.signature or ""])
+            return f"{base}?p={p}"
         return f"{base}?p={qr.key.key}|{version}|{qr.tp_amb}"
 
     def classify(self, page: FetchedPage) -> PageKind:

@@ -15,7 +15,7 @@ rather than fetched.
 """
 from __future__ import annotations
 
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 UF_BY_CODE: dict[str, str] = {
     "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP", "17": "TO",
@@ -92,6 +92,31 @@ def allowed_hosts_for(uf: str, overrides: dict[str, str] | None = None) -> froze
             hosts.add(host)
     hosts |= LEGACY_HOSTS.get(uf, frozenset())
     return frozenset(hosts)
+
+
+def current_portal_url(url: str, uf: str, overrides: dict[str, str] | None = None) -> str | None:
+    """The same consultation, asked of the portal the state serves today.
+
+    A QR is printed on paper: Rio de Janeiro's older receipts point at
+    `www4`, which now answers a refusal instead of the note. The query
+    is still the right one — it carries the signature the portal checks
+    — so only the host is stale.
+
+    Returns None unless the URL is on a host we know the state has left
+    **and** the current portal is reached by the same path. A state that
+    also changed its paths would need more than a swap, and guessing
+    would be worse than leaving the URL alone.
+    """
+    host = host_of(url)
+    if host is None or host not in LEGACY_HOSTS.get(uf, frozenset()):
+        return None
+    current = consulta_url_for(uf, overrides)
+    if current is None:
+        return None
+    parts, target = urlsplit(url), urlsplit(current)
+    if parts.path != target.path:
+        return None
+    return urlunsplit((target.scheme, target.netloc, parts.path, parts.query, parts.fragment))
 
 
 def consulta_url_for(uf: str, overrides: dict[str, str] | None = None) -> str | None:
