@@ -201,3 +201,58 @@ class TestTransactionCandidates:
         rid = res.json()["receipt"]["id"]
         got = await client.get(f"/api/receipts/{rid}/transaction-candidates", headers=auth_headers)
         assert got.status_code == 200 and got.json()["candidates"] == []
+
+
+class TestSummary:
+    """The panel's numbers. What it must never do is count a note this
+    workspace said it did not buy, or a note the portal has not answered."""
+
+    async def _authorized(self, client, auth_headers, payload: str) -> str:
+        res = await client.post("/api/receipts/scan", json={"payload": payload}, headers=auth_headers)
+        rid = res.json()["receipt"]["id"]
+        read = await client.post(
+            f"/api/receipts/{rid}/html", json={"html": FIXTURE.read_text(encoding="utf-8")}, headers=auth_headers
+        )
+        assert read.json()["status"] == "authorized"
+        return rid
+
+    @pytest.mark.asyncio
+    async def test_counts_what_was_bought(self, client, auth_headers, enqueued):
+        await self._authorized(client, auth_headers, URL)
+        res = await client.get("/api/receipts/summary", headers=auth_headers)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["receipts"] == 1
+        assert Decimal(body["total_spent"]) == Decimal("42.01")
+        assert body["stores"][0]["receipts"] == 1
+        assert Decimal(body["stores"][0]["total"]) == Decimal("42.01")
+
+    @pytest.mark.asyncio
+    async def test_leaves_out_a_note_that_is_not_mine(self, client, auth_headers, enqueued):
+        """It is on the instance because someone scanned it, not because
+        this workspace bought it. Counting it would inflate every number
+        on the panel."""
+        rid = await self._authorized(client, auth_headers, URL)
+        marked = await client.patch(f"/api/receipts/{rid}", json={"not_my_purchase": True}, headers=auth_headers)
+        assert marked.status_code == 200
+
+        body = (await client.get("/api/receipts/summary", headers=auth_headers)).json()
+        assert body["receipts"] == 0 and Decimal(body["total_spent"]) == Decimal("0")
+        assert body["stores"] == [] and body["movers"] == []
+
+    @pytest.mark.asyncio
+    async def test_leaves_out_a_note_still_waiting_on_the_portal(self, client, auth_headers, enqueued):
+        """Its total is unknown, so it can only be counted as zero — which
+        would read as a purchase that cost nothing."""
+        await client.post("/api/receipts/scan", json={"payload": URL}, headers=auth_headers)
+        body = (await client.get("/api/receipts/summary", headers=auth_headers)).json()
+        assert body["receipts"] == 0
+
+    @pytest.mark.asyncio
+    async def test_the_window_is_the_window(self, client, auth_headers, session, enqueued):
+        """The fixture's note is from August 2026; a one-day window ending
+        today must not contain it."""
+        await self._authorized(client, auth_headers, URL)
+        wide = (await client.get("/api/receipts/summary?days=1825", headers=auth_headers)).json()
+        narrow = (await client.get("/api/receipts/summary?days=1", headers=auth_headers)).json()
+        assert wide["receipts"] == 1 and narrow["receipts"] == 0

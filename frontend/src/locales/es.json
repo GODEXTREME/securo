@@ -2462,6 +2462,19 @@
       "off": "difiere {{amount}}",
       "daysApart_one": "{{count}} día de diferencia",
       "daysApart_other": "{{count}} días de diferencia"
+    },
+    "summary": {
+      "title": "Resumen",
+      "days": "{{count}} d",
+      "spent": "Gastado en tickets",
+      "versusLast": "Frente a la última vez",
+      "comparedItems_one": "{{count}} artículo repetido",
+      "comparedItems_other": "{{count}} artículos repetidos",
+      "nothingRepeated": "Nada repetido todavía",
+      "nothingRepeatedHint": "La comparación aparece cuando vuelvas a comprar algo que ya está en el historial.",
+      "movers": "Lo que más cambió de precio",
+      "stores": "Dónde gastaste",
+      "perUnit": "diferencia por unidad"
     }
   },
   "invoices": {

@@ -1498,6 +1498,37 @@ export interface ScanResponse {
   already_linked: boolean
 }
 
+/** A product whose unit price moved between the last two times this
+ *  workspace bought it. */
+export interface ReceiptMover {
+  product_id: string | null
+  name: string
+  delta_unit: string
+  delta_pct: number | null
+  store_name: string | null
+  observed_on: string | null
+}
+
+export interface StoreSpend {
+  store_id: string | null
+  name: string
+  total: string
+  receipts: number
+}
+
+export interface ReceiptSummary {
+  since: string
+  until: string
+  receipts: number
+  total_spent: string
+  /** Lines that had a previous price to compare against. */
+  compared_items: number
+  /** Positive means the repeated items cost more than they did last time. */
+  delta_total: string
+  movers: ReceiptMover[]
+  stores: StoreSpend[]
+}
+
 /** A debit this note could be, with the two numbers that say why. */
 export interface TransactionCandidate {
   id: string

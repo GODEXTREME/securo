@@ -2462,6 +2462,19 @@
       "off": "differenza {{amount}}",
       "daysApart_one": "{{count}} giorno di distanza",
       "daysApart_other": "{{count}} giorni di distanza"
+    },
+    "summary": {
+      "title": "Riepilogo",
+      "days": "{{count}} g",
+      "spent": "Speso in scontrini",
+      "versusLast": "Rispetto alla volta scorsa",
+      "comparedItems_one": "{{count}} articolo ricomprato",
+      "comparedItems_other": "{{count}} articoli ricomprati",
+      "nothingRepeated": "Niente ricomprato finora",
+      "nothingRepeatedHint": "Il confronto compare quando ricompri qualcosa già presente nello storico.",
+      "movers": "Le variazioni maggiori",
+      "stores": "Dove hai speso",
+      "perUnit": "differenza per unità"
     }
   },
   "invoices": {

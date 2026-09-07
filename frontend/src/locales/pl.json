@@ -2593,6 +2593,19 @@
       "off": "różnica {{amount}}",
       "daysApart_one": "{{count}} dzień różnicy",
       "daysApart_other": "różnica w dniach: {{count}}"
+    },
+    "summary": {
+      "title": "Podsumowanie",
+      "days": "{{count}} d",
+      "spent": "Wydane na paragony",
+      "versusLast": "Wobec poprzedniego razu",
+      "comparedItems_one": "{{count}} produkt kupiony ponownie",
+      "comparedItems_other": "ponownie kupione produkty: {{count}}",
+      "nothingRepeated": "Nic jeszcze nie powtórzone",
+      "nothingRepeatedHint": "Porównanie pojawi się, gdy kupisz ponownie coś, co jest już w historii.",
+      "movers": "Największe zmiany cen",
+      "stores": "Gdzie wydawałeś",
+      "perUnit": "różnica na jednostkę"
     }
   },
   "invoices": {

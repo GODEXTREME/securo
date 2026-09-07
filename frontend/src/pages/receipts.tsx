@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DeleteConfirmationDialog } from '@/components/delete-confirmation-dialog'
 import { ReceiptPastePanel } from '@/components/receipts/receipt-paste-panel'
 import { ReceiptStatusBadge, ReceiptStatusMessage } from '@/components/receipts/receipt-status'
+import { ReceiptSummaryPanel } from '@/components/receipts/receipt-summary-panel'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useWorkspace } from '@/contexts/workspace-context'
@@ -85,6 +86,8 @@ export default function ReceiptsPage() {
   return (
     <div className="space-y-6">
       <PageHeader section={t('nav.receipts')} title={t('receipts.title')} action={scanButton} />
+
+      <ReceiptSummaryPanel locale={locale} dateLocale={dateLocale} />
 
       {isLoading ? (
         <div className="space-y-3">

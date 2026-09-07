@@ -188,6 +188,37 @@ class SubmitHtmlRequest(BaseModel):
     html: str = Field(min_length=1, max_length=2_000_000)
 
 
+class MoverRead(BaseModel):
+    """A product whose unit price moved between the last two times this
+    workspace bought it."""
+    product_id: Optional[uuid.UUID] = None
+    name: str
+    delta_unit: Decimal
+    delta_pct: Optional[float] = None
+    store_name: Optional[str] = None
+    observed_on: Optional[date] = None
+
+
+class StoreSpendRead(BaseModel):
+    store_id: Optional[uuid.UUID] = None
+    name: str
+    total: Decimal
+    receipts: int
+
+
+class SummaryRead(BaseModel):
+    since: date
+    until: date
+    receipts: int
+    total_spent: Decimal
+    #: Lines that had a previous price to compare against.
+    compared_items: int
+    #: Positive means the repeated items cost more than they did last time.
+    delta_total: Decimal
+    movers: list[MoverRead] = Field(default_factory=list)
+    stores: list[StoreSpendRead] = Field(default_factory=list)
+
+
 class TransactionCandidateRead(BaseModel):
     """A debit this note could be, with the two numbers that say why: how
     far off the amount is, and how many days apart they are."""

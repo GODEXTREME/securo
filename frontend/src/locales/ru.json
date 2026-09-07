@@ -2470,6 +2470,19 @@
       "off": "разница {{amount}}",
       "daysApart_one": "{{count}} день разницы",
       "daysApart_other": "разница в днях: {{count}}"
+    },
+    "summary": {
+      "title": "Сводка",
+      "days": "{{count}} д",
+      "spent": "Потрачено по чекам",
+      "versusLast": "По сравнению с прошлым разом",
+      "comparedItems_one": "{{count}} товар куплен снова",
+      "comparedItems_other": "повторных покупок: {{count}}",
+      "nothingRepeated": "Пока ничего не повторялось",
+      "nothingRepeatedHint": "Сравнение появится, когда вы снова купите то, что уже есть в истории.",
+      "movers": "Самые заметные изменения цен",
+      "stores": "Где потрачено",
+      "perUnit": "разница за единицу"
     }
   },
   "invoices": {

@@ -2461,6 +2461,19 @@
       "off": "off by {{amount}}",
       "daysApart_one": "{{count}} day apart",
       "daysApart_other": "{{count}} days apart"
+    },
+    "summary": {
+      "title": "Summary",
+      "days": "{{count}}d",
+      "spent": "Spent on receipts",
+      "versusLast": "Versus last time",
+      "comparedItems_one": "{{count}} item bought again",
+      "comparedItems_other": "{{count}} items bought again",
+      "nothingRepeated": "Nothing bought twice yet",
+      "nothingRepeatedHint": "The comparison appears once you buy something already in the history again.",
+      "movers": "Biggest price changes",
+      "stores": "Where you spent",
+      "perUnit": "difference per unit"
     }
   },
   "invoices": {
