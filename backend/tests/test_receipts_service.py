@@ -253,6 +253,29 @@ async def test_captcha_stops_automatic_retries_and_paste_resolves_it(session, te
 
 
 @pytest.mark.asyncio
+async def test_an_old_host_is_asked_of_the_portal_that_answers(session, test_user, test_workspace, html):
+    """The receipt's QR points at Rio de Janeiro's retired host. The
+    worker must ask the current portal instead — with the same query, so
+    the signature survives — rather than fetch a refusal."""
+    old = (
+        "http://www4.fazenda.rj.gov.br/consultaNFCe/QRCode"
+        "?p=33260942591651053859650220000294281073101411|2|1|1|4020a74fad969d92f6bb16ba1a7b4a177771fb3e"
+    )
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(200, text="<html>nada</html>")
+
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, old, now=NOW)
+    await receipt_service.process_receipt(session, out.receipt.id, fetcher=_fetcher(handler), now=NOW)
+
+    assert len(asked) == 1
+    assert asked[0].startswith("https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode")
+    assert asked[0].endswith("4020a74fad969d92f6bb16ba1a7b4a177771fb3e")
+
+
+@pytest.mark.asyncio
 async def test_a_refused_qr_falls_back_to_the_key(session, test_user, test_workspace, html):
     """The portal refuses the URL's signature but the key is sound, so the
     key's own consultation route is worth one request inside the same

@@ -27,6 +27,7 @@ from app.receipts.adapters.base import FetchedPage, PageKind, ParseError, UFAdap
 from app.receipts.adapters.registry import ADAPTERS
 from app.receipts.canonical import CanonicalReceipt
 from app.receipts.fetcher import Fetcher, host_allowed
+from app.receipts.uf_table import current_portal_url
 from app.receipts.pasted import normalize_pasted
 from app.receipts.qr import NFCE_MODEL, QrPayload, parse_access_key, parse_qr_payload
 from app.receipts.adapters.tabresult import looks_like_html, parse_tabresult_text
@@ -569,7 +570,7 @@ async def process_receipt(
                 fetched_at=receipt.raw_fetched_at or now,
             )
         else:
-            url = receipt.qr_url or adapter.consulta_url(_payload_from(receipt))
+            url = _fetch_url(receipt, adapter)
             fetched = True
             result = await fetcher.fetch(url, adapter.allowed_hosts, receipt.uf)
             if result.outcome == "blocked":
@@ -679,6 +680,19 @@ async def expire_raw_html(session: AsyncSession, *, now: Optional[datetime] = No
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+def _fetch_url(receipt: Receipt, adapter: UFAdapter) -> str:
+    """Where to ask for this note.
+
+    The QR's own URL is preferred — it carries the signature the portal
+    checks — except when it names a host the state has since left. Paper
+    outlives a migration, so an old receipt points somewhere that now
+    answers a refusal; the query is still right, only the host is stale.
+    """
+    if receipt.qr_url:
+        return current_portal_url(receipt.qr_url, receipt.uf) or receipt.qr_url
+    return adapter.consulta_url(_payload_from(receipt))
+
+
 def _key_only_url(receipt: Receipt, adapter: UFAdapter) -> str:
     """The consultation URL built from the access key alone — no QR, no
     signature. What a person types into the portal's own form."""

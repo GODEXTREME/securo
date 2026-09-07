@@ -79,7 +79,16 @@ _NOT_FOUND_MARKERS = (
 #: that computes a cookie before the page will load. The real DANFE
 #: carries these too, so this is only ever reached after the tabResult
 #: check below has already answered AUTHORIZED.
-_BROWSER_WALL_MARKERS = ("/tspd/", "apm_do_not_touch")
+_BROWSER_WALL_MARKERS = (
+    "/tspd/",
+    "apm_do_not_touch",
+    # Rio de Janeiro's refusal to serve this client. It reads as an
+    # IP-reputation notice, but what it really says is "not you" — the
+    # note is fine and a browser gets it, which is the same dead end as
+    # the script above and has the same way out.
+    "serviço de segurança da informação bloqueia",
+    "servico de seguranca da informacao bloqueia",
+)
 
 _QR_REJECTED_MARKERS = (
     "qr code inválido",

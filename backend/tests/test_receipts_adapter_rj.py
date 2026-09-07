@@ -4,6 +4,7 @@ The state shares Espírito Santo's tabResult template, so most of what is
 asserted here is that sharing it was true — and the parts that differ,
 which are the reason this fixture is kept.
 """
+from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +15,7 @@ from app.receipts.adapters.base import FetchedPage, PageKind
 from app.receipts.adapters.registry import ADAPTERS, adapter_for, supported_ufs
 from app.receipts.adapters.rj import RjAdapter
 from app.receipts.qr import parse_access_key, parse_qr_payload
+from app.receipts.uf_table import current_portal_url
 
 FIXTURE = Path(__file__).parent / "fixtures" / "nfce" / "rj"
 KEY = "33260942591651053859650220000294281073101411"
@@ -99,6 +101,50 @@ class TestRealPage:
         finds one, since the service stores only its salted hash."""
         r = RjAdapter().parse(html)
         assert r.customer_cpf == "00000000000"
+
+
+class TestTheOldHost:
+    """Older receipts point at `www4`, which now answers a refusal. The
+    query on them is still right — only the host is stale."""
+
+    OLD = (
+        "http://www4.fazenda.rj.gov.br/consultaNFCe/QRCode"
+        "?p=33260932360034000183650010008486231036678129|2|1|1|34A4A6EFC5FC538989F868EAF19E19DB856700C8"
+    )
+
+    def test_the_query_moves_to_the_portal_that_answers(self):
+        moved = current_portal_url(self.OLD, "RJ")
+        assert moved is not None
+        assert moved.startswith("https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=")
+        # The signature is what the portal checks; losing it would turn a
+        # readable note into "QR Code Inválido".
+        assert moved.endswith("|2|1|1|34A4A6EFC5FC538989F868EAF19E19DB856700C8")
+
+    def test_a_url_already_on_the_current_host_is_left_alone(self):
+        assert current_portal_url("https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=x", "RJ") is None
+
+    def test_a_state_with_no_old_host_is_left_alone(self):
+        assert current_portal_url("http://app.sefaz.es.gov.br/ConsultaNFCe?p=x", "ES") is None
+
+    def test_the_refusal_page_is_named_as_such(self):
+        """It reads as an IP-reputation notice; what it means is "not
+        you". Left as a generic error it would earn eight retries."""
+        page = (
+            "<body>SECRETARIA DE ESTADO DE FAZENDA DO RIO DE JANEIRO<br/>"
+            " nosso serviço de segurança da informação bloqueia acessos"
+            " provenientes desses endereços IP</body>"
+        )
+        assert RjAdapter().classify(_page(page)) == PageKind.NEEDS_BROWSER
+
+
+class TestConsultaUrlKeepsTheSignature:
+    def test_a_five_field_qr_is_rebuilt_as_five(self):
+        payload = parse_qr_payload(
+            "http://www4.fazenda.rj.gov.br/consultaNFCe/QRCode"
+            "?p=33260932360034000183650010008486231036678129|2|1|1|34A4A6EFC5FC538989F868EAF19E19DB856700C8"
+        )
+        url = RjAdapter().consulta_url(replace(payload, url=None))
+        assert url.endswith("|2|1|1|34A4A6EFC5FC538989F868EAF19E19DB856700C8")
 
 
 class TestWhatThePortalAnswersAMachine:
