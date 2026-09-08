@@ -7,6 +7,7 @@ circuit breaker still speaking for the state.
 """
 import asyncio
 
+import httpx
 import pytest
 
 from app.receipts.browser import BrowserFetcher
@@ -20,16 +21,26 @@ NOTE = '<html><body><table id="tabResult"></table></body></html>'
 class FakeCdp:
     """A browser that answers instantly and remembers what it was asked."""
 
-    def __init__(self, html: str = NOTE, *, fail_on: str | None = None, hang: bool = False):
+    endpoint = "http://kasm-chrome:9222"
+
+    def __init__(
+        self,
+        html: str = NOTE,
+        *,
+        fail_on: str | None = None,
+        hang: bool = False,
+        error: Exception | None = None,
+    ):
         self.html = html
         self.fail_on = fail_on
         self.hang = hang
+        self.error = error
         self.opened: list[str] = []
         self.closed: list[str] = []
 
     async def open_tab(self, url: str) -> str:
         if self.fail_on == "open":
-            raise RuntimeError("no browser there")
+            raise self.error or RuntimeError("no browser there")
         if self.hang:
             await asyncio.sleep(60)
         self.opened.append(url)
@@ -137,3 +148,34 @@ class TestWhichFetcher:
         from app.tasks.receipt_tasks import browser_ufs
 
         assert browser_ufs("es, RJ ") == frozenset({"ES", "RJ"})
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_browser_is_not_the_state_s_fault():
+    """`All connection attempts failed` means the portal was never asked.
+    Closing the circuit on that would lock the state out of the HTTP
+    fetcher, which shares the gate and works — so it stays open, and the
+    message names the address that did not answer."""
+    gate = MemoryGate()
+    cdp = FakeCdp(fail_on="open", error=httpx.ConnectError("All connection attempts failed"))
+    fetcher = BrowserFetcher(transport=cdp, gate=gate, settle_seconds=0, circuit_failures=1)
+
+    result = await fetcher.fetch(URL, HOSTS, "RJ")
+
+    assert result.outcome == "portal_down"
+    assert "http://kasm-chrome:9222" in (result.detail or "")
+    assert not await gate.circuit_open("RJ"), "the browser being down is not the portal being down"
+
+
+@pytest.mark.asyncio
+async def test_a_browser_that_answers_badly_still_counts_against_the_state():
+    """A reached browser that fails mid-fetch is the ordinary failure the
+    circuit exists for."""
+    gate = MemoryGate()
+    cdp = FakeCdp(fail_on="html")
+    fetcher = BrowserFetcher(transport=cdp, gate=gate, settle_seconds=0, circuit_failures=1)
+
+    result = await fetcher.fetch(URL, HOSTS, "RJ")
+
+    assert result.outcome == "portal_down"
+    assert await gate.circuit_open("RJ")
