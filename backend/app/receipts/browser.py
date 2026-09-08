@@ -25,7 +25,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional, Protocol
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -133,33 +133,45 @@ class HttpWsCdp:
     the connection Chrome actually accepts, and harmless when this does
     talk to a directly reachable browser.
 
-    For the same reason the `webSocketDebuggerUrl` Chrome reports names
-    the address *it* is listening on, which is loopback inside its own
-    container. Only its host is ours to know, so the URL is rebuilt on
-    the address we were configured with.
+    The `webSocketDebuggerUrl` Chrome reports echoes that same Host back,
+    so it names `localhost` — unreachable from here, and yet the one name
+    the upgrade request must carry. Rewriting it would fix the routing
+    and break the Host. So the URL is left exactly as Chrome wrote it and
+    the connection is pointed at our address instead.
     """
 
     def __init__(self, base_url: str, *, timeout_seconds: float = 30.0) -> None:
         self._base = base_url.rstrip("/")
         self._timeout = timeout_seconds
         self.endpoint = self._base
-        self._netloc = urlsplit(self._base).netloc
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(timeout=self._timeout, headers={"Host": "localhost"})
 
-    def _reachable(self, ws_url: str) -> str:
-        """Chrome's own address for a tab, rewritten to the one we can
-        reach it on. Same path, same scheme, our host."""
-        parts = urlsplit(ws_url)
-        return urlunsplit((parts.scheme, self._netloc, parts.path, parts.query, ""))
+    def _ws_target(self) -> tuple[str, int]:
+        """Where to open the socket, as opposed to what the URL says. The
+        URL is Chrome's and stays Chrome's, because the Host it carries is
+        the one Chrome accepts; only the destination is ours."""
+        parts = urlsplit(self._base)
+        default = 443 if parts.scheme == "https" else 80
+        return parts.hostname or "localhost", parts.port or default
 
     async def _ws_send(self, ws_url: str, method: str, params: dict[str, Any]) -> dict[str, Any]:
         # Imported here so the dependency is only needed by instances that
         # actually enable browser fetching.
         import websockets
 
-        async with websockets.connect(ws_url, open_timeout=self._timeout, max_size=64 * 1024 * 1024) as ws:
+        host, port = self._ws_target()
+        # `host`/`port` reach `loop.create_connection`, so the socket goes
+        # to the browser we were configured with while the request keeps
+        # the URL's own Host header.
+        async with websockets.connect(
+            ws_url,
+            open_timeout=self._timeout,
+            max_size=64 * 1024 * 1024,
+            host=host,
+            port=port,
+        ) as ws:
             await ws.send(json.dumps({"id": 1, "method": method, "params": params}))
             while True:
                 message = json.loads(await ws.recv())
@@ -180,7 +192,7 @@ class HttpWsCdp:
             response.raise_for_status()
             for target in response.json():
                 if str(target.get("id")) == target_id:
-                    return self._reachable(str(target["webSocketDebuggerUrl"]))
+                    return str(target["webSocketDebuggerUrl"])
         raise RuntimeError(f"tab {target_id} is gone")
 
     async def outer_html(self, target_id: str) -> str:
