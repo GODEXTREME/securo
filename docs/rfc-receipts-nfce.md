@@ -228,6 +228,31 @@ allowlist is checked before the tab is opened — a browser follows
 redirects and runs scripts, so that check matters more here, not less —
 and the circuit breaker still speaks for the state.
 
+### Reaching the browser at all
+
+The browser runs headful, because a challenge that wants a person needs
+a person to see it. That choice costs two things, both found the hard
+way against a real Chrome 149 (2026-09-08):
+
+- **`--remote-debugging-port` is ignored on the default profile.** Since
+  Chrome 136 the DevTools port is refused — silently, with no log and no
+  `DevToolsActivePort` file — unless `--user-data-dir` names a
+  non-default directory. The symptom is a browser that looks healthy and
+  a port nothing listens on.
+- **`--remote-debugging-address` is headless-only.** Passed to a headful
+  Chrome it is accepted and disregarded: DevTools binds to `127.0.0.1`
+  and stays there.
+
+So the port is carried out of the browser's network namespace by a socat
+sidecar running inside it (`network_mode: service:kasm-chrome`), and the
+backend talks to `kasm-chrome:9223`. Chrome still only ever accepts a
+connection from its own loopback, which is the property worth keeping.
+
+Two consequences for the client. Chrome refuses a DevTools request whose
+`Host` is neither localhost nor an IP, so `Host: localhost` is sent
+explicitly; and the `webSocketDebuggerUrl` it reports names its own
+loopback, so the URL is rebuilt on the address we were configured with.
+
 ## What is not done
 
 - **The browser path against a live browser.** The CDP calls are written

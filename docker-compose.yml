@@ -202,7 +202,7 @@ services:
   # reaches neither note. Off unless you ask for it:
   #
   #   docker compose --profile receipts-browser up -d
-  #   RECEIPTS_BROWSER_CDP_URL=http://kasm-chrome:9222
+  #   RECEIPTS_BROWSER_CDP_URL=http://kasm-chrome:9223
   #   RECEIPTS_BROWSER_UFS=RJ
   #
   # The DevTools port is deliberately not published. Whoever reaches it
@@ -217,13 +217,30 @@ services:
     restart: unless-stopped
     environment:
       VNC_PW: ${KASM_VNC_PW:-change-me}
-      APP_ARGS: "--start-maximized --remote-debugging-port=9222 --remote-allow-origins=* --remote-debugging-address=0.0.0.0"
+      APP_ARGS: "--start-maximized --user-data-dir=/home/kasm-user/cdp-profile --remote-debugging-port=9222 --remote-allow-origins=*"
     # Chrome crashes on a small /dev/shm, and a DANFE is not a small page.
     shm_size: "2gb"
     ports:
       - "${KASM_EXTERNAL_HOST_PORT:-127.0.0.1:6902}:6901"
     volumes:
       - kasm_profile:/home/kasm-user
+
+  # Chrome binds DevTools to loopback and ignores
+  # `--remote-debugging-address`: that flag only works in headless mode,
+  # and headless is exactly what does not help here, since a challenge
+  # that wants a person needs a person to see it. So the port is carried
+  # out of the browser's own network namespace instead. `network_mode:
+  # service:` puts this container *inside* that namespace, so what it
+  # binds on 0.0.0.0 answers at `kasm-chrome:9223` — and Chrome still
+  # only ever accepts a connection from its own loopback.
+  kasm-cdp:
+    image: alpine/socat:1.8.1.3
+    profiles: [receipts-browser]
+    restart: unless-stopped
+    network_mode: "service:kasm-chrome"
+    depends_on:
+      - kasm-chrome
+    command: ["TCP-LISTEN:9223,fork,reuseaddr", "TCP:127.0.0.1:9222"]
 
 volumes:
   kasm_profile:

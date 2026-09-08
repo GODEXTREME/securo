@@ -25,6 +25,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional, Protocol
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -122,12 +123,36 @@ class HttpWsCdp:
     DevTools WebSocket, one command per call, because this needs exactly
     one round trip and a session would be more moving parts than the job
     deserves.
+
+    Two details exist because a headful Chrome will not be reached
+    directly. It binds DevTools to loopback and ignores
+    `--remote-debugging-address` (that flag is headless-only), so the
+    browser is reached through a forwarder sharing its network namespace
+    — and then Chrome sees a request whose `Host` is the forwarder's, and
+    refuses it. `Host: localhost` is sent explicitly, which is true of
+    the connection Chrome actually accepts, and harmless when this does
+    talk to a directly reachable browser.
+
+    For the same reason the `webSocketDebuggerUrl` Chrome reports names
+    the address *it* is listening on, which is loopback inside its own
+    container. Only its host is ours to know, so the URL is rebuilt on
+    the address we were configured with.
     """
 
     def __init__(self, base_url: str, *, timeout_seconds: float = 30.0) -> None:
         self._base = base_url.rstrip("/")
         self._timeout = timeout_seconds
         self.endpoint = self._base
+        self._netloc = urlsplit(self._base).netloc
+
+    def _client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=self._timeout, headers={"Host": "localhost"})
+
+    def _reachable(self, ws_url: str) -> str:
+        """Chrome's own address for a tab, rewritten to the one we can
+        reach it on. Same path, same scheme, our host."""
+        parts = urlsplit(ws_url)
+        return urlunsplit((parts.scheme, self._netloc, parts.path, parts.query, ""))
 
     async def _ws_send(self, ws_url: str, method: str, params: dict[str, Any]) -> dict[str, Any]:
         # Imported here so the dependency is only needed by instances that
@@ -144,18 +169,18 @@ class HttpWsCdp:
                     return message.get("result", {})
 
     async def open_tab(self, url: str) -> str:
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with self._client() as client:
             response = await client.put(f"{self._base}/json/new", params={"url": url})
             response.raise_for_status()
             return str(response.json()["id"])
 
     async def _ws_url(self, target_id: str) -> str:
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with self._client() as client:
             response = await client.get(f"{self._base}/json/list")
             response.raise_for_status()
             for target in response.json():
                 if str(target.get("id")) == target_id:
-                    return str(target["webSocketDebuggerUrl"])
+                    return self._reachable(str(target["webSocketDebuggerUrl"]))
         raise RuntimeError(f"tab {target_id} is gone")
 
     async def outer_html(self, target_id: str) -> str:
@@ -170,5 +195,5 @@ class HttpWsCdp:
         return value
 
     async def close_tab(self, target_id: str) -> None:
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with self._client() as client:
             await client.get(f"{self._base}/json/close/{target_id}")

@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     receipts_user_agent: str = DEFAULT_USER_AGENT
 
     #: Where a browser is listening on the Chrome DevTools Protocol, e.g.
-    #: `http://kasm-chrome-nfe:9222`. Empty disables browser fetching
+    #: `http://kasm-chrome:9223`. Empty disables browser fetching
     #: entirely: without it nothing about the existing path changes.
     receipts_browser_cdp_url: str = ""
     #: Which states go through that browser, comma-separated ("ES,RJ").
