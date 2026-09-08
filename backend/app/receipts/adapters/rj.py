@@ -39,6 +39,9 @@ class RjAdapter:
     uf = "RJ"
     parser_version = 1
     allowed_hosts = allowed_hosts_for("RJ")
+    #: The 3-field form (`?p=key|versão|tpAmb`) answers with the DANFE,
+    #: signature and all left out (observed 2026-09-07).
+    key_route_answers = True
 
     def consulta_url(self, qr: QrPayload) -> str:
         if qr.url:

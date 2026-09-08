@@ -21,6 +21,13 @@ from app.services import receipt_service
 from app.services.receipt_service import RETRY_SCHEDULE, ReceiptError
 
 FIXTURE = Path(__file__).parent / "fixtures" / "nfce" / "es" / "synthetic_v2.html"
+RJ_KEY = "33260942591651053859650220000294281073101411"
+RJ_FIXTURE = Path(__file__).parent / "fixtures" / "nfce" / "rj" / f"{RJ_KEY}.html"
+SIGNATURE = "4020a74fad969d92f6bb16ba1a7b4a177771fb3e"
+RJ_URL = (
+    "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode"
+    f"?p={RJ_KEY}|2|1|1|{SIGNATURE}"
+)
 KEY = "32260800063960006050650050003784571128411294"
 URL = f"http://app.sefaz.es.gov.br/ConsultaNFCe?p={KEY}|2|1|1|4020a74fad969d92f6bb16ba1a7b4a177771fb3e"
 NOW = datetime(2026, 8, 14, 22, 0, tzinfo=timezone.utc)
@@ -51,6 +58,11 @@ def _serving(html: str, status: int = 200) -> Fetcher:
 @pytest.fixture
 def html() -> str:
     return FIXTURE.read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def rj_html() -> str:
+    return RJ_FIXTURE.read_text(encoding="utf-8")
 
 
 @pytest.fixture
@@ -276,22 +288,62 @@ async def test_an_old_host_is_asked_of_the_portal_that_answers(session, test_use
 
 
 @pytest.mark.asyncio
-async def test_a_refused_qr_falls_back_to_the_key(session, test_user, test_workspace, html):
+async def test_a_refused_qr_falls_back_to_the_key(session, test_user, test_workspace, rj_html):
     """The portal refuses the URL's signature but the key is sound, so the
     key's own consultation route is worth one request inside the same
-    attempt."""
+    attempt. Rio de Janeiro answers that route with the DANFE."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        seen.append(url)
+        if SIGNATURE not in url:  # the 3-field, signature-less form
+            return httpx.Response(200, text=rj_html)
+        return httpx.Response(200, text="<html><body>QR Code Inválido.</body></html>")
+
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, RJ_URL, now=NOW)
+    r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=_fetcher(handler), now=NOW)
+    assert r is not None and r.status == "authorized"
+    assert len(seen) == 2, "the key route is tried once, after the QR"
+
+
+@pytest.mark.asyncio
+async def test_a_key_route_that_lands_elsewhere_keeps_the_qr_verdict(
+    session, test_user, test_workspace
+):
+    """A key route can land on a form, a challenge, or a not-found — none
+    of which says anything about this receipt. The refusal stands, and in
+    particular a not-found must not schedule retries that cannot succeed."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if SIGNATURE not in url:
+            return httpx.Response(200, text="<html><body>Nota fiscal nao encontrada</body></html>")
+        return httpx.Response(200, text="<html><body>QR Code Inválido.</body></html>")
+
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, RJ_URL, now=NOW)
+    r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=_fetcher(handler), now=NOW)
+    assert r is not None and r.status == "waiting_sefaz" and r.status_reason == "qr_rejected"
+    assert r.next_attempt_at is None
+
+
+@pytest.mark.asyncio
+async def test_es_spends_no_request_on_a_key_route_that_is_a_form(
+    session, test_user, test_workspace
+):
+    """Espírito Santo ignores `?chNFe=`: the URL opens an empty form and
+    the key has to be typed behind the Turnstile. There is nothing to fall
+    back to, so the refused QR costs exactly one request."""
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(str(request.url))
-        if "chNFe" in str(request.url):
-            return httpx.Response(200, text=html)
         return httpx.Response(200, text="<html><body>QR Code Inválido.</body></html>")
 
     out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
     r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=_fetcher(handler), now=NOW)
-    assert r is not None and r.status == "authorized"
-    assert len(seen) == 2 and "chNFe" in seen[1], "the key route is tried once, after the QR"
+    assert r is not None and r.status_reason == "qr_rejected"
+    assert len(seen) == 1
 
 
 @pytest.mark.asyncio

@@ -75,6 +75,35 @@ We do not defeat either defence. A challenge is a request for a human,
 and FlareSolverr-style solvers both fail against Turnstile today and
 answer a question nobody asked us to answer.
 
+### The key route, where there is one
+
+The signature at the end of a QR URL carries no check digit, so a single
+character misread by the camera produces a well-formed URL the portal
+refuses forever. The key itself is mod-11 checked, so it survives. When a
+portal answers `QR_REJECTED`, the service therefore spends one more
+request on the route built from the key alone.
+
+That route is not universal, and the difference was measured, not assumed
+(2026-09-07, a person driving a real browser):
+
+| | key route | what it returns |
+|---|---|---|
+| Rio de Janeiro | `?p=<chave>\|3\|1` — the 3-field form | the DANFE |
+| Espírito Santo | `?chNFe=<chave>` | an empty search form; the key must be typed behind the Turnstile |
+
+`UFAdapter.key_route_answers` records which is which, and Espírito Santo
+spends no request on a page that cannot answer. Where the route does
+exist, only an authorised or cancelled note displaces the refusal: a form,
+a challenge or a not-found says nothing about *this* receipt, and letting
+a not-found through would schedule retries that cannot succeed.
+
+Rio de Janeiro also has a fuller consultation at
+`consultadfe.fazenda.rj.gov.br/consultaDFe` — the one reached from
+`www.fazenda.rj.gov.br/nfce/consulta` — which works from the key with no
+QR at all. It is a JSF form: the result URLs carry a `cid` conversation
+id valid only inside the session that created it, so there is nothing to
+fetch, only a form to drive. Not built.
+
 ### So the browser brings the page
 
 `POST /api/receipt-capture` takes a page from a bookmarklet running on

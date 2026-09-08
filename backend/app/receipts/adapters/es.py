@@ -29,6 +29,10 @@ class EsAdapter:
     uf = "ES"
     parser_version = 2
     allowed_hosts = allowed_hosts_for("ES")
+    #: `?chNFe=` is ignored here: the URL opens an empty form, and the key
+    #: has to be typed into it behind the Turnstile (observed 2026-09-07).
+    #: So there is no key route to fall back to when the QR is refused.
+    key_route_answers = False
 
     def consulta_url(self, qr: QrPayload) -> str:
         if qr.url:
