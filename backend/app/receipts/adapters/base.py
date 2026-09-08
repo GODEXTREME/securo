@@ -69,6 +69,11 @@ class UFAdapter(Protocol):
     #: is user input; this is the boundary that keeps the scan endpoint
     #: from being a proxy.
     allowed_hosts: frozenset[str]
+    #: Whether `consulta_url` for a key-only payload names a page that
+    #: *answers* with the note, or merely the portal's search form. Where
+    #: it is a form, a fetcher asking for it learns nothing, so the
+    #: service does not spend the request — the person types the key.
+    key_route_answers: bool
 
     def consulta_url(self, qr: QrPayload) -> str: ...
 

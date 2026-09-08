@@ -590,17 +590,21 @@ async def process_receipt(
                 return receipt
 
         kind = adapter.classify(page)
-        if kind == PageKind.QR_REJECTED and fetched:
+        if kind == PageKind.QR_REJECTED and fetched and adapter.key_route_answers:
             fallback = _key_only_url(receipt, adapter)
             if fallback != page.url:
                 # The portal read the QR and refused it, so asking again the
                 # same way is pointless — but the key is not the part that
                 # was refused. Spend one more request on the route a person
-                # would use. A second failure keeps the first verdict.
+                # would use. Only a note displaces the first verdict: the
+                # key route can land on an empty form or a challenge, and
+                # neither of those says anything about this receipt, so
+                # letting them through would report the wrong reason and,
+                # for a not-found, schedule retries that cannot succeed.
                 again = await fetcher.fetch(fallback, adapter.allowed_hosts, receipt.uf)
                 if again.page is not None:
                     fallback_kind = adapter.classify(again.page)
-                    if fallback_kind != PageKind.QR_REJECTED:
+                    if fallback_kind in (PageKind.AUTHORIZED, PageKind.CANCELLED):
                         page, kind = again.page, fallback_kind
         if kind == PageKind.AUTHORIZED:
             try:
