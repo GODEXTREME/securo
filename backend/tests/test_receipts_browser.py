@@ -10,7 +10,7 @@ import asyncio
 import httpx
 import pytest
 
-from app.receipts.browser import BrowserFetcher
+from app.receipts.browser import BrowserFetcher, HttpWsCdp
 from app.receipts.fetcher import MemoryGate
 
 HOSTS = frozenset({"consultadfe.fazenda.rj.gov.br"})
@@ -179,3 +179,26 @@ async def test_a_browser_that_answers_badly_still_counts_against_the_state():
 
     assert result.outcome == "portal_down"
     assert await gate.circuit_open("RJ")
+
+
+def test_the_ws_url_is_rebuilt_on_the_address_we_can_reach():
+    """Chrome reports the loopback it listens on inside its own
+    container. Only the path identifies the tab; the host is ours."""
+    cdp = HttpWsCdp("http://kasm-chrome:9223")
+
+    rebuilt = cdp._reachable("ws://localhost:9222/devtools/page/ABC123")
+
+    assert rebuilt == "ws://kasm-chrome:9223/devtools/page/ABC123"
+
+
+def test_a_directly_reachable_browser_is_left_alone():
+    """The rewrite is a no-op when Chrome already names our address."""
+    cdp = HttpWsCdp("http://chrome:9222")
+
+    assert cdp._reachable("ws://chrome:9222/devtools/page/X") == "ws://chrome:9222/devtools/page/X"
+
+
+def test_chrome_is_told_a_host_it_accepts():
+    """Chrome refuses a DevTools request whose Host is not localhost or
+    an IP — which is every request that arrives through a forwarder."""
+    assert HttpWsCdp("http://kasm-chrome:9223")._client().headers["host"] == "localhost"
