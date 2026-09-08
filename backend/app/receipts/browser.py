@@ -40,6 +40,11 @@ class CdpTransport(Protocol):
     """The three things this needs from a browser. Implemented over HTTP
     and a WebSocket below; replaced wholesale in tests."""
 
+    #: Where this transport expects the browser to be. Only ever used in
+    #: an error message — and it is the one fact that message needs, since
+    #: the first thing that goes wrong is pointing at the wrong address.
+    endpoint: str
+
     async def open_tab(self, url: str) -> str:
         """Navigate a new tab to `url`. Returns its target id."""
 
@@ -84,6 +89,13 @@ class BrowserFetcher:
         except asyncio.TimeoutError:
             await self.gate.record_failure(uf, self.circuit_failures, self.circuit_open_seconds)
             return FetchResult("timeout", detail=f"browser did not answer in {self.timeout_seconds:.0f}s")
+        except (httpx.TransportError, OSError) as exc:
+            # The browser was never reached, so the portal said nothing and
+            # the circuit must not close on its behalf: an unconfigured or
+            # stopped browser would otherwise lock the state out of the
+            # HTTP fetcher too, which shares this gate and works fine.
+            where = getattr(self.transport, "endpoint", "the browser")
+            return FetchResult("portal_down", detail=f"browser unreachable at {where}: {exc}")
         except Exception as exc:  # noqa: BLE001 — the browser is a remote service
             await self.gate.record_failure(uf, self.circuit_failures, self.circuit_open_seconds)
             return FetchResult("portal_down", detail=f"browser error: {exc}")
@@ -115,6 +127,7 @@ class HttpWsCdp:
     def __init__(self, base_url: str, *, timeout_seconds: float = 30.0) -> None:
         self._base = base_url.rstrip("/")
         self._timeout = timeout_seconds
+        self.endpoint = self._base
 
     async def _ws_send(self, ws_url: str, method: str, params: dict[str, Any]) -> dict[str, Any]:
         # Imported here so the dependency is only needed by instances that
