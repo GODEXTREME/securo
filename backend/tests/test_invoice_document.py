@@ -10,6 +10,7 @@ Two properties matter most here and both are asserted directly:
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -139,8 +140,12 @@ class TestDocument:
         from deep inside a page render."""
         from app.services.invoice_document import DEFAULT_LABELS, default_labels
 
-        for junk in (1.5, 0, [], {}, None, ""):
-            assert default_labels(junk) == dict(DEFAULT_LABELS)  # type: ignore[arg-type]
+        # Typed `Any` rather than suppressed: the point is that values the
+        # signature forbids do arrive, and the checker should not have to
+        # pretend otherwise to let the test say so.
+        junk: list[Any] = [1.5, 0, [], {}, None, ""]
+        for value in junk:
+            assert default_labels(value) == dict(DEFAULT_LABELS)
 
     async def test_labels_default_and_can_be_overridden(
         self, client: AsyncClient, biz_headers
