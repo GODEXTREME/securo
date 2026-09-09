@@ -116,7 +116,7 @@ async def test_supported_ufs(client, auth_headers):
     res = await client.get("/api/receipts/supported-ufs", headers=auth_headers)
     # Exact on purpose: this is the list the scanner shows, so a state
     # registered by accident should fail here rather than ship.
-    assert res.status_code == 200 and res.json() == {"ufs": ["ES", "RJ"]}
+    assert res.status_code == 200 and res.json() == {"ufs": ["ES", "PE", "RJ"]}
 
 
 class TestTransactionCandidates:

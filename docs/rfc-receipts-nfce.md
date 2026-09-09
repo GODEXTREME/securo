@@ -75,6 +75,31 @@ We do not defeat either defence. A challenge is a request for a human,
 and FlareSolverr-style solvers both fail against Turnstile today and
 answer a question nobody asked us to answer.
 
+### A state that answers with the document
+
+Pernambuco does not render a DANFE for the QR consultation. It answers
+with the **authorised XML** — `procNFe` 4.00 inside its own envelope —
+to a plain request, with no challenge and no browser.
+
+That is a better source than any page, and the difference is not
+cosmetic:
+
+| | HTML DANFE (ES, RJ) | XML (PE) |
+|---|---|---|
+| barcode | absent | `det/prod/cEAN` |
+| fiscal state | inferred from prose | `protNFe/infProt/cStat` |
+| layout | a template a designer owns | a published schema |
+| reachable by | a real browser | a plain request |
+
+The barcode is the one that matters most. Everywhere else the catalogue
+is stuck at chain-level identity — the same product in two chains cannot
+be recognised as one — until a person scans it. In Pernambuco it arrives
+with the note.
+
+`nfe_xml.py` holds the parser, beside `tabresult.py` rather than inside
+the state adapter, because the format is national: any state that serves
+`procNFe` needs a binding and nothing more.
+
 ### The key route, where there is one
 
 The signature at the end of a QR URL carries no check digit, so a single
@@ -243,6 +268,18 @@ response.
 `hostname: kasm-chrome` fixes it. A stale lock then names this machine,
 so Chrome checks the pid, finds it dead, and takes the profile back
 instead of standing off against a computer it cannot ask.
+
+### The browser spends the same token
+
+A browser is a heavier client than a plain request, not a lighter one: it
+loads the page, its images and its scripts. So it takes a token from the
+same per-host bucket the HTTP fetcher uses, at the same interval. Without
+that, re-importing a backlog arrives at the portal as fast as Chrome can
+open tabs — which is the one situation where a person deliberately queues
+many fetches at once.
+
+A fetch the limiter turns away never reaches the portal, so it counts as
+neither a success nor a failure against the state's circuit.
 
 ### Telling the tab where to go
 

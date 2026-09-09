@@ -60,6 +60,7 @@ def _make_fetcher(redis_client: redis_asyncio.Redis, uf: Optional[str] = None) -
             gate=gate,
             timeout_seconds=settings.receipts_browser_timeout_seconds,
             settle_seconds=settings.receipts_browser_settle_seconds,
+            min_interval_ms=settings.receipts_min_interval_ms,
             circuit_failures=settings.receipts_circuit_failures,
             circuit_open_seconds=settings.receipts_circuit_open_seconds,
         )

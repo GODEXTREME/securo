@@ -10,6 +10,7 @@ Two properties matter most here and both are asserted directly:
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -131,6 +132,20 @@ class TestDocument:
         resp = await client.get(f"/api/invoices/{invoice['id']}/document", headers=biz_headers)
         assert resp.json()["has_line_items"] is False
         assert resp.json()["lines"] == []
+
+    def test_a_locale_that_is_not_a_language_tag_falls_back(self):
+        """The locale comes from an invoice's stored snapshot — free-form
+        JSON, like the template beside it, which this module already
+        distrusts. A number in that field used to raise `AttributeError`
+        from deep inside a page render."""
+        from app.services.invoice_document import DEFAULT_LABELS, default_labels
+
+        # Typed `Any` rather than suppressed: the point is that values the
+        # signature forbids do arrive, and the checker should not have to
+        # pretend otherwise to let the test say so.
+        junk: list[Any] = [1.5, 0, [], {}, None, ""]
+        for value in junk:
+            assert default_labels(value) == dict(DEFAULT_LABELS)
 
     async def test_labels_default_and_can_be_overridden(
         self, client: AsyncClient, biz_headers

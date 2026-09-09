@@ -2865,6 +2865,10 @@
     "scopeChainHint": "Zonder streepjescode: alleen binnen dezelfde keten vergelijkbaar. Scan de code om het globaal te maken.",
     "rename": "Naam wijzigen",
     "renamed": "Naam bijgewerkt.",
-    "scanProduct": "Product scannen"
+    "scanProduct": "Product scannen",
+    "addGtin": "Streepjescode toevoegen",
+    "linkTitle": "Streepjescode koppelen",
+    "linkHint": "Richt op de streepjescode van het product",
+    "backToProduct": "Terug naar product"
   }
 }

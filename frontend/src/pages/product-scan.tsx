@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowLeft, Barcode, Camera, CameraOff, Loader2, Store as StoreIcon } from 'lucide-react'
@@ -30,6 +30,13 @@ const CAMERA_MESSAGE: Partial<Record<CameraState, string>> = {
 export default function ProductScanPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  // `?link=<id>` turns this page around: instead of asking what a barcode
+  // is and offering candidates, it already knows the product and only
+  // needs the code. Same camera, same errors, same typed fallback — the
+  // gesture is just the other way round, which is how a person holding
+  // the product thinks about it.
+  const [params] = useSearchParams()
+  const target = params.get('link')
   const locale = useDisplayLocale()
   const dateLocale = useDateLocale()
   const queryClient = useQueryClient()
@@ -113,6 +120,14 @@ export default function ProductScanPage() {
     }
   }, [startCamera, stopCamera])
 
+  const submit = useCallback(
+    (value: string) => {
+      if (target) link.mutate({ productId: target, gtin: value })
+      else ask(value)
+    },
+    [target, link, ask],
+  )
+
   useEffect(() => {
     if (camera !== 'scanning' || !ready) return
     let busy = false
@@ -126,7 +141,7 @@ export default function ProductScanPage() {
         const value = await readQr(detector, video)
         if (value && !done) {
           done = true
-          ask(value)
+          submit(value)
         }
       } catch {
         // Nothing readable in this frame; the next one is 200 ms away.
@@ -135,7 +150,7 @@ export default function ProductScanPage() {
       }
     }, DETECT_EVERY_MS)
     return () => window.clearInterval(timer)
-  }, [camera, ready, ask])
+  }, [camera, ready, submit])
 
   const scanAgain = () => {
     setAnswer(null)
@@ -149,11 +164,11 @@ export default function ProductScanPage() {
     <div className="space-y-6">
       <PageHeader
         section={t('nav.receipts')}
-        title={t('products.scanTitle')}
+        title={t(target ? 'products.linkTitle' : 'products.scanTitle')}
         action={
           <Button asChild variant="ghost" size="sm" className="gap-1.5">
-            <Link to="/receipts">
-              <ArrowLeft size={16} /> {t('receipts.backToList')}
+            <Link to={target ? `/products/${target}` : '/receipts'}>
+              <ArrowLeft size={16} /> {t(target ? 'products.backToProduct' : 'receipts.backToList')}
             </Link>
           </Button>
         }
@@ -183,7 +198,7 @@ export default function ProductScanPage() {
               ) : camera === 'starting' ? (
                 t('receipts.cameraStarting')
               ) : camera === 'scanning' ? (
-                t('products.scanHint')
+                t(target ? 'products.linkHint' : 'products.scanHint')
               ) : cameraMessage ? (
                 <span className="inline-flex items-center gap-1.5">
                   <CameraOff size={14} /> {t(cameraMessage)}
@@ -202,7 +217,7 @@ export default function ProductScanPage() {
             onSubmit={(e) => {
               e.preventDefault()
               const value = manual.trim()
-              if (value) ask(value)
+              if (value) submit(value)
             }}
             className="space-y-2 rounded-xl border border-border bg-card p-4 shadow-sm"
           >
@@ -227,7 +242,7 @@ export default function ProductScanPage() {
         </>
       )}
 
-      {answer && (
+      {answer && !target && (
         <Answer
           answer={answer}
           locale={locale}

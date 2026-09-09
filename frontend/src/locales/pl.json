@@ -2995,6 +2995,10 @@
     "scopeChainHint": "Bez kodu kreskowego: porównywalny tylko w tej samej sieci. Zeskanuj kod, aby uczynić go globalnym.",
     "rename": "Zmień nazwę",
     "renamed": "Nazwa zaktualizowana.",
-    "scanProduct": "Zeskanuj produkt"
+    "scanProduct": "Zeskanuj produkt",
+    "addGtin": "Dodaj kod kreskowy",
+    "linkTitle": "Powiąż kod kreskowy",
+    "linkHint": "Skieruj aparat na kod kreskowy produktu",
+    "backToProduct": "Wróć do produktu"
   }
 }

@@ -2864,6 +2864,10 @@
     "scopeChainHint": "Sans code-barres : comparable seulement dans la même enseigne. Scannez le code pour le rendre global.",
     "rename": "Renommer",
     "renamed": "Nom mis à jour.",
-    "scanProduct": "Scanner un produit"
+    "scanProduct": "Scanner un produit",
+    "addGtin": "Ajouter un code-barres",
+    "linkTitle": "Associer un code-barres",
+    "linkHint": "Visez le code-barres du produit",
+    "backToProduct": "Retour au produit"
   }
 }
