@@ -2864,6 +2864,10 @@
     "scopeChainHint": "Ohne Barcode: nur innerhalb derselben Kette vergleichbar. Scannen Sie den Barcode, um es global zu machen.",
     "rename": "Umbenennen",
     "renamed": "Name aktualisiert.",
-    "scanProduct": "Produkt scannen"
+    "scanProduct": "Produkt scannen",
+    "addGtin": "Barcode hinzufügen",
+    "linkTitle": "Barcode verknüpfen",
+    "linkHint": "Auf den Barcode des Produkts richten",
+    "backToProduct": "Zurück zum Produkt"
   }
 }

@@ -89,6 +89,17 @@ export default function ProductDetailPage() {
           {t(product.scope === 'global' ? 'products.scopeGlobalHint' : 'products.scopeChainHint')}
         </p>
 
+        {/* Only a product without one: a barcode already read came from
+            the portal or from someone's scan, and replacing it is a
+            different, riskier thing than supplying the first. */}
+        {!product.gtin && (
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <Link to={`/products/scan?link=${product.id}`}>
+              <Barcode size={15} /> {t('products.addGtin')}
+            </Link>
+          </Button>
+        )}
+
         {name === null ? (
           <Button variant="outline" size="sm" onClick={() => setName(product.name)}>
             {t('products.rename')}

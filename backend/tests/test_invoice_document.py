@@ -132,6 +132,16 @@ class TestDocument:
         assert resp.json()["has_line_items"] is False
         assert resp.json()["lines"] == []
 
+    def test_a_locale_that_is_not_a_language_tag_falls_back(self):
+        """The locale comes from an invoice's stored snapshot — free-form
+        JSON, like the template beside it, which this module already
+        distrusts. A number in that field used to raise `AttributeError`
+        from deep inside a page render."""
+        from app.services.invoice_document import DEFAULT_LABELS, default_labels
+
+        for junk in (1.5, 0, [], {}, None, ""):
+            assert default_labels(junk) == dict(DEFAULT_LABELS)  # type: ignore[arg-type]
+
     async def test_labels_default_and_can_be_overridden(
         self, client: AsyncClient, biz_headers
     ):

@@ -2864,6 +2864,10 @@
     "scopeChainHint": "Senza codice a barre: confrontabile solo nella stessa catena. Scansiona il codice per renderlo globale.",
     "rename": "Rinomina",
     "renamed": "Nome aggiornato.",
-    "scanProduct": "Scansiona un prodotto"
+    "scanProduct": "Scansiona un prodotto",
+    "addGtin": "Aggiungi codice a barre",
+    "linkTitle": "Collega un codice a barre",
+    "linkHint": "Inquadra il codice a barre del prodotto",
+    "backToProduct": "Torna al prodotto"
   }
 }

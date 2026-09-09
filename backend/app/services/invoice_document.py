@@ -183,7 +183,11 @@ def default_labels(locale: Optional[str]) -> dict[str, str]:
     the two differ in vocabulary a translator would care about and not in
     the eighteen words on an invoice.
     """
-    if not locale:
+    # The locale reaches here from an invoice's stored snapshot, which is
+    # free-form JSON like the template beside it: whatever a hand edit or
+    # an older writer put there is what comes back. Anything that is not
+    # a language tag is no language tag, and English is the honest answer.
+    if not isinstance(locale, str) or not locale:
         return dict(DEFAULT_LABELS)
     language = locale.replace("_", "-").split("-")[0].lower()
     return dict(LABEL_PACKS.get(language, DEFAULT_LABELS))

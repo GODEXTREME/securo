@@ -2863,6 +2863,10 @@
     "scopeChainHint": "No barcode: comparable only within the same chain. Scan the barcode to make it global.",
     "rename": "Rename",
     "renamed": "Name updated.",
-    "scanProduct": "Scan a product"
+    "scanProduct": "Scan a product",
+    "addGtin": "Add barcode",
+    "linkTitle": "Link a barcode",
+    "linkHint": "Point at the product's barcode",
+    "backToProduct": "Back to product"
   }
 }

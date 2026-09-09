@@ -2999,6 +2999,10 @@
     "scopeChainHint": "Bez čiarového kódu: porovnateľné len v rámci tej istej siete. Naskenujte kód a bude globálny.",
     "rename": "Premenovať",
     "renamed": "Názov aktualizovaný.",
-    "scanProduct": "Skenovať produkt"
+    "scanProduct": "Skenovať produkt",
+    "addGtin": "Pridať čiarový kód",
+    "linkTitle": "Priradiť čiarový kód",
+    "linkHint": "Namierte na čiarový kód produktu",
+    "backToProduct": "Späť na produkt"
   }
 }
