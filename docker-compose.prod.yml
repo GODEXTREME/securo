@@ -190,6 +190,14 @@ services:
     image: kasmweb/chrome:${KASM_CHROME_VERSION:-1.19.0}
     profiles: [receipts-browser]
     restart: unless-stopped
+    # Chrome locks a profile with the hostname and pid that hold it, and
+    # refuses a profile locked by "another computer" — which every
+    # recreated container is, since Docker hands out a new hostname each
+    # time. The browser then never starts: it is relaunched, refuses
+    # again, and the log fills with "Starting Chrome". Pinning the
+    # hostname makes a stale lock this machine's own, so Chrome checks
+    # the pid, finds it dead, and takes the profile back.
+    hostname: kasm-chrome
     environment:
       VNC_PW: ${KASM_VNC_PW:-change-me}
       APP_ARGS: "--start-maximized --user-data-dir=/home/kasm-user/cdp-profile --remote-debugging-port=9222 --remote-allow-origins=*"

@@ -228,6 +228,22 @@ allowlist is checked before the tab is opened — a browser follows
 redirects and runs scripts, so that check matters more here, not less —
 and the circuit breaker still speaks for the state.
 
+### Keeping the browser alive across a redeploy
+
+A persistent profile and a disposable container disagree. Chrome locks a
+profile with the hostname and pid holding it, and refuses one locked by
+"another computer" — which is what every recreated container looks like,
+since Docker issues a fresh hostname each time. The browser then never
+starts: the session relaunches it, it refuses again, and the log fills
+with `Starting Chrome` while nothing listens on the DevTools port. From
+outside, that is indistinguishable from a network fault: the forwarder
+accepts the connection, fails to reach Chrome, and closes without a
+response.
+
+`hostname: kasm-chrome` fixes it. A stale lock then names this machine,
+so Chrome checks the pid, finds it dead, and takes the profile back
+instead of standing off against a computer it cannot ask.
+
 ### Knowing when the page has arrived
 
 Opening a tab returns before the navigation does. A tab that has not
