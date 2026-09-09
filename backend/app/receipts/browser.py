@@ -88,6 +88,7 @@ class BrowserFetcher:
     gate: Gate
     timeout_seconds: float = 30.0
     settle_seconds: float = SETTLE_SECONDS
+    min_interval_ms: int = 2000
     circuit_failures: int = 5
     circuit_open_seconds: int = 900
 
@@ -135,6 +136,15 @@ class BrowserFetcher:
             return FetchResult("blocked", detail=f"host not allowed for {uf}: {url}")
         if await self.gate.circuit_open(uf):
             return FetchResult("portal_down", detail=f"circuit open for {uf}")
+
+        # The same token the HTTP fetcher spends, from the same bucket. A
+        # browser is a heavier client than a plain request, not a lighter
+        # one — it loads the whole page — so the portal's interval applies
+        # at least as much. Without this a batch of retries arrives as
+        # fast as Chrome can open tabs.
+        host = urlsplit(url).hostname or ""
+        if not await self.gate.acquire(host, self.min_interval_ms):
+            return FetchResult("rate_limited", detail=f"interval not elapsed for {host}")
 
         target_id: Optional[str] = None
         try:

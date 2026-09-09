@@ -244,6 +244,18 @@ response.
 so Chrome checks the pid, finds it dead, and takes the profile back
 instead of standing off against a computer it cannot ask.
 
+### The browser spends the same token
+
+A browser is a heavier client than a plain request, not a lighter one: it
+loads the page, its images and its scripts. So it takes a token from the
+same per-host bucket the HTTP fetcher uses, at the same interval. Without
+that, re-importing a backlog arrives at the portal as fast as Chrome can
+open tabs — which is the one situation where a person deliberately queues
+many fetches at once.
+
+A fetch the limiter turns away never reaches the portal, so it counts as
+neither a success nor a failure against the state's circuit.
+
 ### Telling the tab where to go
 
 `/json/new` takes the target as its **whole query string** — `PUT

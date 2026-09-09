@@ -141,7 +141,13 @@ async def test_a_tab_that_will_not_close_does_not_lose_the_page():
 @pytest.mark.asyncio
 async def test_failures_count_towards_the_circuit_and_success_clears_it():
     gate = MemoryGate()
-    broken = BrowserFetcher(transport=FakeCdp(fail_on="open"), gate=gate, settle_seconds=0, circuit_failures=2)
+    # No interval here: this is about what two *attempts* do to the
+    # circuit, and a fetch the rate limiter turns away never reaches the
+    # portal, so it rightly counts as nothing.
+    broken = BrowserFetcher(
+        transport=FakeCdp(fail_on="open"), gate=gate, settle_seconds=0,
+        min_interval_ms=0, circuit_failures=2,
+    )
     await broken.fetch(URL, HOSTS, "RJ")
     await broken.fetch(URL, HOSTS, "RJ")
     assert await gate.circuit_open("RJ")
@@ -241,3 +247,20 @@ async def test_a_page_that_replaces_itself_is_not_read_first():
 
     assert result.outcome == "page"
     assert result.page is not None and "tabResult" in result.page.html
+
+
+@pytest.mark.asyncio
+async def test_the_browser_spends_the_same_token_as_a_plain_fetch():
+    """A browser loads the whole page, so it is a heavier client than a
+    request, not a lighter one. Re-importing a backlog must not arrive as
+    fast as Chrome can open tabs."""
+    gate = MemoryGate()
+    cdp = FakeCdp()
+    fetcher = BrowserFetcher(transport=cdp, gate=gate, settle_seconds=0, min_interval_ms=60_000)
+
+    first = await fetcher.fetch(URL, HOSTS, "RJ")
+    second = await fetcher.fetch(URL, HOSTS, "RJ")
+
+    assert first.outcome == "page"
+    assert second.outcome == "rate_limited"
+    assert cdp.opened == [URL], "the second fetch never opened a tab"
