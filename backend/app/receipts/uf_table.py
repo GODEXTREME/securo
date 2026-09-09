@@ -46,7 +46,7 @@ DEFAULT_CONSULTA_URLS: dict[str, str] = {
     "MT": "http://www.sefaz.mt.gov.br/nfce/consultanfce",
     "PA": "https://appnfc.sefa.pa.gov.br/portal/view/consultas/nfce/nfceForm.seam",
     "PB": "http://www.receita.pb.gov.br/nfce",
-    "PE": "http://nfce.sefaz.pe.gov.br/nfce/consulta",
+    "PE": "http://nfce.sefaz.pe.gov.br/nfce-web/consultarNFCe",
     "PI": "http://www.sefaz.pi.gov.br/nfce/qrcode",
     "PR": "http://www.fazenda.pr.gov.br/nfce/qrcode",
     "RJ": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
