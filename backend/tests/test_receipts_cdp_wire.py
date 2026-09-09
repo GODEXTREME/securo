@@ -34,8 +34,14 @@ async def _handler(websocket):
         message = json.loads(raw)
         assert message["method"] == "Runtime.evaluate"
         assert message["params"]["returnByValue"] is True
+        expression = message["params"]["expression"]
+        value = (
+            json.dumps({"url": "https://portal/x", "state": "complete", "body": len(HTML)})
+            if "readyState" in expression
+            else HTML
+        )
         await websocket.send(
-            json.dumps({"id": message["id"], "result": {"result": {"value": HTML}}})
+            json.dumps({"id": message["id"], "result": {"result": {"value": value}}})
         )
 
 
@@ -70,8 +76,8 @@ async def test_the_three_calls_work_against_chrome_s_own_answers():
         target_id = await cdp.open_tab("https://consultadfe.fazenda.rj.gov.br/x")
         assert target_id == TAB
 
-        html = await cdp.outer_html(target_id)
-        assert html == HTML
+        assert json.loads(await cdp.evaluate(target_id, "document.readyState"))["state"] == "complete"
+        assert await cdp.evaluate(target_id, "document.documentElement.outerHTML") == HTML
 
         await cdp.close_tab(target_id)
 
