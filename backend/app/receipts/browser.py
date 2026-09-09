@@ -30,7 +30,7 @@ from urllib.parse import quote, urlsplit
 import httpx
 
 from app.receipts.adapters.base import FetchedPage
-from app.receipts.fetcher import FetchResult, Gate, host_allowed
+from app.receipts.fetcher import FetchResult, FollowUp, Gate, host_allowed
 
 #: How long to let a loaded page settle before reading it. The portals'
 #: own scripts run in well under a second; this is slack for a cold
@@ -92,6 +92,31 @@ class BrowserFetcher:
     circuit_failures: int = 5
     circuit_open_seconds: int = 900
 
+    async def _follow(
+        self, html: str, url: str, follow: FollowUp, allowed_hosts: frozenset[str]
+    ) -> tuple[str, str]:
+        """The second page, in a second tab.
+
+        A browser keeps its cookies per profile, not per tab, so the
+        session the first page established is already there — no state
+        has to be carried across by hand. The allowlist is checked again
+        because the URL was built from a page the portal wrote.
+        """
+        page = FetchedPage(url=url, status_code=200, html=html, fetched_at=datetime.now(timezone.utc))
+        target = follow(page)
+        if not target or not host_allowed(target, allowed_hosts):
+            return html, url
+        second: Optional[str] = None
+        try:
+            second = await self.transport.open_tab(target)
+            return await self._settled_html(second), target
+        finally:
+            if second is not None:
+                try:
+                    await self.transport.close_tab(second)
+                except Exception:  # noqa: BLE001
+                    pass
+
     async def _settled_html(self, target_id: str) -> str:
         """The document, once it has stopped changing.
 
@@ -131,7 +156,14 @@ class BrowserFetcher:
             return None
         return str(url), body
 
-    async def fetch(self, url: str, allowed_hosts: frozenset[str], uf: str) -> FetchResult:
+    async def fetch(
+        self,
+        url: str,
+        allowed_hosts: frozenset[str],
+        uf: str,
+        *,
+        follow: FollowUp | None = None,
+    ) -> FetchResult:
         if not host_allowed(url, allowed_hosts):
             return FetchResult("blocked", detail=f"host not allowed for {uf}: {url}")
         if await self.gate.circuit_open(uf):
@@ -151,6 +183,8 @@ class BrowserFetcher:
             async with asyncio.timeout(self.timeout_seconds):
                 target_id = await self.transport.open_tab(url)
                 html = await self._settled_html(target_id)
+                if follow is not None:
+                    html, url = await self._follow(html, url, follow, allowed_hosts)
         except asyncio.TimeoutError:
             await self.gate.record_failure(uf, self.circuit_failures, self.circuit_open_seconds)
             return FetchResult("timeout", detail=f"browser did not answer in {self.timeout_seconds:.0f}s")
