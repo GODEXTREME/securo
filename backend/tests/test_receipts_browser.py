@@ -181,21 +181,17 @@ async def test_a_browser_that_answers_badly_still_counts_against_the_state():
     assert await gate.circuit_open("RJ")
 
 
-def test_the_ws_url_is_rebuilt_on_the_address_we_can_reach():
-    """Chrome reports the loopback it listens on inside its own
-    container. Only the path identifies the tab; the host is ours."""
-    cdp = HttpWsCdp("http://kasm-chrome:9223")
-
-    rebuilt = cdp._reachable("ws://localhost:9222/devtools/page/ABC123")
-
-    assert rebuilt == "ws://kasm-chrome:9223/devtools/page/ABC123"
+def test_the_socket_goes_to_us_and_the_url_stays_chrome_s():
+    """Chrome echoes the Host it was given, so the URL it reports says
+    `localhost` — the one name the upgrade must carry, and an address
+    that reaches nothing from here. The destination is ours; the URL is
+    not."""
+    assert HttpWsCdp("http://kasm-chrome:9223")._ws_target() == ("kasm-chrome", 9223)
 
 
-def test_a_directly_reachable_browser_is_left_alone():
-    """The rewrite is a no-op when Chrome already names our address."""
-    cdp = HttpWsCdp("http://chrome:9222")
-
-    assert cdp._reachable("ws://chrome:9222/devtools/page/X") == "ws://chrome:9222/devtools/page/X"
+def test_a_url_without_a_port_gets_the_scheme_s_own():
+    assert HttpWsCdp("http://chrome")._ws_target() == ("chrome", 80)
+    assert HttpWsCdp("https://chrome")._ws_target() == ("chrome", 443)
 
 
 def test_chrome_is_told_a_host_it_accepts():

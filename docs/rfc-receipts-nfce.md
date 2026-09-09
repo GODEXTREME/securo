@@ -249,9 +249,12 @@ backend talks to `kasm-chrome:9223`. Chrome still only ever accepts a
 connection from its own loopback, which is the property worth keeping.
 
 Two consequences for the client. Chrome refuses a DevTools request whose
-`Host` is neither localhost nor an IP, so `Host: localhost` is sent
-explicitly; and the `webSocketDebuggerUrl` it reports names its own
-loopback, so the URL is rebuilt on the address we were configured with.
+`Host` is neither localhost nor an IP — a name is exactly what arrives
+through a forwarder — so `Host: localhost` is sent explicitly. And
+Chrome echoes that Host back in the `webSocketDebuggerUrl` it reports,
+which therefore says `localhost` and reaches nothing from here. That URL
+is not rewritten: the Host it carries is the one Chrome accepts, so the
+URL stays Chrome's and only the socket's destination is ours.
 
 ## What is not done
 
