@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Optional, Protocol
 
 from app.receipts.canonical import CanonicalReceipt
 from app.receipts.qr import QrPayload
@@ -76,6 +76,17 @@ class UFAdapter(Protocol):
     key_route_answers: bool
 
     def consulta_url(self, qr: QrPayload) -> str: ...
+
+    def follow_up(self, page: FetchedPage) -> Optional[str]:
+        """A second URL to fetch on the same client, or None.
+
+        Some states put the note the QR leads to and the *document* on
+        different pages, and only the second carries the barcode. Reading
+        it is one more request inside the session the first one opened —
+        the adapter names it; the fetcher, which owns the client and the
+        allowlist, is what actually goes.
+        """
+        return None
 
     def classify(self, page: FetchedPage) -> PageKind: ...
 

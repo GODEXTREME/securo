@@ -75,6 +75,30 @@ We do not defeat either defence. A challenge is a request for a human,
 and FlareSolverr-style solvers both fail against Turnstile today and
 answer a question nobody asked us to answer.
 
+### A state whose barcode is one page further in
+
+Goiás puts a Cloudflare challenge on its **search form** and none on the
+**QR route**. A plain request to `danfeNFCe?p=…` is answered — but with
+the consumer DANFE, which has no barcode.
+
+The barcode is on the page behind that one's "Visualizar NFC-e
+detalhada" button: the national detailed view, the same tabbed XSLT Rio
+de Janeiro reaches from its own key search. Asked for on its own it gets
+the challenge; asked for on the client that was just served the note, it
+answers. **The session is the credential.**
+
+So an adapter can name a second URL (`follow_up`), and the fetcher —
+which owns the client, the allowlist and the timeout — makes the
+request. The URL is built from a page the portal wrote, so it is user
+input by another name and gets the same host check the first one did. A
+follow-up that fails keeps the first page: the receipt did arrive, only
+the richer view did not.
+
+`nfe_detail.py` holds that parser. Its markup is not in the page's DOM —
+it arrives as an escaped JavaScript string handed to `new XmlNFE(...)` —
+so it is unwrapped before anything is read, and a state that serves the
+same markup directly needs no special case.
+
 ### A state that answers with the document
 
 Pernambuco does not render a DANFE for the QR consultation. It answers

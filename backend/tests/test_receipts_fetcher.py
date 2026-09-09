@@ -193,3 +193,91 @@ def test_the_configured_user_agent_is_the_fetchers_own():
     from app.receipts.fetcher import DEFAULT_USER_AGENT
 
     assert get_settings().receipts_user_agent == DEFAULT_USER_AGENT
+
+
+class TestFollowUp:
+    """A second request on the first one's client. Goiás needs it: the
+    barcode is on a page that only answers a client the portal has just
+    served, so the session is the credential."""
+
+    GO = frozenset({"nfeweb.sefaz.go.gov.br"})
+    FIRST = "https://nfeweb.sefaz.go.gov.br/nfeweb/sites/nfce/danfeNFCe?p=x"
+    SECOND = "https://nfeweb.sefaz.go.gov.br/nfeweb/sites/nfce/render/NFCe?chNFe=y"
+
+    @pytest.mark.asyncio
+    async def test_the_second_page_is_what_comes_back(self):
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            if "render" in str(request.url):
+                return httpx.Response(200, text="<html>detalhada</html>")
+            return httpx.Response(200, text="<html>danfe</html>", headers={"set-cookie": "s=1; Path=/"})
+
+        result = await _fetcher(handler).fetch(
+            self.FIRST, self.GO, "GO", follow=lambda page: self.SECOND
+        )
+
+        assert result.outcome == "page"
+        assert result.page is not None
+        assert result.page.html == "<html>detalhada</html>"
+        assert result.page.url == self.SECOND
+        assert seen == [self.FIRST, self.SECOND]
+
+    @pytest.mark.asyncio
+    async def test_the_session_is_carried(self):
+        """The whole reason this is one call and not two: the cookie the
+        first response set has to be on the second request."""
+        cookies: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            cookies.append(request.headers.get("cookie", ""))
+            if "render" in str(request.url):
+                return httpx.Response(200, text="ok")
+            return httpx.Response(200, text="danfe", headers={"set-cookie": "JSESSIONID=abc; Path=/"})
+
+        await _fetcher(handler).fetch(self.FIRST, self.GO, "GO", follow=lambda page: self.SECOND)
+
+        assert cookies[0] == ""
+        assert "JSESSIONID=abc" in cookies[1]
+
+    @pytest.mark.asyncio
+    async def test_a_follow_up_off_the_allowlist_is_refused(self):
+        """The URL is built from a page the portal wrote, so it is user
+        input by another name and gets the same check the first one did."""
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text="danfe")
+
+        result = await _fetcher(handler).fetch(
+            self.FIRST, self.GO, "GO", follow=lambda page: "https://evil.example.com/x"
+        )
+
+        assert result.outcome == "blocked" and "follow-up host" in (result.detail or "")
+
+    @pytest.mark.asyncio
+    async def test_a_follow_up_that_fails_keeps_the_note(self):
+        """The receipt did arrive; only the richer view did not. Losing
+        the first page over that would be worse than reading it."""
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "render" in str(request.url):
+                return httpx.Response(403, text="nope")
+            return httpx.Response(200, text="<html>danfe</html>")
+
+        result = await _fetcher(handler).fetch(
+            self.FIRST, self.GO, "GO", follow=lambda page: self.SECOND
+        )
+
+        assert result.outcome == "page"
+        assert result.page is not None and result.page.html == "<html>danfe</html>"
+
+    @pytest.mark.asyncio
+    async def test_no_follow_up_means_one_request(self):
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            return httpx.Response(200, text="danfe")
+
+        await _fetcher(handler).fetch(self.FIRST, self.GO, "GO", follow=lambda page: None)
+
+        assert seen == [self.FIRST]

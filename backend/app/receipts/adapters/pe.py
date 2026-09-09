@@ -17,6 +17,8 @@ signature to preserve, so the key alone reaches the same document.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from app.receipts.adapters.base import FetchedPage, PageKind
 from app.receipts.adapters.nfe_xml import classify_nfe_xml, parse_nfe_xml
 from app.receipts.canonical import CanonicalReceipt
@@ -38,6 +40,10 @@ class PeAdapter:
             return qr.url
         base = DEFAULT_CONSULTA_URLS["PE"]
         return f"{base}?p={qr.key.key}|{qr.version // 100}|{qr.tp_amb}"
+
+    def follow_up(self, page: FetchedPage) -> Optional[str]:
+        """The XML is the whole document already."""
+        return None
 
     def classify(self, page: FetchedPage) -> PageKind:
         return classify_nfe_xml(page)

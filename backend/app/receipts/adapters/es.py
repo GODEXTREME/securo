@@ -17,6 +17,8 @@ discount line; and the payment line can come out as `NaN`.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from app.receipts.adapters.base import FetchedPage, PageKind
 from app.receipts.adapters.tabresult import classify_tabresult, parse_tabresult
 from app.receipts.canonical import CanonicalReceipt
@@ -42,6 +44,10 @@ class EsAdapter:
             p = "|".join([qr.key.key, str(qr.version // 100), str(qr.tp_amb), qr.c_id_token or "1", qr.signature or ""])
             return f"{base}?p={p}"
         return f"{base}?chNFe={qr.key.key}"
+
+    def follow_up(self, page: FetchedPage) -> Optional[str]:
+        """The consumer DANFE is all this portal offers a fetcher."""
+        return None
 
     def classify(self, page: FetchedPage) -> PageKind:
         return classify_tabresult(page)

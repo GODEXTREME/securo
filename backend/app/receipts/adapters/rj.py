@@ -23,6 +23,8 @@ Two things this state does that ES does not:
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from app.receipts.adapters.base import FetchedPage, PageKind
 from app.receipts.adapters.tabresult import classify_tabresult, parse_tabresult
 from app.receipts.canonical import CanonicalReceipt
@@ -54,6 +56,11 @@ class RjAdapter:
             p = "|".join([qr.key.key, str(version), str(qr.tp_amb), qr.c_id_token or "1", qr.signature or ""])
             return f"{base}?p={p}"
         return f"{base}?p={qr.key.key}|{version}|{qr.tp_amb}"
+
+    def follow_up(self, page: FetchedPage) -> Optional[str]:
+        """The detailed view lives behind the key-search form, not on
+        this page — see the RFC."""
+        return None
 
     def classify(self, page: FetchedPage) -> PageKind:
         return classify_tabresult(page)

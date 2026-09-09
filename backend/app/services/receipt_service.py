@@ -572,7 +572,7 @@ async def process_receipt(
         else:
             url = _fetch_url(receipt, adapter)
             fetched = True
-            result = await fetcher.fetch(url, adapter.allowed_hosts, receipt.uf)
+            result = await fetcher.fetch(url, adapter.allowed_hosts, receipt.uf, follow=adapter.follow_up)
             if result.outcome == "blocked":
                 _finish_invalid(receipt, "unsupported_host", result.detail)
                 return receipt
@@ -601,7 +601,9 @@ async def process_receipt(
                 # neither of those says anything about this receipt, so
                 # letting them through would report the wrong reason and,
                 # for a not-found, schedule retries that cannot succeed.
-                again = await fetcher.fetch(fallback, adapter.allowed_hosts, receipt.uf)
+                again = await fetcher.fetch(
+                    fallback, adapter.allowed_hosts, receipt.uf, follow=adapter.follow_up
+                )
                 if again.page is not None:
                     fallback_kind = adapter.classify(again.page)
                     if fallback_kind in (PageKind.AUTHORIZED, PageKind.CANCELLED):

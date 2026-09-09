@@ -39,7 +39,7 @@ DEFAULT_CONSULTA_URLS: dict[str, str] = {
     "CE": "http://nfce.sefaz.ce.gov.br/pages/ShowNFCe.html",
     "DF": "http://www.fazenda.df.gov.br/nfce/qrcode",
     "ES": "http://app.sefaz.es.gov.br/ConsultaNFCe",
-    "GO": "http://nfe.sefaz.go.gov.br/nfeweb/sites/nfce/danfeNFCe",
+    "GO": "https://nfeweb.sefaz.go.gov.br/nfeweb/sites/nfce/danfeNFCe",
     "MA": "http://nfce.sefaz.ma.gov.br/portal/consultarNFCe.jsp",
     "MG": "https://nfce.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml",
     "MS": "http://www.dfe.ms.gov.br/nfce/qrcode",
@@ -77,6 +77,7 @@ def host_of(url: str) -> str | None:
 #: allowed even though nothing is sent to it by default.
 LEGACY_HOSTS: dict[str, frozenset[str]] = {
     "RJ": frozenset({"www4.fazenda.rj.gov.br"}),
+    "GO": frozenset({"nfe.sefaz.go.gov.br"}),
 }
 
 

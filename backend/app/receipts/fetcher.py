@@ -50,7 +50,14 @@ class PageSource(Protocol):
     page: HTTP for the states that answer a request, a browser for the
     ones that only answer a browser."""
 
-    async def fetch(self, url: str, allowed_hosts: frozenset[str], uf: str) -> "FetchResult": ...
+    async def fetch(
+        self,
+        url: str,
+        allowed_hosts: frozenset[str],
+        uf: str,
+        *,
+        follow: "FollowUp | None" = None,
+    ) -> "FetchResult": ...
 
 
 class Gate(Protocol):
@@ -161,6 +168,14 @@ DEFAULT_USER_AGENT = (
 )
 
 
+#: What an adapter does with the page it just got: name a second URL to
+#: fetch inside the same session, or None. Goiás needs it — the barcode
+#: lives on a detail view that only answers to a client that has just
+#: been served the note — and it is how any "see the full document"
+#: link is followed without giving adapters a client of their own.
+FollowUp = Callable[[FetchedPage], Optional[str]]
+
+
 class Fetcher:
     def __init__(
         self,
@@ -185,7 +200,14 @@ class Fetcher:
         self._transport = transport
         self._resolver = resolver
 
-    async def fetch(self, url: str, allowed_hosts: frozenset[str], uf: str) -> FetchResult:
+    async def fetch(
+        self,
+        url: str,
+        allowed_hosts: frozenset[str],
+        uf: str,
+        *,
+        follow: FollowUp | None = None,
+    ) -> FetchResult:
         if not host_allowed(url, allowed_hosts):
             return FetchResult("blocked", detail=f"host not allowed for {uf}: {url}")
         if await self._gate.circuit_open(uf):
@@ -240,8 +262,45 @@ class Fetcher:
                         detail=f"portal answered {response.status_code}",
                     )
                 await self._gate.record_success(uf)
-                return FetchResult("page", page=self._page(current, response))
+                page = self._page(current, response)
+                if follow is None:
+                    return FetchResult("page", page=page)
+                return await self._follow(client, page, follow, allowed_hosts, uf)
         return FetchResult("blocked", detail="too many redirects")
+
+    async def _follow(
+        self,
+        client: httpx.AsyncClient,
+        page: FetchedPage,
+        follow: FollowUp,
+        allowed_hosts: frozenset[str],
+        uf: str,
+    ) -> FetchResult:
+        """The second page, on the same client — which is the point: the
+        cookies the first request set are what the second one is admitted
+        by. The allowlist is checked again, because the URL is built from
+        a page the portal wrote."""
+        target = follow(page)
+        if not target:
+            return FetchResult("page", page=page)
+        if not host_allowed(target, allowed_hosts):
+            return FetchResult("blocked", detail=f"follow-up host not allowed for {uf}: {target}")
+        host = urlsplit(target).hostname or ""
+        if await self._resolver(host):
+            return FetchResult("blocked", detail=f"{host} resolves to a private address")
+        try:
+            response = await client.get(target, headers={"Referer": page.url})
+        except httpx.TimeoutException:
+            await self._fail(uf)
+            return FetchResult("timeout", detail=f"timeout after {self._timeout}s on the follow-up")
+        except httpx.HTTPError as exc:
+            await self._fail(uf)
+            return FetchResult("portal_down", detail=f"follow-up {type(exc).__name__}: {exc}")
+        if response.status_code >= 400:
+            # The note itself did arrive; only the richer view did not.
+            # Keeping the first page is better than losing the receipt.
+            return FetchResult("page", page=page)
+        return FetchResult("page", page=self._page(target, response))
 
     async def _fail(self, uf: str) -> None:
         await self._gate.record_failure(uf, self._circuit_failures, self._circuit_open_seconds)
