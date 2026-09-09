@@ -244,6 +244,15 @@ response.
 so Chrome checks the pid, finds it dead, and takes the profile back
 instead of standing off against a computer it cannot ask.
 
+### Telling the tab where to go
+
+`/json/new` takes the target as its **whole query string** — `PUT
+/json/new?<percent-encoded url>` — not as a `url=` parameter. Sent the
+obvious way, Chrome tries to navigate to the literal string
+`url=https://…`, which is not a URL: the tab opens, never navigates, and
+answers with an empty document. That reads exactly like a portal
+returning nothing, and cost a round of looking in the wrong place.
+
 ### Knowing when the page has arrived
 
 Opening a tab returns before the navigation does. A tab that has not

@@ -25,7 +25,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -172,8 +172,9 @@ class BrowserFetcher:
 class HttpWsCdp:
     """`CdpTransport` over Chrome's own endpoints.
 
-    `PUT /json/new?url=` opens the tab — a GET was accepted by older
-    builds and is refused by current ones. Everything after that is the
+    `PUT /json/new?<url>` opens the tab — the target is the query string
+    itself, and a GET is refused by current builds. Everything after
+    that is the
     DevTools WebSocket, one command per call, because this needs exactly
     one round trip and a session would be more moving parts than the job
     deserves.
@@ -237,7 +238,14 @@ class HttpWsCdp:
 
     async def open_tab(self, url: str) -> str:
         async with self._client() as client:
-            response = await client.put(f"{self._base}/json/new", params={"url": url})
+            # The target is the whole query string, not a `url=` parameter:
+            # `PUT /json/new?<encoded url>`. Sent as `url=…` Chrome tries to
+            # navigate to the literal string `url=https://…`, which is not a
+            # URL — so it opens the tab, never navigates, and hands back an
+            # empty document that looks for all the world like a portal
+            # returning nothing. Chrome unescapes the query, so the target
+            # is percent-encoded whole.
+            response = await client.put(f"{self._base}/json/new?{quote(url, safe='')}")
             response.raise_for_status()
             return str(response.json()["id"])
 
