@@ -228,6 +228,21 @@ allowlist is checked before the tab is opened — a browser follows
 redirects and runs scripts, so that check matters more here, not less —
 and the circuit breaker still speaks for the state.
 
+### Knowing when the page has arrived
+
+Opening a tab returns before the navigation does. A tab that has not
+navigated reports `document.readyState === "complete"` for its own empty
+document, so a fixed sleep followed by a read returns
+`<html><head></head><body></body></html>` — which is what the first
+working fetch stored as Rio de Janeiro's answer.
+
+Waiting for *a* document is not enough either: the F5 interstitial is a
+real page with real content that replaces itself once its script has run.
+So the fetcher waits for **stillness**. It asks the tab what it holds —
+URL and body length — and asks again a settle later; when the two answers
+agree, the page is read. A portal that never settles hits the timeout
+rather than returning half a page.
+
 ### Reaching the browser at all
 
 The browser runs headful, because a challenge that wants a person needs

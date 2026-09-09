@@ -32,9 +32,27 @@ import httpx
 from app.receipts.adapters.base import FetchedPage
 from app.receipts.fetcher import FetchResult, Gate, host_allowed
 
-#: How long to let a page settle before reading it. The portals' own
-#: scripts run in well under a second; this is slack for a cold browser.
+#: How long to let a loaded page settle before reading it. The portals'
+#: own scripts run in well under a second; this is slack for a cold
+#: browser, and it is *added to* waiting for the document, never
+#: instead of it.
 SETTLE_SECONDS = 3.0
+
+#: How often to ask the tab whether it has a document yet.
+POLL_SECONDS = 0.5
+
+#: What the tab holds: enough to tell an empty tab from a page, and one
+#: page from the next. A tab that has not navigated reports `complete`
+#: for its own empty document — which is how a fetch came back as
+#: `<html><head></head><body></body></html>` — so the URL and the body
+#: are looked at too, and their changing is how a reload is noticed.
+_READY_PROBE = (
+    "JSON.stringify({"
+    "url: location.href,"
+    "state: document.readyState,"
+    "body: document.body ? document.body.innerHTML.length : 0"
+    "})"
+)
 
 
 class CdpTransport(Protocol):
@@ -49,8 +67,8 @@ class CdpTransport(Protocol):
     async def open_tab(self, url: str) -> str:
         """Navigate a new tab to `url`. Returns its target id."""
 
-    async def outer_html(self, target_id: str) -> str:
-        """The document as the browser has it, after scripts have run."""
+    async def evaluate(self, target_id: str, expression: str) -> Any:
+        """Run an expression in the tab and return its value."""
 
     async def close_tab(self, target_id: str) -> None:
         ...
@@ -73,6 +91,45 @@ class BrowserFetcher:
     circuit_failures: int = 5
     circuit_open_seconds: int = 900
 
+    async def _settled_html(self, target_id: str) -> str:
+        """The document, once it has stopped changing.
+
+        Opening a tab returns before the navigation does, so a fixed
+        sleep reads whatever happens to be there — for a portal that
+        redirects and then rewrites itself, that is an empty document.
+        Waiting for *a* document is not enough either: Rio de Janeiro's
+        interstitial is a real page with real content, and it replaces
+        itself once its script has computed a cookie.
+
+        So what is waited for is stillness. The tab is asked what it
+        holds; a settle later it is asked again; when the two answers
+        agree, that is the page. The caller's timeout bounds the wait,
+        and a portal that never settles times out rather than returning
+        half a page.
+        """
+        previous: Optional[tuple[str, int]] = None
+        while True:
+            current = await self._probe(target_id)
+            if current is not None and current == previous:
+                break
+            previous = current
+            await asyncio.sleep(self.settle_seconds if current else POLL_SECONDS)
+        html = await self.transport.evaluate(target_id, "document.documentElement.outerHTML")
+        if not isinstance(html, str):
+            raise RuntimeError("the tab returned no HTML")
+        return html
+
+    async def _probe(self, target_id: str) -> Optional[tuple[str, int]]:
+        """What the tab holds right now, or None while it holds nothing."""
+        raw = await self.transport.evaluate(target_id, _READY_PROBE)
+        if not isinstance(raw, str):
+            return None
+        probe = json.loads(raw)
+        url, state, body = probe.get("url"), probe.get("state"), int(probe.get("body") or 0)
+        if state != "complete" or url in (None, "", "about:blank") or body == 0:
+            return None
+        return str(url), body
+
     async def fetch(self, url: str, allowed_hosts: frozenset[str], uf: str) -> FetchResult:
         if not host_allowed(url, allowed_hosts):
             return FetchResult("blocked", detail=f"host not allowed for {uf}: {url}")
@@ -83,10 +140,7 @@ class BrowserFetcher:
         try:
             async with asyncio.timeout(self.timeout_seconds):
                 target_id = await self.transport.open_tab(url)
-                # The page is served immediately and rewritten by its own
-                # scripts; reading too early gets the interstitial.
-                await asyncio.sleep(self.settle_seconds)
-                html = await self.transport.outer_html(target_id)
+                html = await self._settled_html(target_id)
         except asyncio.TimeoutError:
             await self.gate.record_failure(uf, self.circuit_failures, self.circuit_open_seconds)
             return FetchResult("timeout", detail=f"browser did not answer in {self.timeout_seconds:.0f}s")
@@ -144,6 +198,7 @@ class HttpWsCdp:
         self._base = base_url.rstrip("/")
         self._timeout = timeout_seconds
         self.endpoint = self._base
+        self._ws_urls: dict[str, str] = {}
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(timeout=self._timeout, headers={"Host": "localhost"})
@@ -187,25 +242,32 @@ class HttpWsCdp:
             return str(response.json()["id"])
 
     async def _ws_url(self, target_id: str) -> str:
+        # Asked once per tab: the page is polled while it loads, and
+        # `/json/list` grows with every target the browser holds.
+        cached = self._ws_urls.get(target_id)
+        if cached is not None:
+            return cached
         async with self._client() as client:
             response = await client.get(f"{self._base}/json/list")
             response.raise_for_status()
             for target in response.json():
                 if str(target.get("id")) == target_id:
-                    return str(target["webSocketDebuggerUrl"])
+                    found = str(target["webSocketDebuggerUrl"])
+                    self._ws_urls[target_id] = found
+                    return found
         raise RuntimeError(f"tab {target_id} is gone")
 
-    async def outer_html(self, target_id: str) -> str:
+    async def evaluate(self, target_id: str, expression: str) -> Any:
         result = await self._ws_send(
             await self._ws_url(target_id),
             "Runtime.evaluate",
-            {"expression": "document.documentElement.outerHTML", "returnByValue": True},
+            {"expression": expression, "returnByValue": True},
         )
-        value = result.get("result", {}).get("value")
-        if not isinstance(value, str):
-            raise RuntimeError("the tab returned no HTML")
-        return value
+        if "exceptionDetails" in result:
+            raise RuntimeError(f"the tab refused the expression: {result['exceptionDetails']}")
+        return result.get("result", {}).get("value")
 
     async def close_tab(self, target_id: str) -> None:
+        self._ws_urls.pop(target_id, None)
         async with self._client() as client:
             await client.get(f"{self._base}/json/close/{target_id}")

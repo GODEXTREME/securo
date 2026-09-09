@@ -6,6 +6,7 @@ is opened, the timeout, the tab being closed whatever happens, and the
 circuit breaker still speaking for the state.
 """
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -30,11 +31,16 @@ class FakeCdp:
         fail_on: str | None = None,
         hang: bool = False,
         error: Exception | None = None,
+        blank_probes: int = 0,
+        interstitial_probes: int = 0,
     ):
         self.html = html
         self.fail_on = fail_on
         self.hang = hang
         self.error = error
+        self.blank_probes = blank_probes
+        self.interstitial_probes = interstitial_probes
+        self.probes = 0
         self.opened: list[str] = []
         self.closed: list[str] = []
 
@@ -46,7 +52,18 @@ class FakeCdp:
         self.opened.append(url)
         return "tab-1"
 
-    async def outer_html(self, target_id: str) -> str:
+    async def evaluate(self, target_id: str, expression: str):
+        if "readyState" in expression:
+            self.probes += 1
+            if self.probes <= self.blank_probes:
+                # A tab that has not navigated yet: its own empty
+                # document, which reports `complete` all the same.
+                return json.dumps({"url": "about:blank", "state": "complete", "body": 0})
+            if self.probes <= self.blank_probes + self.interstitial_probes:
+                # A real page, with real content, that is about to
+                # replace itself — Rio de Janeiro's browser check.
+                return json.dumps({"url": "https://portal/tspd", "state": "complete", "body": 80})
+            return json.dumps({"url": "https://portal/x", "state": "complete", "body": 120})
         if self.fail_on == "html":
             raise RuntimeError("the tab returned no HTML")
         return self.html
@@ -198,3 +215,29 @@ def test_chrome_is_told_a_host_it_accepts():
     """Chrome refuses a DevTools request whose Host is not localhost or
     an IP — which is every request that arrives through a forwarder."""
     assert HttpWsCdp("http://kasm-chrome:9223")._client().headers["host"] == "localhost"
+
+
+@pytest.mark.asyncio
+async def test_an_empty_tab_is_not_a_page():
+    """`PUT /json/new` returns before the navigation does, and a tab that
+    has not navigated reports `complete` for its own empty document. A
+    deployment read that and stored
+    `<html><head></head><body></body></html>` as the portal's answer."""
+    cdp = FakeCdp(blank_probes=3)
+    result = await _fetcher(cdp).fetch(URL, HOSTS, "RJ")
+
+    assert result.outcome == "page"
+    assert result.page is not None and "tabResult" in result.page.html
+    assert cdp.probes > 3, "the tab was asked again instead of read once"
+
+
+@pytest.mark.asyncio
+async def test_a_page_that_replaces_itself_is_not_read_first():
+    """Rio de Janeiro's browser check is a real page with real content:
+    waiting for *a* document would read it and call the note blocked. It
+    is read only once the tab holds the same thing twice."""
+    cdp = FakeCdp(blank_probes=1, interstitial_probes=2)
+    result = await _fetcher(cdp).fetch(URL, HOSTS, "RJ")
+
+    assert result.outcome == "page"
+    assert result.page is not None and "tabResult" in result.page.html
