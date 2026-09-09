@@ -13,6 +13,7 @@ upgrade-oriented server here never sees the method — so that one is
 still only asserted by the deployment that works.
 """
 import json
+from urllib.parse import unquote
 
 import pytest
 from websockets.asyncio.server import serve
@@ -20,6 +21,7 @@ from websockets.asyncio.server import serve
 from app.receipts.browser import HttpWsCdp
 
 TAB = "TAB-1"
+opened: list[str] = []
 HTML = "<html><body>nota</body></html>"
 
 
@@ -54,6 +56,13 @@ def _process_request(connection, request):
     if path.startswith("/devtools/page/"):
         return None  # let the upgrade proceed
     if path == "/json/new":
+        # Chrome takes the target from the query string itself. A
+        # `url=…` parameter is not a URL, and the tab it opens never
+        # navigates — which is what a deployment saw on screen.
+        query = unquote(request.path.split("?", 1)[1] if "?" in request.path else "")
+        if not query.startswith(("http://", "https://")):
+            return connection.respond(400, f"not a url: {query}\n")
+        opened.append(query)
         return connection.respond(200, json.dumps({"id": TAB, "type": "page"}))
     if path == "/json/list":
         return connection.respond(
@@ -73,8 +82,11 @@ async def test_the_three_calls_work_against_chrome_s_own_answers():
         port = server.sockets[0].getsockname()[1]
         cdp = HttpWsCdp(f"http://127.0.0.1:{port}", timeout_seconds=5)
 
-        target_id = await cdp.open_tab("https://consultadfe.fazenda.rj.gov.br/x")
+        wanted = "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=331234|3|1"
+        opened.clear()
+        target_id = await cdp.open_tab(wanted)
         assert target_id == TAB
+        assert opened == [wanted], "the tab is told where to go, verbatim"
 
         assert json.loads(await cdp.evaluate(target_id, "document.readyState"))["state"] == "complete"
         assert await cdp.evaluate(target_id, "document.documentElement.outerHTML") == HTML
