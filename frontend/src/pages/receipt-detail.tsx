@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import {
   ArrowLeft,
   Barcode,
+  ChevronDown,
+  ChevronRight,
   ClipboardPaste,
   RefreshCw,
   Store as StoreIcon,
@@ -58,6 +60,7 @@ export default function ReceiptDetailPage() {
   const { canWrite } = useWorkspace()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   const { data: receipt, isLoading, isError } = useQuery({
     queryKey: ['receipts', 'detail', id],
@@ -145,7 +148,9 @@ export default function ReceiptDetailPage() {
     <div className="space-y-6">
       <PageHeader section={t('nav.receipts')} title={title} action={backLink} />
 
-      {/* Store header */}
+      {/* Store header. What the note *is* — number, protocol, key — is filed
+          behind a disclosure: it is what you need when something went wrong
+          with the import, and never what you came to read on a phone. */}
       <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -161,45 +166,69 @@ export default function ReceiptDetailPage() {
                 </span>
               )}
             </div>
-            {receipt.store?.legal_name && receipt.store.trade_name && (
-              <p className="text-xs text-muted-foreground">{receipt.store.legal_name}</p>
-            )}
             {address && <p className="text-xs text-muted-foreground">{address}</p>}
-            <p className="text-xs text-muted-foreground">
-              {t('receipts.cnpj')} {formatCnpj(receipt.store?.cnpj ?? receipt.issuer_cnpj)}
-            </p>
-          </div>
-        </div>
-        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-          <div>
-            <dt className="text-muted-foreground">{t('receipts.issuedAt')}</dt>
-            <dd className="font-medium tabular-nums">
+            <p className="text-xs text-muted-foreground tabular-nums">
               {issued
                 ? issued.toLocaleString(dateLocale, { dateStyle: 'medium', timeStyle: 'short' })
                 : '—'}
-            </dd>
+            </p>
           </div>
-          <div>
-            <dt className="text-muted-foreground">{t('receipts.numberLabel')}</dt>
-            <dd className="font-medium tabular-nums">
-              {t('receipts.numberSeries', { number: receipt.number, series: receipt.series })}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">{t('receipts.protocol')}</dt>
-            <dd className="font-medium tabular-nums">{receipt.protocol ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">{t('receipts.scannedAt')}</dt>
-            <dd className="font-medium tabular-nums">
-              {new Date(receipt.link.scanned_at).toLocaleDateString(dateLocale)}
-            </dd>
-          </div>
-          <div className="col-span-2 sm:col-span-4">
-            <dt className="text-muted-foreground">{t('receipts.accessKey')}</dt>
-            <dd className="break-all font-mono text-[11px]">{formatAccessKey(receipt.access_key)}</dd>
-          </div>
-        </dl>
+          {receipt.total != null && (
+            <div className="shrink-0 text-right">
+              <p className="text-xl font-semibold tabular-nums">{money(receipt.total)}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {t('receipts.itemCount', { count: receipt.items.length })}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          aria-expanded={detailsOpen}
+          onClick={() => setDetailsOpen(!detailsOpen)}
+        >
+          {detailsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {t('receipts.noteDetails')}
+        </button>
+
+        {detailsOpen && (
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
+            {receipt.store?.legal_name && receipt.store.trade_name && (
+              <div className="col-span-2 sm:col-span-4">
+                <dt className="text-muted-foreground">{t('receipts.legalName')}</dt>
+                <dd className="font-medium">{receipt.store.legal_name}</dd>
+              </div>
+            )}
+            <div>
+              <dt className="text-muted-foreground">{t('receipts.cnpj')}</dt>
+              <dd className="font-medium tabular-nums">
+                {formatCnpj(receipt.store?.cnpj ?? receipt.issuer_cnpj)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{t('receipts.numberLabel')}</dt>
+              <dd className="font-medium tabular-nums">
+                {t('receipts.numberSeries', { number: receipt.number, series: receipt.series })}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{t('receipts.protocol')}</dt>
+              <dd className="font-medium tabular-nums">{receipt.protocol ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{t('receipts.scannedAt')}</dt>
+              <dd className="font-medium tabular-nums">
+                {new Date(receipt.link.scanned_at).toLocaleDateString(dateLocale)}
+              </dd>
+            </div>
+            <div className="col-span-2 sm:col-span-4">
+              <dt className="text-muted-foreground">{t('receipts.accessKey')}</dt>
+              <dd className="break-all font-mono text-[11px]">{formatAccessKey(receipt.access_key)}</dd>
+            </div>
+          </dl>
+        )}
       </div>
 
       {/* What is going on, and what to do about it */}

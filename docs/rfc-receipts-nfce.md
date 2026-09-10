@@ -359,6 +359,30 @@ which therefore says `localhost` and reaches nothing from here. That URL
 is not rewritten: the Host it carries is the one Chrome accepts, so the
 URL stays Chrome's and only the socket's destination is ours.
 
+## What the price page claims
+
+A history is worth reading only if the page refuses to say more than it
+knows. Three rules, in `frontend/src/lib/price-verdict.ts`, decide what a
+product page is allowed to claim:
+
+- **A verdict, not two numbers.** The page used to open with "last paid"
+  and "cheapest in 30 days" side by side, which on a short history is the
+  same number printed twice. It now answers the question the page is
+  opened with — *was that a good price* — as a comparison against the
+  cheapest sound observation, and stays silent under 1%, which is
+  rounding rather than a saving.
+- **Compare per base unit.** `R$ 3,58/l` survives a 500 ml being weighed
+  against a 1,5 L; `R$ 1,79` against `R$ 3,29` does not. The paid price
+  is still shown, one line down, because that is what left the wallet.
+- **A chart has to earn its axis.** It is drawn only from five or more
+  sound observations — with two points a line between them insinuates a
+  trend nobody measured — and only when every point shares one base unit,
+  since a normalised price and a paid price on one axis would read as the
+  same kind of number. Outliers stay out of it: the backend flags one at
+  ten times the median or a tenth of it, and inside the chart a single
+  such point flattens every real movement into a line along the bottom.
+  They remain in the history list below, struck through.
+
 ## What is not done
 
 - **Minas Gerais and São Paulo.** Both answer a plain request with a
