@@ -65,9 +65,11 @@ None of that is what stops it. The portals do:
 | headless Chromium | not tried (a human must click) | navigation aborted |
 | the person's own browser | works | works |
 
-Two different walls, one shape: **neither answers a server, both answer
-the person.** That is the finding the whole feature is built around, and
-it was expensive to establish — a "403" from a corporate proxy looks
+Two different walls, one shape: **neither of those two answers a server,
+both answer the person.** That was the finding this feature was built
+around — and it is a fact about Espírito Santo and Rio de Janeiro, not
+about the country: Pernambuco and Goiás answer a plain request, one with
+the XML and one with the note. It was expensive to establish — a "403" from a corporate proxy looks
 exactly like a portal refusing you, and an IP-reputation block page turns
 out to be a User-Agent filter.
 
@@ -359,13 +361,18 @@ URL stays Chrome's and only the socket's destination is ours.
 
 ## What is not done
 
-- **The browser path against a live browser.** The CDP calls are written
-  from the protocol, tested against a fake, and have not been run
-  against Chrome. The shape of `/json/new` and `Runtime.evaluate` is the
-  part to distrust first.
-- **Automatic fetching without a browser.** No supported state answers
-  the worker over plain HTTP, and the table above is why. The HTTP path
-  is kept correct for the day one does.
+- **Minas Gerais and São Paulo.** Both answer a plain request with a
+  challenge — Turnstile and reCAPTCHA — so both will need the browser,
+  and neither has been read: a portal shows nothing without a real key,
+  and none was available.
+- **The barcode in Rio de Janeiro and Espírito Santo.** Their consumer
+  DANFE does not carry one. Rio de Janeiro's detailed view does, but it
+  is reachable only by driving the search form: four navigations per
+  note, injecting script into the portal's page, against generated JSF
+  ids. Weighed and declined — the note that prompted it turned out to be
+  fuel, which has no barcode at all, and scanning one by hand on the
+  product page covers Espírito Santo too and cannot break. The parser
+  for that view exists (`nfe_detail.py`) if the decision is revisited.
 - **Suggested product merges in the UI.** The backend computes them
-  (`/suggestions`); nothing surfaces them, so today only a barcode
-  merges two products.
+  (`/suggestions`); nothing surfaces them, so a product is merged only
+  by a barcode — scanned, or served by Pernambuco and Goiás.
