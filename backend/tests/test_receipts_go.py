@@ -114,3 +114,27 @@ class TestUrl:
 
         assert SIG in rebuilt
         assert GoAdapter().key_route_answers is False
+
+
+class TestBothArrangements:
+    """The XSLT is national, its layout is not uniform. Some blocks put a
+    value beside its label; others put a row of labels above a row of
+    values. Goiás and Rio de Janeiro disagree about which goes where, so
+    a lookup that knows one arrangement loses whole fields — silently,
+    which is the dangerous part."""
+
+    RJ_PAYMENTS = Path(__file__).parent / "fixtures" / "nfce" / "rj" / "cobranca-detalhada.html"
+
+    def test_a_value_under_its_label_is_found(self):
+        from bs4 import BeautifulSoup
+
+        from app.receipts.adapters.nfe_detail import _payments
+
+        soup = BeautifulSoup(self.RJ_PAYMENTS.read_text(encoding="utf-8"), "html.parser")
+        paid = _payments(soup)
+
+        assert [(p.type, p.amount) for p in paid] == [("cash", Decimal("204.290"))]
+
+    def test_a_value_beside_its_label_still_is(self, detail):
+        """Goiás's own payment block, which uses the other form."""
+        assert GoAdapter().parse(detail).payments[0].amount == Decimal("349.99")
