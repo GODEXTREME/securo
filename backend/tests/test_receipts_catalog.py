@@ -329,6 +329,29 @@ async def test_gtin_lookup_unknown_lists_candidates_then_link_makes_it_known(cli
 
 
 @pytest.mark.asyncio
+async def test_a_scanned_barcode_shows_on_the_receipt_line(
+    client, auth_headers, session, test_user, test_workspace, html, enqueued
+):
+    """The note printed no barcode — most portals do not — so the line
+    said "no barcode" and went on saying it after someone scanned one
+    onto the product. Two different facts were being read as one.
+    """
+    receipt = await _authorize(session, test_workspace, test_user, html, 378457)
+    line = (await client.get(f"/api/receipts/{receipt.id}", headers=auth_headers)).json()["items"][0]
+    assert line["gtin"] is None and line["product_gtin"] is None
+
+    await client.post(
+        f"/api/products/{line['product_id']}/aliases",
+        json={"kind": "gtin", "value": "7891000100103"},
+        headers=auth_headers,
+    )
+
+    line = (await client.get(f"/api/receipts/{receipt.id}", headers=auth_headers)).json()["items"][0]
+    assert line["gtin"] is None, "the note still printed nothing, and says so"
+    assert line["product_gtin"] == "07891000100103"
+
+
+@pytest.mark.asyncio
 async def test_product_patch_and_suggestions(client, auth_headers, session, test_user, test_workspace, html, enqueued):
     receipt = await _authorize(session, test_workspace, test_user, html, 378457)
     pid = receipt.items[0].product_id

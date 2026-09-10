@@ -83,8 +83,24 @@ def _field(scope: Optional[Tag], label: str) -> Optional[str]:
             continue
         span = tag.find_next_sibling("span")
         if span is not None:
-            value = _clean(span.get_text())
-            return value or None
+            return _clean(span.get_text()) or None
+        # The other arrangement: a row of labels above a row of values,
+        # matched by column. Both states that serve this XSLT use it for
+        # some blocks and the sibling form for others, so a lookup that
+        # only knows one silently loses whole fields — the payment amount
+        # in Rio de Janeiro, the protocol in Goiás.
+        cell = tag.find_parent(["td", "th"])
+        row = cell.find_parent("tr") if cell is not None else None
+        below = row.find_next_sibling("tr") if row is not None else None
+        if cell is None or row is None or below is None:
+            continue
+        header = row.find_all(["td", "th"], recursive=False) or row.find_all(["td", "th"])
+        values = below.find_all(["td", "th"], recursive=False) or below.find_all(["td", "th"])
+        if cell not in header:
+            continue
+        index = header.index(cell)
+        if index < len(values):
+            return _clean(values[index].get_text()) or None
     return None
 
 
@@ -206,7 +222,17 @@ def _payments(soup: BeautifulSoup) -> list[Payment]:
     out: list[Payment] = []
     for row in panel.select("table.toggle"):
         cells = [_clean(td.get_text()) for td in row.find_all("td")]
-        if len(cells) < 3 or not cells[2]:
+        if len(cells) < 2 or not cells[1]:
+            continue
+        detail = row.find_next_sibling("table")
+        # The two states that serve this XSLT disagree about where the
+        # amount goes: Goiás puts it in the summary row, Rio de Janeiro
+        # leaves that column for a description and puts the number in the
+        # panel below. Take whichever actually holds one.
+        amount = parse_brl(cells[2]) if len(cells) > 2 else None
+        if amount is None:
+            amount = parse_brl(_field(detail, "Valor do Pagamento"))
+        if amount is None:
             continue
         # "3 - Cartão de Crédito": the code decides, the words are kept.
         code = cells[1].split("-", 1)[0].strip().zfill(2)
@@ -215,7 +241,7 @@ def _payments(soup: BeautifulSoup) -> list[Payment]:
                 type=PAYMENT_TYPES.get(code, "other"),
                 label=cells[1] or None,
                 brand=None,
-                amount=_money(cells[2]),
+                amount=amount,
                 change=ZERO,
             )
         )
