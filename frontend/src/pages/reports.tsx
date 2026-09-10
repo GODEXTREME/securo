@@ -30,6 +30,7 @@ import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
 import type { ReportResponse, CategoryTrendItem } from '@/types'
+import { TOOLTIP_STYLE } from '@/lib/chart-theme'
 import { formatCurrency } from '@/lib/format'
 
 // A small qualitative palette of well-separated hues for the composition
@@ -269,15 +270,6 @@ export default function ReportsPage() {
 
   const changePrefix = (summary?.change_amount ?? 0) >= 0 ? '+' : ''
   const changeColor = (summary?.change_amount ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-500'
-
-  const tooltipStyle = {
-    background: 'var(--card)',
-    color: 'var(--foreground)',
-    border: '1px solid var(--border)',
-    borderRadius: '0.75rem',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-    fontSize: '12px',
-  }
 
   const composition = data?.composition ?? []
 
@@ -753,7 +745,7 @@ export default function ReportsPage() {
                         const inflow = point.inflow ?? 0
                         const outflow = point.outflow ?? 0
                         return (
-                          <div style={tooltipStyle} className="px-3 py-2">
+                          <div style={TOOLTIP_STYLE} className="px-3 py-2">
                             <p className="text-xs font-medium mb-1">{label}</p>
                             <p className="text-xs" style={{ color: '#6366F1' }}>
                               {t('reports.balance', { defaultValue: 'Balance' })}:{' '}
@@ -850,7 +842,7 @@ export default function ReportsPage() {
                       : t(`reports.${String(name ?? '')}`, { defaultValue: String(name ?? '') }),
                   ]}
                   labelFormatter={(label) => label}
-                  contentStyle={tooltipStyle}
+                  contentStyle={TOOLTIP_STYLE}
                 />
                 <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="3 3" />
                   <Bar dataKey="income" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={20} />
@@ -905,7 +897,7 @@ export default function ReportsPage() {
                     const changeSign = change !== null && change >= 0 ? '+' : ''
                     const changeColor = change !== null ? (change >= 0 ? '#10B981' : '#F43F5E') : ''
                     return (
-                      <div style={tooltipStyle} className="px-3 py-2">
+                      <div style={TOOLTIP_STYLE} className="px-3 py-2">
                         <p className="text-xs font-medium mb-1">{label}</p>
                         <p className="text-xs" style={{ color: '#6366F1' }}>
                           {t(currentTab.labelKey)}:{' '}
@@ -1041,7 +1033,7 @@ export default function ReportsPage() {
                                 const displayName = rawName.length > 50 ? rawName.slice(0, 47) + '…' : rawName
                                 const children = (entry.payload as { children?: { name: string; value: number; color: string }[] }).children
                                 return (
-                                  <div style={{ ...tooltipStyle, padding: '8px 12px', zIndex: 10, maxWidth: 256 }}>
+                                  <div style={{ ...TOOLTIP_STYLE, padding: '8px 12px', zIndex: 10, maxWidth: 256 }}>
                                     <p className="text-xs font-semibold mb-1">{displayName}</p>
                                     <p className="text-xs">
                                       {privacyMode ? MASK : `${formatCurrency(v, userCurrency, locale)} (${pct}%)`}
@@ -1312,7 +1304,7 @@ export default function ReportsPage() {
                                         item.label,
                                       ]}
                                       labelFormatter={(label) => label}
-                                      contentStyle={{ ...tooltipStyle, padding: '4px 8px' }}
+                                      contentStyle={{ ...TOOLTIP_STYLE, padding: '4px 8px' }}
                                     />
                                     <Area
                                       type="monotone"
@@ -1380,7 +1372,7 @@ export default function ReportsPage() {
                       const items = payload.filter((p) => p.value !== null && p.value !== undefined && (p.value as number) !== 0)
                       if (items.length === 0) return null
                       return (
-                        <div style={tooltipStyle} className="px-3 py-2">
+                        <div style={TOOLTIP_STYLE} className="px-3 py-2">
                           <p className="text-xs font-medium mb-1">{label}</p>
                           {items.map((p) => (
                             <p key={p.dataKey as string} className="text-xs" style={{ color: p.color }}>

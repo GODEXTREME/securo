@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chartable, cheapestStore, comparable, verdict } from './price-verdict'
+import { chartable, cheapestStore, comparable, movingAverage, verdict } from './price-verdict'
 import type { PricePoint } from '@/types'
 
 function point(overrides: Partial<PricePoint> = {}): PricePoint {
@@ -108,5 +108,23 @@ describe('chartable', () => {
       point({ observed_on: `2026-01-0${i + 1}`, normalized_price: '3.0000', base_unit: 'l' }),
     )
     expect(chartable([...litres, point({ observed_on: '2026-01-05' })])).toBeNull()
+  })
+})
+
+describe('movingAverage', () => {
+  const at = (price: string) => point({ unit_price: price })
+
+  it('says nothing until the window is full', () => {
+    expect(movingAverage([at('1.0000'), at('2.0000')])).toEqual([null, null])
+  })
+
+  it('averages the last three purchases, not the ones still to come', () => {
+    const series = movingAverage([at('1.0000'), at('2.0000'), at('3.0000'), at('10.0000')])
+    expect(series).toEqual([null, null, 2, 5])
+  })
+
+  it('averages the comparable price, not the price on the till roll', () => {
+    const litre = (n: string) => point({ unit_price: '1.7900', normalized_price: n, base_unit: 'l' })
+    expect(movingAverage([litre('3.0000'), litre('4.0000'), litre('5.0000')])).toEqual([null, null, 4])
   })
 })

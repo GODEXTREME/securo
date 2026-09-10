@@ -74,3 +74,23 @@ export function chartable(history: PricePoint[]): PricePoint[] | null {
   if (units.size > 1) return null
   return [...sound].sort((a, b) => a.observed_on.localeCompare(b.observed_on))
 }
+
+/** How many observations a point of the average speaks for. */
+export const AVERAGE_WINDOW = 3
+
+/**
+ * A trailing average over the last `AVERAGE_WINDOW` purchases, aligned with
+ * the points it was computed from and null until there are enough of them.
+ *
+ * Trailing rather than centred, because a centred average would put the
+ * price of a purchase that has not happened yet into the reading for one
+ * that has. It smooths the store-to-store swing — the same tin is a real
+ * fifty centavos apart across the street — so what is left is the drift.
+ */
+export function movingAverage(points: PricePoint[], window = AVERAGE_WINDOW): (number | null)[] {
+  return points.map((_, index) => {
+    if (index + 1 < window) return null
+    const slice = points.slice(index + 1 - window, index + 1)
+    return slice.reduce((sum, point) => sum + comparable(point), 0) / window
+  })
+}

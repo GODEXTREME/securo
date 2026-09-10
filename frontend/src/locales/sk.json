@@ -2992,6 +2992,7 @@
     "chartPerUnit": "Cena za {{unit}}",
     "chartPaid": "Zaplatená cena",
     "chartBestDot": "najnižšia videná cena",
+    "chartAverage": "priemer posledných {{n}}",
     "chartOutliersOff": "ceny výrazne mimo zvyčajného rozsahu sú vynechané",
     "history": "História",
     "noHistory": "Zatiaľ žiadna história.",

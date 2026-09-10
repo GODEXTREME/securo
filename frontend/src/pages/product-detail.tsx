@@ -134,13 +134,9 @@ export default function ProductDetailPage() {
             {baseUnit ? t('products.chartPerUnit', { unit: baseUnit }) : t('products.chartPaid')}
           </p>
           <PriceHistoryChart points={drawable} baseUnit={baseUnit} locale={locale} dateLocale={dateLocale} />
-          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full" style={{ background: '#D97706' }} aria-hidden />
-              {t('products.chartBestDot')}
-            </span>
-            {hiddenOutliers && <span>· {t('products.chartOutliersOff')}</span>}
-          </p>
+          {hiddenOutliers && (
+            <p className="text-[11px] text-muted-foreground">{t('products.chartOutliersOff')}</p>
+          )}
         </div>
       )}
 

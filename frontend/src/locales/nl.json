@@ -2858,6 +2858,7 @@
     "chartPerUnit": "Prijs per {{unit}}",
     "chartPaid": "Betaalde prijs",
     "chartBestDot": "laagste gezien",
+    "chartAverage": "gemiddelde van de laatste {{n}}",
     "chartOutliersOff": "prijzen ver buiten het gebruikelijke bereik blijven weg",
     "history": "Geschiedenis",
     "noHistory": "Nog geen geschiedenis.",

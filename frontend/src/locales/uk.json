@@ -2865,6 +2865,7 @@
     "chartPerUnit": "Ціна за {{unit}}",
     "chartPaid": "Сплачена ціна",
     "chartBestDot": "найнижча ціна",
+    "chartAverage": "середнє за останні {{n}}",
     "chartOutliersOff": "ціни, що сильно виходять за звичайний діапазон, не показані",
     "history": "Історія",
     "noHistory": "Історії поки немає.",

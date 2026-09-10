@@ -2857,6 +2857,7 @@
     "chartPerUnit": "Preço por {{unit}}",
     "chartPaid": "Preço pago",
     "chartBestDot": "preço mais baixo visto",
+    "chartAverage": "média das últimas {{n}}",
     "chartOutliersOff": "preços muito fora do intervalo habitual ficam de fora",
     "history": "Histórico",
     "noHistory": "Ainda sem histórico.",
