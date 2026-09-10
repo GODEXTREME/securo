@@ -36,6 +36,12 @@ class ReceiptItemRead(BaseModel):
     ordinal: int
     product_code: str
     gtin: Optional[str] = None
+    #: The barcode the *catalogue* holds for this line's product, which is
+    #: a different claim from the one above: `gtin` is what the portal
+    #: printed on the note, and most portals print none. A person who
+    #: scanned the product supplies this one, and the screen has to know
+    #: the difference between "the note did not say" and "nobody knows".
+    product_gtin: Optional[str] = None
     description: str
     ncm: Optional[str] = None
     cfop: Optional[str] = None
@@ -155,6 +161,7 @@ def item_read(item: ReceiptItem) -> ReceiptItemRead:
         unit_price_corrected=item.unit_price_corrected,
         effective_unit_price=item.effective_unit_price,
         product_id=item.product_id,
+        product_gtin=item.product.gtin if item.product else None,
         product_name=item.product.name if item.product else None,
         product_scope=item.product.scope if item.product else None,
         normalized_price=item.normalized_price,

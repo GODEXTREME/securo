@@ -1416,6 +1416,8 @@ export interface ReceiptItem {
   /** `chain` means the match came from a store-internal code, so the
    *  price history only spans branches of the same chain. */
   product_scope?: 'global' | 'chain' | null
+  /** What the catalogue knows, as opposed to what the note printed. */
+  product_gtin?: string | null
   normalized_price?: string | null
   base_unit?: 'kg' | 'l' | 'un' | null
   comparable?: boolean

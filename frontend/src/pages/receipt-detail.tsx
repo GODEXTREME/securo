@@ -424,6 +424,11 @@ function ItemRow({
   money: (value: string | number | null | undefined) => string
 }) {
   const { t } = useTranslation()
+  // The note's own barcode, or the one a person scanned onto the product.
+  // Most portals print none, so without the second the badge would call
+  // every line of an Espírito Santo or Rio de Janeiro receipt unidentified
+  // even after someone had identified it.
+  const barcode = item.gtin ?? item.product_gtin ?? null
   const qty = Number(item.quantity).toLocaleString(locale, { maximumFractionDigits: 3 })
   const unitPrice = money(item.effective_unit_price)
   const corrected = item.unit_price_corrected != null
@@ -475,14 +480,14 @@ function ItemRow({
                 })}
           </p>
         )}
-        {(item.product_scope === 'chain' || !item.gtin) && (
+        {(item.product_scope === 'chain' || !barcode) && (
           <div className="mt-1 flex flex-wrap gap-1">
             {item.product_scope === 'chain' && (
               <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
                 {t('receipts.variation.chainOnly')}
               </span>
             )}
-            {!item.gtin && (
+            {!barcode && (
               <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 <Barcode size={10} /> {t('receipts.noBarcode')}
               </span>
