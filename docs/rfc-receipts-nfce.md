@@ -383,13 +383,45 @@ product page is allowed to claim:
   such point flattens every real movement into a line along the bottom.
   They remain in the history list below, struck through.
 
+## A state with a layout of its own
+
+Minas Gerais renders neither of the shared templates. Its portal is a
+JSF application that prints the note into Bootstrap tables with the
+fiscal detail folded into an accordion, so `mg_info.py` is a fourth
+parser beside `tabresult.py`, `nfe_detail.py` and `nfe_xml.py`.
+
+Getting to that page takes a person, and takes one more step than
+Espírito Santo does. Both of the state's routes — the QR consultation
+and the search by key — answer with a Cloudflare Turnstile. Passing it
+is not enough: the note appears only after pressing "Visualizar", which
+is a form post the portal answers at `infoqrcode.xhtml`. So the browser
+is not just a way past a challenge here; it is where the second step
+happens.
+
+Two things the page taught, both of the kind that would have been read
+wrong in silence:
+
+- **It prints money two ways.** The item table says `R$ 6,00` and the
+  summary rows say `6.00`, which is Java's `toString()` and not a
+  Brazilian number. One reader for both would turn `6,50` into 6 in one
+  direction and `1.234,56` into 1.234 in the other. They are read by
+  different functions, and the arithmetic the canonical model insists on
+  is the backstop if the portal ever changes its mind.
+- **It omits the unit price.** A line gives the quantity and what the
+  line came to, so the price of one is the division. The fixture's note
+  is two bags for six reais; nothing on the page says three.
+
+And what it does not have is a barcode: the item carries the merchant's
+own code, so Minas Gerais joins Espírito Santo and Rio de Janeiro among
+the states where a product is comparable within its chain until somebody
+scans one by hand.
+
 ## What is not done
 
-- **Minas Gerais and São Paulo.** Both answer a plain request with a
-  challenge — Turnstile and reCAPTCHA — so both will need the browser,
-  and neither has been read: a portal shows nothing without a real key,
-  and none was available.
-- **The barcode in Rio de Janeiro and Espírito Santo.** Their consumer
+- **São Paulo.** It answers a plain request with a reCAPTCHA, so it
+  will need the browser, and it has not been read: a portal shows
+  nothing without a real key, and none was available.
+- **The barcode in Rio de Janeiro, Espírito Santo and Minas Gerais.** Their consumer
   DANFE does not carry one. Rio de Janeiro's detailed view does, but it
   is reachable only by driving the search form: four navigations per
   note, injecting script into the portal's page, against generated JSF
