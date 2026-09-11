@@ -12,7 +12,12 @@ jobs:
     # The NAS that runs these images also builds them. Safe here and not in
     # ci.yml because this workflow never runs on a pull request: a public
     # repository would otherwise let any fork execute code on the machine.
-    runs-on: [self-hosted, securo]
+    #
+    # `nas` and not a label naming this repository: a runner is registered
+    # to one repository and only that one can send it work, so the label
+    # never had to repeat the name — and not repeating it is what keeps
+    # adding a repository to the runner host down to a few lines.
+    runs-on: [self-hosted, nas]
     permissions:
       contents: read
       packages: write
