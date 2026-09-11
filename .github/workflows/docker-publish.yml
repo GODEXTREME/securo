@@ -12,7 +12,14 @@ jobs:
     # The NAS that runs these images also builds them. Safe here and not in
     # ci.yml because this workflow never runs on a pull request: a public
     # repository would otherwise let any fork execute code on the machine.
-    runs-on: [self-hosted, securo]
+    #
+    # No second label. A runner is registered to one repository and only
+    # that one can send it work, so naming the repository was always
+    # redundant — and naming the *machine* would be worse than redundant:
+    # it would keep a second host (a desktop taking load off the NAS) from
+    # picking up these jobs, for no benefit. Every self-hosted runner
+    # carries `self-hosted`, so this matches whichever of them is free.
+    runs-on: self-hosted
     permissions:
       contents: read
       packages: write
