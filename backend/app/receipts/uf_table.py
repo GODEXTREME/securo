@@ -41,7 +41,7 @@ DEFAULT_CONSULTA_URLS: dict[str, str] = {
     "ES": "http://app.sefaz.es.gov.br/ConsultaNFCe",
     "GO": "https://nfeweb.sefaz.go.gov.br/nfeweb/sites/nfce/danfeNFCe",
     "MA": "http://nfce.sefaz.ma.gov.br/portal/consultarNFCe.jsp",
-    "MG": "https://nfce.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml",
+    "MG": "https://portalsped.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml",
     "MS": "http://www.dfe.ms.gov.br/nfce/qrcode",
     "MT": "http://www.sefaz.mt.gov.br/nfce/consultanfce",
     "PA": "https://appnfc.sefa.pa.gov.br/portal/view/consultas/nfce/nfceForm.seam",
@@ -78,6 +78,9 @@ def host_of(url: str) -> str | None:
 LEGACY_HOSTS: dict[str, frozenset[str]] = {
     "RJ": frozenset({"www4.fazenda.rj.gov.br"}),
     "GO": frozenset({"nfe.sefaz.go.gov.br"}),
+    # `nfce` no longer completes a TLS handshake (checked 2026-09-10);
+    # the portal answers on `portalsped`, at the same path.
+    "MG": frozenset({"nfce.fazenda.mg.gov.br"}),
 }
 
 
