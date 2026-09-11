@@ -39,6 +39,11 @@ from app.models.receipt import Receipt, ReceiptItem, ReceiptLink
 from app.models.product import Product, ProductAlias
 from app.models.price_point import PricePoint
 from app.models.receipt_capture_token import ReceiptCaptureToken
+from app.models.reconciliation import (
+    ReconciliationEvent,
+    ReconciliationRule,
+    ReconciliationSuggestion,
+)
 
 # Side-effect import: register the before_insert listener that auto-stamps
 # workspace_id from user_id on financial entities. Imported last so all
@@ -91,6 +96,9 @@ __all__ = [
     "ProductAlias",
     "PricePoint",
     "ReceiptCaptureToken",
+    "ReconciliationEvent",
+    "ReconciliationRule",
+    "ReconciliationSuggestion",
     "collection_accounts",
     "collection_asset_groups",
     "Notification",
