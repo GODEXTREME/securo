@@ -5,12 +5,14 @@ from __future__ import annotations
 from app.receipts.adapters.base import UFAdapter
 from app.receipts.adapters.es import EsAdapter
 from app.receipts.adapters.go import GoAdapter
+from app.receipts.adapters.mg import MgAdapter
 from app.receipts.adapters.pe import PeAdapter
 from app.receipts.adapters.rj import RjAdapter
 
 ADAPTERS: dict[str, UFAdapter] = {
     EsAdapter.c_uf: EsAdapter(),
     GoAdapter.c_uf: GoAdapter(),
+    MgAdapter.c_uf: MgAdapter(),
     PeAdapter.c_uf: PeAdapter(),
     RjAdapter.c_uf: RjAdapter(),
 }
