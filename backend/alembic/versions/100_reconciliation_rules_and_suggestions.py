@@ -12,14 +12,14 @@ with rather than something the code decides on their behalf.
     without it, a suggestion somebody rejected returns on the next sync.
 
 Revision ID: 085
-Revises: 084
+Revises: 099
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "086"
-down_revision = "085"
+revision = "100"
+down_revision = "099"
 branch_labels = None
 depends_on = None
 

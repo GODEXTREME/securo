@@ -20,14 +20,14 @@ would write two hundred and ninety rows saying so, and a history nobody
 can scan is the same as no history.
 
 Revision ID: 087
-Revises: 086
+Revises: 101
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "088"
-down_revision = "087"
+revision = "102"
+down_revision = "101"
 branch_labels = None
 depends_on = None
 
