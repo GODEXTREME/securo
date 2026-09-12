@@ -133,7 +133,10 @@ class TestDocument:
         assert resp.json()["has_line_items"] is False
         assert resp.json()["lines"] == []
 
-    def test_a_locale_that_is_not_a_language_tag_falls_back(self):
+    # `async` with nothing awaited, because `asyncio_mode = "auto"` marks
+    # every test in the suite as a coroutine test: a sync one is a
+    # warning, and CI runs pytest with `-W error`.
+    async def test_a_locale_that_is_not_a_language_tag_falls_back(self):
         """The locale comes from an invoice's stored snapshot — free-form
         JSON, like the template beside it, which this module already
         distrusts. A number in that field used to raise `AttributeError`
@@ -251,7 +254,6 @@ class TestDocument:
 # ---------------------------------------------------------------------------
 # PDF
 # ---------------------------------------------------------------------------
-@pytest.mark.asyncio
 class TestPdf:
     async def test_downloads_a_real_pdf(self, client: AsyncClient, biz_headers, client_payee):
         invoice = await make_invoice(client, biz_headers, payee_id=str(client_payee.id))
@@ -1039,7 +1041,8 @@ def test_an_oversized_raster_is_refused_before_it_is_decoded():
     _Image.new("RGB", (10000, 10000), (255, 0, 0)).save(buf, format="PNG")
     assert len(buf.getvalue()) < 1_000_000, "the point is that it is small"
 
-    with pytest.raises(ValueError, match="megapixels"):
+    with pytest.warns(_Image.DecompressionBombWarning, match="Image size"), \
+         pytest.raises(ValueError, match="megapixels"):
         invoice_logo_service.normalise(buf.getvalue(), "image/png")
 
 

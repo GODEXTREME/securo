@@ -40,7 +40,8 @@ import {
   LayoutGrid,
   Rows3,
 } from 'lucide-react'
-import { AccountIcon, ConnectionLogo, getAccountTypeConfig } from '@/components/account-icon'
+import { AccountIcon, ConnectionLogo } from '@/components/account-icon'
+import { getAccountTypeConfig } from '@/lib/account-type-config'
 import { AccountPageActions } from '@/components/account-page-actions'
 import { AccountRowActions } from '@/components/account-row-actions'
 import { PageHeader } from '@/components/page-header'
@@ -1025,7 +1026,9 @@ function AccountDialog({
   const [statementCloseDay, setStatementCloseDay] = useState(account?.statement_close_day?.toString() ?? '')
   const [paymentDueDay, setPaymentDueDay] = useState(account?.payment_due_day?.toString() ?? '')
 
-  useEffect(() => {
+  const [formSource, setFormSource] = useState<{ account: typeof account } | null>(null)
+  if (!formSource || formSource.account !== account) {
+    setFormSource({ account })
     setName(account?.name ?? '')
     setDisplayName(account?.display_name ?? '')
     setType(account?.type ?? 'checking')
@@ -1035,7 +1038,7 @@ function AccountDialog({
     setCreditLimit(account?.credit_limit?.toString() ?? '')
     setStatementCloseDay(account?.statement_close_day?.toString() ?? '')
     setPaymentDueDay(account?.payment_due_day?.toString() ?? '')
-  }, [account])
+  }
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
