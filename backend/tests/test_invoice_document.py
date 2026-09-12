@@ -133,7 +133,10 @@ class TestDocument:
         assert resp.json()["has_line_items"] is False
         assert resp.json()["lines"] == []
 
-    def test_a_locale_that_is_not_a_language_tag_falls_back(self):
+    # `async` with nothing awaited, because `asyncio_mode = "auto"` marks
+    # every test in the suite as a coroutine test: a sync one is a
+    # warning, and CI runs pytest with `-W error`.
+    async def test_a_locale_that_is_not_a_language_tag_falls_back(self):
         """The locale comes from an invoice's stored snapshot — free-form
         JSON, like the template beside it, which this module already
         distrusts. A number in that field used to raise `AttributeError`
