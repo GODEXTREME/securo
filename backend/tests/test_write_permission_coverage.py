@@ -133,6 +133,14 @@ PUBLIC_ROUTES = {
         "/passkeys/2fa/options", "/passkeys/2fa/verify", "/api/setup/create-admin",
     )
 }
+#: Session-less, but not unauthenticated — which is a different thing and
+#: worth keeping apart from the login family above. The bookmarklet posts
+#: from a page on the state portal's origin, so no cookie of ours travels
+#: with it; what it carries instead is a capture token, minted under the
+#: write gate and checked by the handler before anything is written. So it
+#: cannot require an existing user, and it does not follow that anyone may
+#: call it.
+TOKEN_AUTHENTICATED_ROUTES = {("POST", "/api/receipt-capture")}
 WORKSPACE_READ_ROUTES = {
     ("POST", path) for path in (
         "/api/transactions/import/preview", "/api/assets/import/preview",
@@ -200,8 +208,8 @@ def test_a_mutating_route_declares_a_permission_decision(method, path):
     if (method, path) in ALLOWLIST:
         assert ALLOWLIST[(method, path)].strip(), "an exemption needs a reason"
         assert not names & WRITE_GATES, "remove the redundant write-gate exemption"
-        if (method, path) in PUBLIC_ROUTES:
-            assert "current_user_dependency" not in names, "login cannot require an existing user"
+        if (method, path) in PUBLIC_ROUTES | TOKEN_AUTHENTICATED_ROUTES:
+            assert "current_user_dependency" not in names, "a session-less route cannot require an existing user"
         else:
             assert "current_user_dependency" in names, "the exemption still requires authentication"
         if (method, path) in WORKSPACE_READ_ROUTES:
