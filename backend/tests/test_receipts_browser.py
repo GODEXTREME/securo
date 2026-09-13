@@ -33,6 +33,7 @@ class FakeCdp:
         error: Exception | None = None,
         blank_probes: int = 0,
         interstitial_probes: int = 0,
+        never_settles: bool = False,
     ):
         self.html = html
         self.fail_on = fail_on
@@ -40,6 +41,7 @@ class FakeCdp:
         self.error = error
         self.blank_probes = blank_probes
         self.interstitial_probes = interstitial_probes
+        self.never_settles = never_settles
         self.probes = 0
         self.opened: list[str] = []
         self.closed: list[str] = []
@@ -63,6 +65,12 @@ class FakeCdp:
                 # A real page, with real content, that is about to
                 # replace itself — Rio de Janeiro's browser check.
                 return json.dumps({"url": "https://portal/tspd", "state": "complete", "body": 80})
+            if self.never_settles:
+                # A challenge widget redrawing itself: a real page, never
+                # twice the same, for as long as nobody clicks it.
+                return json.dumps(
+                    {"url": "https://portal/x", "state": "complete", "body": 100 + self.probes}
+                )
             return json.dumps({"url": "https://portal/x", "state": "complete", "body": 120})
         if self.fail_on == "html":
             raise RuntimeError("the tab returned no HTML")
@@ -264,3 +272,43 @@ async def test_the_browser_spends_the_same_token_as_a_plain_fetch():
     assert first.outcome == "page"
     assert second.outcome == "rate_limited"
     assert cdp.opened == [URL], "the second fetch never opened a tab"
+
+
+CHALLENGE = '<html><body><div class="cf-turnstile" data-sitekey="x"></div></body></html>'
+
+
+@pytest.mark.asyncio
+async def test_a_page_that_never_settles_comes_back_with_the_timeout():
+    """The commonest reason a portal never settles is that it is showing a
+    challenge, and a challenge is something the caller can recognise. The
+    outcome stays `timeout` — this is evidence, not an answer."""
+    cdp = FakeCdp(html=CHALLENGE, never_settles=True)
+    result = await _fetcher(cdp, timeout_seconds=0.2).fetch(URL, HOSTS, "RJ")
+
+    assert result.outcome == "timeout"
+    assert result.page is not None
+    assert "cf-turnstile" in result.page.html
+    assert result.page.url == URL
+    # Housekeeping still happens: the tab does not outlive the attempt.
+    assert cdp.closed == ["tab-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_browser_that_never_opened_the_tab_has_no_page_to_offer():
+    """`hang` stops before a tab exists, so there is nothing to read and
+    the timeout carries nothing rather than inventing an empty page."""
+    result = await _fetcher(FakeCdp(hang=True), timeout_seconds=0.05).fetch(URL, HOSTS, "RJ")
+
+    assert result.outcome == "timeout"
+    assert result.page is None
+
+
+@pytest.mark.asyncio
+async def test_reading_the_unsettled_page_may_fail_without_changing_the_outcome():
+    """The browser had already stopped answering; asking it one more
+    question must not turn a timeout into a crash."""
+    cdp = FakeCdp(never_settles=True, fail_on="html")
+    result = await _fetcher(cdp, timeout_seconds=0.2).fetch(URL, HOSTS, "RJ")
+
+    assert result.outcome == "timeout"
+    assert result.page is None

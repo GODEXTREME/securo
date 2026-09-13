@@ -32,6 +32,10 @@ import httpx
 from app.receipts.adapters.base import FetchedPage
 from app.receipts.fetcher import FetchResult, FollowUp, Gate, host_allowed
 
+#: How long to spend reading a page that never settled. Short on purpose:
+#: the caller's budget is already spent by the time this runs.
+UNSETTLED_READ_SECONDS = 5.0
+
 #: How long to let a loaded page settle before reading it. The portals'
 #: own scripts run in well under a second; this is slack for a cold
 #: browser, and it is *added to* waiting for the document, never
@@ -145,6 +149,23 @@ class BrowserFetcher:
             raise RuntimeError("the tab returned no HTML")
         return html
 
+    async def _best_effort_html(self, target_id: Optional[str]) -> Optional[str]:
+        """Whatever the tab holds, or nothing.
+
+        Called only when the wait has already failed, so it cannot be
+        allowed to fail again: a browser that has stopped answering is
+        exactly the case this runs in. Its own short budget keeps a hung
+        tab from doubling the time the caller already spent.
+        """
+        if target_id is None:
+            return None
+        try:
+            async with asyncio.timeout(UNSETTLED_READ_SECONDS):
+                html = await self.transport.evaluate(target_id, "document.documentElement.outerHTML")
+        except Exception:  # noqa: BLE001 — best effort, by definition
+            return None
+        return html if isinstance(html, str) and html.strip() else None
+
     async def _probe(self, target_id: str) -> Optional[tuple[str, int]]:
         """What the tab holds right now, or None while it holds nothing."""
         raw = await self.transport.evaluate(target_id, _READY_PROBE)
@@ -187,7 +208,26 @@ class BrowserFetcher:
                     html, url = await self._follow(html, url, follow, allowed_hosts)
         except asyncio.TimeoutError:
             await self.gate.record_failure(uf, self.circuit_failures, self.circuit_open_seconds)
-            return FetchResult("timeout", detail=f"browser did not answer in {self.timeout_seconds:.0f}s")
+            # A page that never settled is not a page we may read as a note
+            # — that is the whole point of waiting for stillness. But it is
+            # still the only evidence of what the portal is showing, and
+            # the commonest reason a portal never settles is that it is
+            # showing a challenge: a Turnstile widget redraws itself for as
+            # long as nobody clicks it. So it comes back attached to the
+            # timeout, for the caller to recognise a refusal in. The
+            # outcome stays `timeout`, so nothing downstream can mistake it
+            # for an answer.
+            unsettled = await self._best_effort_html(target_id)
+            page = (
+                FetchedPage(url=url, status_code=200, html=unsettled, fetched_at=datetime.now(timezone.utc))
+                if unsettled
+                else None
+            )
+            return FetchResult(
+                "timeout",
+                page=page,
+                detail=f"browser did not answer in {self.timeout_seconds:.0f}s",
+            )
         except (httpx.TransportError, OSError) as exc:
             # The browser was never reached, so the portal said nothing and
             # the circuit must not close on its behalf: an unconfigured or

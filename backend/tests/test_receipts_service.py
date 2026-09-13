@@ -15,7 +15,8 @@ from app.models.notification import Notification
 from app.models.receipt import Receipt, ReceiptLink
 from app.models.store import Store
 from app.models.workspace import Workspace, WorkspaceMember
-from app.receipts.fetcher import Fetcher, MemoryGate
+from app.receipts.adapters.base import FetchedPage
+from app.receipts.fetcher import FetchResult, Fetcher, MemoryGate
 from app.receipts.qr import QrError
 from app.services import receipt_service
 from app.services.receipt_service import RETRY_SCHEDULE, ReceiptError
@@ -53,6 +54,25 @@ def _fetcher(handler: Callable[[httpx.Request], httpx.Response]) -> Fetcher:
 
 def _serving(html: str, status: int = 200) -> Fetcher:
     return _fetcher(lambda req: httpx.Response(status, text=html))
+
+
+class _TimingOut:
+    """The browser failing the way it does when a tab never settles: the
+    wait runs out, and what was on screen comes back attached to the
+    timeout rather than being thrown away."""
+
+    def __init__(self, html: str | None):
+        self.html = html
+        self.calls = 0
+
+    async def fetch(self, url, allowed_hosts, uf, *, follow=None):
+        self.calls += 1
+        page = (
+            FetchedPage(url=url, status_code=200, html=self.html, fetched_at=NOW)
+            if self.html is not None
+            else None
+        )
+        return FetchResult("timeout", page=page, detail="browser did not answer in 30s")
 
 
 @pytest.fixture
@@ -479,3 +499,64 @@ async def test_list_filters(session, test_user, test_workspace, html):
     assert await receipt_service.list_receipts(session, test_workspace.id, pending_only=True) == []
     done = await receipt_service.list_receipts(session, test_workspace.id, status="authorized")
     assert len(done) == 1 and done[0][1].workspace_id == test_workspace.id
+
+
+# ---------------------------------------------------------------------------
+# a page that never settled
+
+
+TURNSTILE = (
+    '<html><body><h1>Nota Fiscal de Consumidor Eletrônica</h1>'
+    '<div class="cf-turnstile" data-sitekey="0x4AAAAAAAZxv_tC7WhZeETe"></div>'
+    "</body></html>"
+)
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_on_a_challenge_stops_asking(session, test_user, test_workspace):
+    """A portal that never settles is usually one showing a challenge: the
+    widget redraws itself for as long as nobody clicks it. Retrying that on
+    a schedule cannot help, and five rounds of "browser did not answer in
+    30s" tell nobody what to do about it."""
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
+    fetcher = _TimingOut(TURNSTILE)
+
+    r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=fetcher, now=NOW)
+
+    assert r is not None and r.status == "waiting_sefaz"
+    assert r.status_reason == "captcha"
+    assert r.next_attempt_at is None, "a challenge earns no automatic retry"
+    assert "browser did not answer" in (r.last_error or ""), "how we learned it is kept"
+    assert r.raw_html is not None, "the page is the only evidence of what the portal showed"
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_on_an_unsettled_note_is_still_only_a_timeout(
+    session, test_user, test_workspace, html
+):
+    """The guarantee that matters. A page that never settled may be read
+    for one thing — recognising a refusal — and never as the note itself,
+    however complete it looks: this is exactly the half-written page the
+    wait for stillness exists to refuse."""
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
+    fetcher = _TimingOut(html)
+
+    r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=fetcher, now=NOW)
+
+    assert r is not None and r.status != "authorized"
+    assert r.items == [] or len(r.items) == 0
+    assert r.next_attempt_at is not None, "still worth another attempt"
+    assert r.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_with_no_page_reschedules_as_before(session, test_user, test_workspace):
+    """Nothing on screen — the tab never opened — is the case this always
+    handled, and it still behaves the same way."""
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
+
+    r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=_TimingOut(None), now=NOW)
+
+    assert r is not None and r.status == "waiting_sefaz"
+    assert r.status_reason == "timeout"
+    assert r.next_attempt_at is not None
