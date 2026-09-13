@@ -458,6 +458,25 @@ that it is *claimed or closed* on the next attempt and never merely
 abandoned — which is what `/json/list` is for. Anything open on another
 URL is somebody else's, and is left alone.
 
+The state it lands in is its own, `captcha_waiting`, and not the
+`captcha` that was already there. The difference is the only thing a
+person needs from this screen: with a tab held open, the note is in
+front of whoever opens that browser and the way out is to pass the
+check and ask again; without one — an HTTP fetch, or a browser too old
+to list its targets — nothing is on screen and the way out is to open
+the page themselves and paste it here. Telling someone to go and open a
+page the app is already waiting on would send them to a second copy of
+it. Pasting still works in both, and the panel is still offered in
+both, because the browser holding the tab is not always one the person
+can reach from where they are standing.
+
+Nothing counts an attempt. The retry budget exists to give up on a
+portal that will not answer, and a challenge is not that: it is an
+answer, and the same one will come back for as long as nobody acts on
+it. The screen follows suit — the attempt counter appears only once
+there is something to count, rather than saying "0 attempts" under a
+sentence that just described what the portal did.
+
 What this is **not** is a way past the challenge. The browser runs the
 portal's own script, and a person does the clicking. Synthesising the
 interaction through the debugger would be defeating the check rather

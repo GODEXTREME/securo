@@ -2783,6 +2783,7 @@
       "portal_down": "Das Staatsportal antwortet nicht — automatischer Neuversuch.",
       "rate_limited": "Das Staatsportal drosselt Anfragen — Neuversuch in Kürze.",
       "captcha": "Das Staatsportal verlangt eine menschliche Prüfung — öffnen Sie es im Browser und fügen Sie die Seite hier ein.",
+      "captcha_waiting": "Das Staatsportal verlangt eine menschliche Prüfung. Der Bon ist im Browser des Servers geöffnet und wartet auf Sie — bestehen Sie die Prüfung dort und tippen Sie dann auf Erneut versuchen.",
       "qr_rejected": "Das Portal hat den QR-Code abgelehnt — scannen Sie ihn erneut oder öffnen Sie den Beleg im Browser und fügen Sie die Seite hier ein.",
       "needs_browser": "Das Portal antwortet nur einem Browser — öffnen Sie den Beleg in Ihrem und nutzen Sie die Erfassung mit einem Tipp, oder fügen Sie die Seite hier ein.",
       "http_error": "Das Staatsportal hat einen Fehler zurückgegeben — automatischer Neuversuch.",

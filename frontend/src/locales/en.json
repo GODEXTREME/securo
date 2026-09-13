@@ -2782,6 +2782,7 @@
       "portal_down": "The state portal is not answering — retrying automatically.",
       "rate_limited": "The state portal is throttling requests — retrying shortly.",
       "captcha": "The state portal asked for a human check — open it in your browser and paste the page here.",
+      "captcha_waiting": "The state portal asked for a human check. The receipt is open in the server's browser, waiting for you — pass the check there, then press Retry.",
       "qr_rejected": "The state portal refused the QR code — scan it again, or open the note in your browser and paste the page here.",
       "needs_browser": "The state portal only answers a browser — open the note in yours and use one-tap capture, or paste the page here.",
       "http_error": "The state portal returned an error — retrying automatically.",

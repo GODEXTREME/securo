@@ -2876,6 +2876,7 @@
       "portal_down": "Štátny portál neodpovedá — automaticky sa skúša znova.",
       "rate_limited": "Štátny portál obmedzuje požiadavky — nový pokus čoskoro.",
       "captcha": "Štátny portál požiadal o overenie človekom — otvorte ho v prehliadači a vložte stránku sem.",
+      "captcha_waiting": "Štátny portál požiadal o overenie človekom. Bloček je otvorený v prehliadači servera a čaká na vás — prejdite overením tam a potom stlačte Skúsiť znova.",
       "qr_rejected": "Portál odmietol QR kód — naskenujte ho znova alebo otvorte doklad v prehliadači a vložte stránku sem.",
       "needs_browser": "Portál odpovedá len prehliadaču — otvorte doklad vo svojom a použite zachytenie jedným ťuknutím, alebo vložte stránku sem.",
       "http_error": "Štátny portál vrátil chybu — automaticky sa skúša znova.",

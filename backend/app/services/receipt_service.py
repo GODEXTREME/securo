@@ -600,7 +600,7 @@ async def process_receipt(
                 if result.page is not None:
                     _store_raw(receipt, result.page.html, now, ttl_days=raw_ttl_days)
                     if adapter.classify(result.page) == PageKind.CAPTCHA:
-                        _finish_captcha(receipt, result.detail)
+                        _finish_captcha(receipt, result.detail, waiting=result.kept_open)
                         return receipt
                 _reschedule(receipt, result.outcome, now, detail=result.detail)
                 return receipt
@@ -739,19 +739,25 @@ def _finish_invalid(receipt: Receipt, reason: str, detail: Optional[str] = None)
     receipt.last_error = detail
 
 
-def _finish_captcha(receipt: Receipt, detail: Optional[str] = None) -> None:
+def _finish_captcha(receipt: Receipt, detail: Optional[str] = None, *, waiting: bool = False) -> None:
     """The portal wants a person, so no automatic retry: the answer will
-    not change until someone acts. The UI offers "paste the page" and
-    one-tap capture for exactly this state.
+    not change until someone acts.
+
+    `waiting` is what the person is told to do, and the two cases ask for
+    different things. Without it, the challenge came back to a fetcher
+    that has nothing on screen, so the way out is to open the note in a
+    browser and paste the page here. With it, the browser has the note
+    open and is holding the tab: the check is already in front of
+    whoever opens that browser, and all that is left is to pass it and
+    ask again. Telling them to go and open it themselves would send them
+    to a second copy of the page the app is already waiting on.
 
     `detail` carries how we learned it when that is not obvious — a page
     that never settled says the challenge was still redrawing itself
-    rather than that it was served outright, and that distinction is the
-    difference between "the portal refused a fetcher" and "nobody has
-    passed the check in the browser yet".
+    rather than that it was served outright.
     """
     receipt.status = "waiting_sefaz"
-    receipt.status_reason = "captcha"
+    receipt.status_reason = "captcha_waiting" if waiting else "captcha"
     receipt.next_attempt_at = None
     receipt.last_error = (
         f"portal presented a challenge ({detail})" if detail else "portal presented a challenge"

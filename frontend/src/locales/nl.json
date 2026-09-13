@@ -2738,6 +2738,7 @@
       "portal_down": "Het portaal van de staat antwoordt niet — automatisch opnieuw proberen.",
       "rate_limited": "Het portaal van de staat beperkt verzoeken — binnenkort opnieuw.",
       "captcha": "Het portaal van de staat vroeg om een menselijke controle — open het in je browser en plak de pagina hier.",
+      "captcha_waiting": "Het portaal van de staat vroeg om een menselijke controle. De bon staat open in de browser van de server en wacht op je — doorloop de controle daar en tik dan op Opnieuw.",
       "qr_rejected": "Het portaal heeft de QR-code geweigerd — scan hem opnieuw, of open de bon in je browser en plak de pagina hier.",
       "needs_browser": "Het portaal antwoordt alleen een browser — open de bon in de jouwe en gebruik vastleggen met één tik, of plak de pagina hier.",
       "http_error": "Het portaal van de staat gaf een fout — automatisch opnieuw proberen.",

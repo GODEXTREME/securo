@@ -71,7 +71,8 @@ RECEIPT_STATUSES = (
 #: `status_reason` values, all machine-readable so the UI can say what is
 #: actually wrong instead of "error".
 RECEIPT_REASONS = (
-    "not_published", "portal_down", "rate_limited", "captcha", "http_error", "timeout",
+    "not_published", "portal_down", "rate_limited", "captcha", "captcha_waiting",
+    "http_error", "timeout",
     "parser_failed", "key_mismatch", "invalid_dv", "unsupported_uf", "unsupported_host",
     "not_nfce", "homolog", "cancelled_by_sefaz", "needs_qr", "qr_rejected", "needs_browser",
 )

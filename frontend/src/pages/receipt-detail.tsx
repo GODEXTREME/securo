@@ -31,6 +31,7 @@ import { formatCurrency } from '@/lib/format'
 import {
   apiErrorKey,
   canRetry,
+  countsAttempts,
   formatAccessKey,
   formatCnpj,
   isPending,
@@ -238,10 +239,10 @@ export default function ReceiptDetailPage() {
             <ReceiptStatusMessage receipt={receipt} className="text-sm" />
             {pending && (
               <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
-                {t('receipts.attempts', { count: receipt.attempts })}
+                {countsAttempts(receipt) && `${t('receipts.attempts', { count: receipt.attempts })} · `}
                 {receipt.next_attempt_at
-                  ? ` · ${t('receipts.nextAttempt', { time: new Date(receipt.next_attempt_at).toLocaleString(dateLocale, { dateStyle: 'short', timeStyle: 'short' }) })}`
-                  : ` · ${t('receipts.noNextAttempt')}`}
+                  ? t('receipts.nextAttempt', { time: new Date(receipt.next_attempt_at).toLocaleString(dateLocale, { dateStyle: 'short', timeStyle: 'short' }) })
+                  : t('receipts.noNextAttempt')}
               </p>
             )}
             {receipt.last_error && (

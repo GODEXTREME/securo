@@ -1372,6 +1372,7 @@ export type ReceiptStatusReason =
   | 'portal_down'
   | 'rate_limited'
   | 'captcha'
+  | 'captcha_waiting'
   | 'http_error'
   | 'timeout'
   | 'parser_failed'

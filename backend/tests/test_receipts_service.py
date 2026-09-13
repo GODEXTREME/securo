@@ -59,27 +59,39 @@ def _serving(html: str, status: int = 200) -> Fetcher:
 class _TimingOut:
     """The browser failing the way it does when a tab never settles: the
     wait runs out, and what was on screen comes back attached to the
-    timeout rather than being thrown away."""
+    timeout rather than being thrown away.
 
-    def __init__(self, html: str | None):
+    `keeps_tabs` is what separates a browser from every other source. One
+    that keeps the tab leaves the challenge on screen and says so; one
+    that cannot — an HTTP fetch, or a browser too old to list its targets
+    — leaves nothing behind, and the person has to open the page
+    themselves. The service says something different in each case, so the
+    stub has to be able to be either.
+    """
+
+    def __init__(self, html: str | None, *, keeps_tabs: bool = True):
         self.html = html
+        self.keeps_tabs = keeps_tabs
         self.calls = 0
         self.kept = False
 
     async def fetch(self, url, allowed_hosts, uf, *, follow=None, keep_open=None):
         self.calls += 1
-        # What the service decides about the page it gets back, recorded
-        # so a test can assert the challenge was recognised here rather
-        # than only inferred from the receipt's final state.
-        self.kept = bool(keep_open and self.html is not None and keep_open(
-            FetchedPage(url=url, status_code=200, html=self.html, fetched_at=NOW)
-        ))
         page = (
             FetchedPage(url=url, status_code=200, html=self.html, fetched_at=NOW)
             if self.html is not None
             else None
         )
-        return FetchResult("timeout", page=page, detail="browser did not answer in 30s")
+        # What the service decides about the page it gets back, recorded
+        # so a test can assert the challenge was recognised here rather
+        # than only inferred from the receipt's final state.
+        self.kept = bool(self.keeps_tabs and page is not None and keep_open and keep_open(page))
+        return FetchResult(
+            "timeout",
+            page=page,
+            detail="browser is waiting for you" if self.kept else "browser did not answer in 30s",
+            kept_open=self.kept,
+        )
 
 
 @pytest.fixture
@@ -533,10 +545,31 @@ async def test_a_timeout_on_a_challenge_stops_asking(session, test_user, test_wo
     r = await receipt_service.process_receipt(session, out.receipt.id, fetcher=fetcher, now=NOW)
 
     assert r is not None and r.status == "waiting_sefaz"
-    assert r.status_reason == "captcha"
+    assert r.status_reason == "captcha_waiting", "the tab is open, so say so rather than 'go and open it'"
     assert r.next_attempt_at is None, "a challenge earns no automatic retry"
-    assert "browser did not answer" in (r.last_error or ""), "how we learned it is kept"
+    assert "browser is waiting for you" in (r.last_error or ""), "how we learned it is kept"
     assert r.raw_html is not None, "the page is the only evidence of what the portal showed"
+    assert fetcher.kept, "the challenge was recognised while the tab could still be kept"
+
+
+@pytest.mark.asyncio
+async def test_a_challenge_nobody_is_holding_a_tab_for_says_to_open_one(
+    session, test_user, test_workspace
+):
+    """The two challenge states differ in what a person is told to do, and
+    it is the fetcher that decides which one this is. A source that cannot
+    keep a tab — an HTTP fetch, a browser too old to list its targets —
+    leaves nothing on screen, so pointing at a browser that is holding the
+    note would point at nothing."""
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
+
+    r = await receipt_service.process_receipt(
+        session, out.receipt.id, fetcher=_TimingOut(TURNSTILE, keeps_tabs=False), now=NOW
+    )
+
+    assert r is not None and r.status == "waiting_sefaz"
+    assert r.status_reason == "captcha", "nothing is on screen, so it is the paste-it-here challenge"
+    assert r.next_attempt_at is None, "still no automatic retry: a challenge is a challenge"
 
 
 @pytest.mark.asyncio
