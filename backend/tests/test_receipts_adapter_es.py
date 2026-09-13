@@ -41,8 +41,12 @@ class TestParseBrl:
 class TestEsAdapter:
     def test_registered(self):
         # This file is about ES; which other states exist is not its business.
+        # Hence `00`, which is not a state code at all: the property worth
+        # asserting here is that an unregistered code answers None, and
+        # naming a real state would make this line a hostage to whichever
+        # one is read next.
         assert adapter_for("32") is not None and "ES" in supported_ufs()
-        assert adapter_for("35") is None
+        assert adapter_for("00") is None
 
     def test_prefers_the_qr_url(self):
         qr = parse_qr_payload(f"http://app.sefaz.es.gov.br/ConsultaNFCe?p={KEY}|2|1|1|abc")

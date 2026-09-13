@@ -416,11 +416,28 @@ own code, so Minas Gerais joins Espírito Santo and Rio de Janeiro among
 the states where a product is comparable within its chain until somebody
 scans one by hand.
 
+## A state that cost nothing, and was expected to cost the most
+
+São Paulo was written down here as guarded by a reCAPTCHA. That was
+recorded before anyone had a real key to ask with, and it is wrong.
+Asked with the signature its QR carries, the portal answers a plain
+request — no challenge, no browser — and what it answers is the shared
+ENCAT `tabResult` template that Espírito Santo and Rio de Janeiro
+already serve. `parse_tabresult` reads it unchanged, so `sp.py` is a
+binding and nothing more (checked 2026-09-13 against a real note).
+
+The signature is checked, though: `?p=<key>|2|1` without it returns the
+consultation form rather than the note, so there is no key route to fall
+back on, as in Goiás and Minas Gerais.
+
+The lesson is about the notes rather than about São Paulo. Every entry
+here that was written from a portal's documentation rather than from a
+real key has been wrong in one direction or the other — this one was
+pessimistic, Minas Gerais' host was stale. A state is unknown until a
+note from it has been read.
+
 ## What is not done
 
-- **São Paulo.** It answers a plain request with a reCAPTCHA, so it
-  will need the browser, and it has not been read: a portal shows
-  nothing without a real key, and none was available.
 - **The barcode in Rio de Janeiro, Espírito Santo and Minas Gerais.** Their consumer
   DANFE does not carry one. Rio de Janeiro's detailed view does, but it
   is reachable only by driving the search form: four navigations per

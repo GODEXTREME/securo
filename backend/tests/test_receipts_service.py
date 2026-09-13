@@ -179,14 +179,16 @@ async def test_unparseable_input_raises(session, test_user, test_workspace):
     [
         (f"http://app.sefaz.es.gov.br/ConsultaNFCe?p={KEY}|2|2|1|x", "homolog"),
         (f"http://evil.example/ConsultaNFCe?p={KEY}|2|1|1|x", "unsupported_host"),
-        # São Paulo key: valid, no adapter yet.
-        ("35260800063960006050650050003784571128411297", "unsupported_uf"),
+        # Bahia: a real state, a valid key, and no adapter — which is
+        # what `unsupported_uf` is for. It used to be São Paulo here,
+        # until São Paulo turned out to answer a plain request.
+        ("29260800063960006050650050003784571128411297", "unsupported_uf"),
     ],
 )
 async def test_policy_rejections_are_persisted_as_invalid(session, test_user, test_workspace, payload, reason):
     from app.receipts.qr import access_key_check_digit
 
-    if payload.startswith("35"):
+    if payload.startswith("29"):
         payload = payload[:43] + str(access_key_check_digit(payload[:43]))
     out = await receipt_service.scan(session, test_workspace.id, test_user.id, payload)
     assert out.receipt.status == "invalid" and out.receipt.status_reason == reason
