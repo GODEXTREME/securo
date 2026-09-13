@@ -16,7 +16,15 @@ import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { formatCurrency } from '@/lib/format'
-import { apiErrorKey, canRetry, hasPending, isPending, storeName, wantsPaste } from '@/lib/receipt-status'
+import {
+  apiErrorKey,
+  canRetry,
+  countsAttempts,
+  hasPending,
+  isPending,
+  storeName,
+  wantsPaste,
+} from '@/lib/receipt-status'
 import type { Receipt } from '@/types'
 
 /** Receipts are Brazilian consumer receipts; the state prints them in reais. */
@@ -247,8 +255,7 @@ function PendingRow({
           </p>
           <ReceiptStatusMessage receipt={receipt} className="mt-1.5" />
           <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-            {t('receipts.attempts', { count: receipt.attempts })}
-            {' · '}
+            {countsAttempts(receipt) && `${t('receipts.attempts', { count: receipt.attempts })} · `}
             {next ? t('receipts.nextAttempt', { time: next }) : t('receipts.noNextAttempt')}
           </p>
         </div>

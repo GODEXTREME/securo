@@ -2918,6 +2918,7 @@
       "portal_down": "Portal stanowy nie odpowiada — automatyczna ponowna próba.",
       "rate_limited": "Portal stanowy ogranicza zapytania — ponowna próba wkrótce.",
       "captcha": "Portal stanowy poprosił o weryfikację człowieka — otwórz go w przeglądarce i wklej stronę tutaj.",
+      "captcha_waiting": "Portal stanowy poprosił o weryfikację człowieka. Paragon jest otwarty w przeglądarce serwera i czeka na Ciebie — przejdź weryfikację tam, a potem naciśnij Ponów.",
       "qr_rejected": "Portal odrzucił kod QR — zeskanuj go ponownie albo otwórz paragon w przeglądarce i wklej tu stronę.",
       "needs_browser": "Portal odpowiada tylko przeglądarce — otwórz paragon w swojej i użyj przechwytywania jednym dotknięciem albo wklej tu stronę.",
       "http_error": "Portal stanowy zwrócił błąd — automatyczna ponowna próba.",

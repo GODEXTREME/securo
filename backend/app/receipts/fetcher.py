@@ -43,6 +43,11 @@ class FetchResult:
     page: Optional[FetchedPage] = None
     #: Free text for `last_error`; the outcome is what the state machine reads.
     detail: Optional[str] = None
+    #: The browser left the tab on screen because `keep_open` asked it to.
+    #: Only a browser ever sets this, and it changes what the caller can
+    #: tell a person to do: the page is already in front of them, rather
+    #: than something they have to go and open themselves.
+    kept_open: bool = False
 
 
 class PageSource(Protocol):

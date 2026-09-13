@@ -340,6 +340,7 @@ async def test_a_challenge_is_left_on_screen_for_someone_to_pass():
     assert result.outcome == "timeout"
     assert cdp.closed == [], "the tab stays"
     assert result.detail == "browser is waiting for you"
+    assert result.kept_open, "the caller has to know there is something on screen to point at"
 
 
 @pytest.mark.asyncio
@@ -353,6 +354,7 @@ async def test_anything_else_that_will_not_settle_is_still_closed():
 
     assert result.outcome == "timeout"
     assert cdp.closed == ["tab-1"]
+    assert not result.kept_open, "nothing was left behind, so nothing to send anyone to"
 
 
 @pytest.mark.asyncio

@@ -40,22 +40,41 @@ export function canRetry(receipt: Pick<Receipt, 'status'>): boolean {
 }
 
 /**
- * Whether the paste panel belongs on screen. For Espírito Santo this is the
- * normal path, not a fallback: the portal answers a machine with a Turnstile
- * challenge, the receipt lands in `waiting_sefaz`/`captcha`, and the person
- * opens the page in a browser and pastes it here. Also offered when the
- * automatic route has given up or read the page wrong, since a browser copy
- * is a second chance either way.
+ * Whether the paste panel belongs on screen. For a state that challenges a
+ * machine this is the normal path, not a fallback: the receipt lands in
+ * `waiting_sefaz`/`captcha` and the person opens the page in a browser and
+ * pastes it here. Also offered when the automatic route has given up or read
+ * the page wrong, since a browser copy is a second chance either way.
+ *
+ * `captcha_waiting` is included even though pasting is no longer the shortest
+ * way out of it — the note is already open in the configured browser, so
+ * passing the check there and retrying is. It stays because that browser is
+ * not always reachable from wherever the person is standing, and pasting from
+ * any other one still works.
  */
 export function wantsPaste(receipt: Pick<Receipt, 'status' | 'status_reason'>): boolean {
   if (receipt.status === 'waiting_sefaz') {
     return (
       receipt.status_reason === 'captcha' ||
+      receipt.status_reason === 'captcha_waiting' ||
       receipt.status_reason === 'qr_rejected' ||
       receipt.status_reason === 'needs_browser'
     )
   }
   return receipt.status === 'gave_up' || receipt.status === 'parse_error'
+}
+
+/**
+ * Whether the attempt counter has anything to say.
+ *
+ * Zero does not read as "no attempt has failed yet" — it reads as though
+ * nothing has happened at all, which is wrong on the one state that shows it:
+ * a challenge does not spend an attempt, because no number of retries is what
+ * gets past it. The sentence above the counter already says what the portal
+ * did, so the counter stays off the screen until there is a count.
+ */
+export function countsAttempts(receipt: Pick<Receipt, 'attempts'>): boolean {
+  return receipt.attempts > 0
 }
 
 /** The store as a person names it: the sign over the door, else the legal
@@ -69,6 +88,7 @@ export const RECEIPT_REASONS: ReadonlySet<ReceiptStatusReason> = new Set<Receipt
   'portal_down',
   'rate_limited',
   'captcha',
+  'captcha_waiting',
   'http_error',
   'timeout',
   'parser_failed',

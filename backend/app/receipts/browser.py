@@ -268,6 +268,7 @@ class BrowserFetcher:
                     if keep
                     else f"browser did not answer in {self.timeout_seconds:.0f}s"
                 ),
+                kept_open=keep,
             )
         except (httpx.TransportError, OSError) as exc:
             # The browser was never reached, so the portal said nothing and

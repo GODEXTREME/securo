@@ -7,6 +7,7 @@ import {
   apiErrorCode,
   apiErrorKey,
   canRetry,
+  countsAttempts,
   errorMessageKey,
   formatAccessKey,
   formatCnpj,
@@ -61,6 +62,10 @@ describe('wantsPaste', () => {
     expect(wantsPaste(receipt('waiting_sefaz', 'captcha'))).toBe(true)
   })
 
+  it('is still offered when a browser is holding the tab, for whoever cannot reach it', () => {
+    expect(wantsPaste(receipt('waiting_sefaz', 'captcha_waiting'))).toBe(true)
+  })
+
   it('is offered when the portal refused the QR, since the key still works', () => {
     expect(wantsPaste(receipt('waiting_sefaz', 'qr_rejected'))).toBe(true)
   })
@@ -84,9 +89,22 @@ describe('wantsPaste', () => {
   })
 })
 
+describe('countsAttempts', () => {
+  it('keeps the counter off the screen until something has been counted', () => {
+    // A challenge does not spend an attempt — no number of retries is what
+    // gets past one — so this is the state that would otherwise print
+    // "0 attempts" under a sentence saying the portal answered.
+    expect(countsAttempts({ attempts: 0 })).toBe(false)
+    expect(countsAttempts({ attempts: 1 })).toBe(true)
+  })
+})
+
 describe('statusMessageKey', () => {
   it('prefers the reason when there is one', () => {
     expect(statusMessageKey(receipt('waiting_sefaz', 'captcha'))).toBe('receipts.reason.captcha')
+    expect(statusMessageKey(receipt('waiting_sefaz', 'captcha_waiting'))).toBe(
+      'receipts.reason.captcha_waiting',
+    )
     expect(statusMessageKey(receipt('invalid', 'not_nfce'))).toBe('receipts.reason.not_nfce')
   })
 
