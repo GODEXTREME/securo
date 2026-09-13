@@ -572,7 +572,16 @@ async def process_receipt(
         else:
             url = _fetch_url(receipt, adapter)
             fetched = True
-            result = await fetcher.fetch(url, adapter.allowed_hosts, receipt.uf, follow=adapter.follow_up)
+            # A page that never settles is usually a challenge, and a
+            # challenge is the one thing worth leaving on screen: somebody
+            # can pass it, and the next attempt reads the same tab.
+            result = await fetcher.fetch(
+                url,
+                adapter.allowed_hosts,
+                receipt.uf,
+                follow=adapter.follow_up,
+                keep_open=lambda page: adapter.classify(page) == PageKind.CAPTCHA,
+            )
             if result.outcome == "blocked":
                 _finish_invalid(receipt, "unsupported_host", result.detail)
                 return receipt

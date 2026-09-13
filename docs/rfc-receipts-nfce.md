@@ -436,6 +436,34 @@ real key has been wrong in one direction or the other — this one was
 pessimistic, Minas Gerais' host was stale. A state is unknown until a
 note from it has been read.
 
+## Handing a tab over instead of closing it
+
+The design said a challenge that wants a person needs a person to see
+it, and then gave that person thirty seconds and closed the tab. Nobody
+opens the remote browser, finds the tab and passes a Turnstile in thirty
+seconds; the browser route could never have worked for a state that asks
+for a click, and Rio de Janeiro only worked because its check needs
+nobody — its script computes a cookie by itself.
+
+So a page that never settles and looks like a challenge is now **left on
+screen**, and the next attempt claims that same tab rather than opening
+another beside it. The sequence is: the app puts the note on the screen,
+a person passes the check there, and the attempt after that reads what
+they left. From then on the clearance cookie is in the profile volume
+and the state's other notes need nobody at all, until it expires.
+
+Leaving a tab open was rejected once in this file, for a good reason: a
+tab left open keeps running scripts. What makes it acceptable now is
+that it is *claimed or closed* on the next attempt and never merely
+abandoned — which is what `/json/list` is for. Anything open on another
+URL is somebody else's, and is left alone.
+
+What this is **not** is a way past the challenge. The browser runs the
+portal's own script, and a person does the clicking. Synthesising the
+interaction through the debugger would be defeating the check rather
+than passing it, and is not something this project does — quite apart
+from a synthetic event being exactly the pattern these widgets measure.
+
 ## What is not done
 
 - **The barcode in Rio de Janeiro, Espírito Santo and Minas Gerais.** Their consumer

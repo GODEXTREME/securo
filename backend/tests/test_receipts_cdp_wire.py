@@ -20,6 +20,7 @@ from websockets.asyncio.server import serve
 
 from app.receipts.browser import HttpWsCdp
 
+LISTED_URL = "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=331234|3|1"
 TAB = "TAB-1"
 opened: list[str] = []
 HTML = "<html><body>nota</body></html>"
@@ -65,10 +66,20 @@ def _process_request(connection, request):
         opened.append(query)
         return connection.respond(200, json.dumps({"id": TAB, "type": "page"}))
     if path == "/json/list":
+        # As Chrome answers it: every target it holds, not only pages.
+        # A service worker has no document to read and cannot be reused,
+        # so the client has to filter — and this fake includes one so
+        # that filtering is actually exercised.
         return connection.respond(
             200,
             json.dumps([
-                {"id": TAB, "webSocketDebuggerUrl": f"ws://localhost/devtools/page/{TAB}"}
+                {
+                    "id": TAB,
+                    "type": "page",
+                    "url": LISTED_URL,
+                    "webSocketDebuggerUrl": f"ws://localhost/devtools/page/{TAB}",
+                },
+                {"id": "sw-1", "type": "service_worker", "url": "https://portal/sw.js"},
             ]),
         )
     if path.startswith("/json/close/"):
@@ -90,6 +101,10 @@ async def test_the_three_calls_work_against_chrome_s_own_answers():
 
         assert json.loads(await cdp.evaluate(target_id, "document.readyState"))["state"] == "complete"
         assert await cdp.evaluate(target_id, "document.documentElement.outerHTML") == HTML
+
+        # What a previous attempt left behind, so it can be claimed again
+        # rather than a second tab opened beside it. Pages only.
+        assert await cdp.list_tabs() == [(TAB, LISTED_URL)]
 
         await cdp.close_tab(target_id)
 

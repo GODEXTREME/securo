@@ -34,6 +34,7 @@ class FakeCdp:
         blank_probes: int = 0,
         interstitial_probes: int = 0,
         never_settles: bool = False,
+        tabs: list[tuple[str, str]] | None = None,
     ):
         self.html = html
         self.fail_on = fail_on
@@ -45,6 +46,9 @@ class FakeCdp:
         self.probes = 0
         self.opened: list[str] = []
         self.closed: list[str] = []
+        #: Tabs the browser already holds, as `(target id, url)` — what a
+        #: previous attempt left behind.
+        self.tabs: list[tuple[str, str]] = list(tabs or [])
 
     async def open_tab(self, url: str) -> str:
         if self.fail_on == "open":
@@ -80,6 +84,11 @@ class FakeCdp:
         if self.fail_on == "close":
             raise RuntimeError("already gone")
         self.closed.append(target_id)
+
+    async def list_tabs(self) -> list[tuple[str, str]]:
+        if self.fail_on == "list":
+            raise RuntimeError("this browser does not list")
+        return list(self.tabs)
 
 
 def _fetcher(cdp: FakeCdp, **kwargs) -> BrowserFetcher:
@@ -312,3 +321,75 @@ async def test_reading_the_unsettled_page_may_fail_without_changing_the_outcome(
 
     assert result.outcome == "timeout"
     assert result.page is None
+
+
+def _challenge(page) -> bool:
+    return "cf-turnstile" in page.html
+
+
+@pytest.mark.asyncio
+async def test_a_challenge_is_left_on_screen_for_someone_to_pass():
+    """The one page worth not closing. Somebody can act on it, and the
+    next attempt reads the same tab — so this is a tab handed over, not a
+    tab abandoned."""
+    cdp = FakeCdp(html=CHALLENGE, never_settles=True)
+    result = await _fetcher(cdp, timeout_seconds=0.2).fetch(
+        URL, HOSTS, "ES", keep_open=_challenge
+    )
+
+    assert result.outcome == "timeout"
+    assert cdp.closed == [], "the tab stays"
+    assert result.detail == "browser is waiting for you"
+
+
+@pytest.mark.asyncio
+async def test_anything_else_that_will_not_settle_is_still_closed():
+    """Nobody is coming to look at a page that is merely slow, and a tab
+    left open keeps running scripts."""
+    cdp = FakeCdp(html=NOTE, never_settles=True)
+    result = await _fetcher(cdp, timeout_seconds=0.2).fetch(
+        URL, HOSTS, "ES", keep_open=_challenge
+    )
+
+    assert result.outcome == "timeout"
+    assert cdp.closed == ["tab-1"]
+
+
+@pytest.mark.asyncio
+async def test_the_next_attempt_reads_the_tab_that_was_left():
+    """Where the whole arrangement pays off: the person passed the check
+    in that tab, so it now holds the note. Opening a fresh one would work
+    too — the cookie is in the profile — but reading theirs is the
+    direct answer, and it is what closes the loop."""
+    cdp = FakeCdp(tabs=[("tab-left", URL)])
+
+    result = await _fetcher(cdp).fetch(URL, HOSTS, "ES")
+
+    assert result.outcome == "page"
+    assert cdp.opened == [], "no second tab beside the one already there"
+    assert cdp.closed == ["tab-left"], "and it is cleaned up once read"
+
+
+@pytest.mark.asyncio
+async def test_a_tab_left_on_another_page_is_not_mistaken_for_ours():
+    """Matching is on the URL. Anything else open in that browser — a
+    different note, somebody's own browsing — is none of this fetch's
+    business."""
+    cdp = FakeCdp(tabs=[("tab-other", "https://example.invalid/somewhere")])
+
+    result = await _fetcher(cdp).fetch(URL, HOSTS, "ES")
+
+    assert result.outcome == "page"
+    assert cdp.opened == [URL], "a tab of our own was opened"
+
+
+@pytest.mark.asyncio
+async def test_a_browser_that_cannot_list_its_tabs_still_works():
+    """`/json/list` is the newest thing asked of the browser. If it is not
+    there, the fetch opens a tab as it always did rather than failing."""
+    cdp = FakeCdp(fail_on="list")
+
+    result = await _fetcher(cdp).fetch(URL, HOSTS, "ES")
+
+    assert result.outcome == "page"
+    assert cdp.opened == [URL]

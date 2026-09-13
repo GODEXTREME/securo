@@ -24,7 +24,7 @@ import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -60,7 +60,7 @@ _READY_PROBE = (
 
 
 class CdpTransport(Protocol):
-    """The three things this needs from a browser. Implemented over HTTP
+    """The four things this needs from a browser. Implemented over HTTP
     and a WebSocket below; replaced wholesale in tests."""
 
     #: Where this transport expects the browser to be. Only ever used in
@@ -76,6 +76,15 @@ class CdpTransport(Protocol):
 
     async def close_tab(self, target_id: str) -> None:
         ...
+
+    async def list_tabs(self) -> list[tuple[str, str]]:
+        """Every open page, as `(target id, url)`."""
+
+
+#: Whether a page that never settled is worth leaving on screen for a
+#: person to act on. The caller answers, because only it knows the state's
+#: adapter and therefore what a refusal looks like there.
+KeepOpen = Callable[[FetchedPage], bool]
 
 
 @dataclass
@@ -177,6 +186,26 @@ class BrowserFetcher:
             return None
         return str(url), body
 
+    async def _claim_tab(self, url: str) -> str:
+        """The tab for this URL: the one a previous attempt left open, or
+        a new one.
+
+        A tab is only ever left behind when the page was a challenge and
+        somebody might act on it. Finding it again is the whole point —
+        it is where that person passed the check, and it now holds the
+        note. Anything left on *another* portal URL is a leftover nobody
+        is coming back to, and is closed.
+
+        """
+        try:
+            tabs = await self.transport.list_tabs()
+        except Exception:  # noqa: BLE001 — an older browser may not list
+            tabs = []
+        for target_id, open_url in tabs:
+            if open_url == url:
+                return target_id
+        return await self.transport.open_tab(url)
+
     async def fetch(
         self,
         url: str,
@@ -184,6 +213,7 @@ class BrowserFetcher:
         uf: str,
         *,
         follow: FollowUp | None = None,
+        keep_open: KeepOpen | None = None,
     ) -> FetchResult:
         if not host_allowed(url, allowed_hosts):
             return FetchResult("blocked", detail=f"host not allowed for {uf}: {url}")
@@ -200,9 +230,10 @@ class BrowserFetcher:
             return FetchResult("rate_limited", detail=f"interval not elapsed for {host}")
 
         target_id: Optional[str] = None
+        keep = False
         try:
             async with asyncio.timeout(self.timeout_seconds):
-                target_id = await self.transport.open_tab(url)
+                target_id = await self._claim_tab(url)
                 html = await self._settled_html(target_id)
                 if follow is not None:
                     html, url = await self._follow(html, url, follow, allowed_hosts)
@@ -223,10 +254,20 @@ class BrowserFetcher:
                 if unsettled
                 else None
             )
+            # A challenge is the one page worth leaving on screen: it is
+            # waiting for a person, and closing it takes away the thing
+            # they would act on. The next attempt finds this same tab and
+            # reads whatever they left in it, so nothing is leaked — the
+            # tab is claimed or closed, never merely abandoned.
+            keep = page is not None and keep_open is not None and keep_open(page)
             return FetchResult(
                 "timeout",
                 page=page,
-                detail=f"browser did not answer in {self.timeout_seconds:.0f}s",
+                detail=(
+                    "browser is waiting for you"
+                    if keep
+                    else f"browser did not answer in {self.timeout_seconds:.0f}s"
+                ),
             )
         except (httpx.TransportError, OSError) as exc:
             # The browser was never reached, so the portal said nothing and
@@ -239,8 +280,9 @@ class BrowserFetcher:
             await self.gate.record_failure(uf, self.circuit_failures, self.circuit_open_seconds)
             return FetchResult("portal_down", detail=f"browser error: {exc}")
         finally:
-            if target_id is not None:
-                # A tab left open is a tab that keeps running scripts.
+            # A tab left open is a tab that keeps running scripts, so it is
+            # closed unless somebody is expected to use it.
+            if target_id is not None and not keep:
                 try:
                     await self.transport.close_tab(target_id)
                 except Exception:  # noqa: BLE001
@@ -363,3 +405,22 @@ class HttpWsCdp:
         self._ws_urls.pop(target_id, None)
         async with self._client() as client:
             await client.get(f"{self._base}/json/close/{target_id}")
+
+    async def list_tabs(self) -> list[tuple[str, str]]:
+        """`GET /json/list`, filtered to pages.
+
+        Chrome lists every target it holds — service workers, extension
+        backgrounds, the browser itself — and only a page can be read or
+        reused, so the rest is dropped here rather than by every caller.
+        """
+        async with self._client() as client:
+            response = await client.get(f"{self._base}/json/list")
+            response.raise_for_status()
+            targets = response.json()
+        if not isinstance(targets, list):
+            return []
+        return [
+            (str(t["id"]), str(t.get("url") or ""))
+            for t in targets
+            if isinstance(t, dict) and t.get("type") == "page" and t.get("id")
+        ]

@@ -64,9 +64,16 @@ class _TimingOut:
     def __init__(self, html: str | None):
         self.html = html
         self.calls = 0
+        self.kept = False
 
-    async def fetch(self, url, allowed_hosts, uf, *, follow=None):
+    async def fetch(self, url, allowed_hosts, uf, *, follow=None, keep_open=None):
         self.calls += 1
+        # What the service decides about the page it gets back, recorded
+        # so a test can assert the challenge was recognised here rather
+        # than only inferred from the receipt's final state.
+        self.kept = bool(keep_open and self.html is not None and keep_open(
+            FetchedPage(url=url, status_code=200, html=self.html, fetched_at=NOW)
+        ))
         page = (
             FetchedPage(url=url, status_code=200, html=self.html, fetched_at=NOW)
             if self.html is not None
