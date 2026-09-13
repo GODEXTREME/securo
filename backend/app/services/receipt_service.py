@@ -580,9 +580,20 @@ async def process_receipt(
                 _reschedule(receipt, "rate_limited", now, detail=result.detail, count=False)
                 return receipt
             if result.outcome in ("portal_down", "timeout", "http_error"):
-                _reschedule(receipt, result.outcome, now, detail=result.detail)
+                # A fetch that failed can still carry the page it failed
+                # on — the browser attaches one when a tab never settled.
+                # Only one verdict may be drawn from it, and it is the one
+                # that stops the retries: a challenge. Anything else stays
+                # a reschedule, because a page still rewriting itself is
+                # not evidence of what the portal finally said, and reading
+                # a half-written note as the note is the mistake the wait
+                # for stillness exists to prevent.
                 if result.page is not None:
                     _store_raw(receipt, result.page.html, now, ttl_days=raw_ttl_days)
+                    if adapter.classify(result.page) == PageKind.CAPTCHA:
+                        _finish_captcha(receipt, result.detail)
+                        return receipt
+                _reschedule(receipt, result.outcome, now, detail=result.detail)
                 return receipt
             page = result.page
             if page is None:
@@ -653,12 +664,7 @@ async def process_receipt(
             receipt.next_attempt_at = None
             receipt.last_error = "portal serves a browser check"
         elif kind == PageKind.CAPTCHA:
-            # No automatic retry: the portal wants a person. The UI offers
-            # "paste the page" for exactly this state.
-            receipt.status = "waiting_sefaz"
-            receipt.status_reason = "captcha"
-            receipt.next_attempt_at = None
-            receipt.last_error = "portal presented a challenge"
+            _finish_captcha(receipt)
         else:
             snippet = " ".join(page.html.split())[:160]
             _reschedule(
@@ -722,6 +728,25 @@ def _finish_invalid(receipt: Receipt, reason: str, detail: Optional[str] = None)
     receipt.status_reason = reason
     receipt.next_attempt_at = None
     receipt.last_error = detail
+
+
+def _finish_captcha(receipt: Receipt, detail: Optional[str] = None) -> None:
+    """The portal wants a person, so no automatic retry: the answer will
+    not change until someone acts. The UI offers "paste the page" and
+    one-tap capture for exactly this state.
+
+    `detail` carries how we learned it when that is not obvious — a page
+    that never settled says the challenge was still redrawing itself
+    rather than that it was served outright, and that distinction is the
+    difference between "the portal refused a fetcher" and "nobody has
+    passed the check in the browser yet".
+    """
+    receipt.status = "waiting_sefaz"
+    receipt.status_reason = "captcha"
+    receipt.next_attempt_at = None
+    receipt.last_error = (
+        f"portal presented a challenge ({detail})" if detail else "portal presented a challenge"
+    )
 
 
 def _reschedule(
