@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import type { Receipt } from '@/types'
 
 interface ReceiptPastePanelProps {
-  receipt: Pick<Receipt, 'id' | 'qr_url' | 'status_reason'>
+  receipt: Pick<Receipt, 'id' | 'access_key' | 'consulta_url' | 'qr_url' | 'status_reason'>
   /** Called with the receipt as the backend returned it after reading the page. */
   onDone?: (receipt: Receipt) => void
   className?: string
@@ -19,9 +19,16 @@ interface ReceiptPastePanelProps {
 /**
  * The paste path. For Espírito Santo it is how a receipt normally gets read:
  * the portal shows a machine a Cloudflare Turnstile challenge, so the person
- * opens the QR link in a browser, passes the check, selects all, copies, and
+ * opens the page in a browser, passes the check, selects all, copies, and
  * pastes here. Whatever landed — the page's HTML, Chrome's view-source dump,
  * or the plain text a phone copies — is sent as-is; the backend normalises.
+ *
+ * The link offered is `consulta_url`, which is the state's answer to "where
+ * is this note looked up" rather than the URL the QR happened to carry. In
+ * Espírito Santo those differ: no deep link there opens, and what works is
+ * the consultation form. So the key is offered beside the link — it is what
+ * a form asks for, and forty-four digits is not something to read off a
+ * screen and type by hand.
  */
 export function ReceiptPastePanel({ receipt, onDone, className }: ReceiptPastePanelProps) {
   const { t } = useTranslation()
@@ -35,11 +42,14 @@ export function ReceiptPastePanel({ receipt, onDone, className }: ReceiptPastePa
     typeof navigator !== 'undefined' &&
     (navigator as Navigator & { standalone?: boolean }).standalone === true
 
-  const copyUrl = async () => {
-    if (!receipt.qr_url) return
+  /** Where this note is looked up. `qr_url` is the fallback for a payload
+   *  from before the backend answered the question itself. */
+  const lookupUrl = receipt.consulta_url ?? receipt.qr_url ?? null
+
+  const copy = async (value: string, messageKey: string) => {
     try {
-      await navigator.clipboard.writeText(receipt.qr_url)
-      toast.success(t('receipts.paste.linkCopied'))
+      await navigator.clipboard.writeText(value)
+      toast.success(t(messageKey))
     } catch {
       toast.error(t('receipts.capture.copyFailed'))
     }
@@ -79,18 +89,35 @@ export function ReceiptPastePanel({ receipt, onDone, className }: ReceiptPastePa
           what the person consults with instead. */}
       {receipt.status_reason === 'qr_rejected' ? (
         <p className="text-xs text-muted-foreground">{t('receipts.paste.qrRefused')}</p>
-      ) : receipt.qr_url ? (
+      ) : lookupUrl ? (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm" className="gap-1.5">
-              <a href={receipt.qr_url} target="_blank" rel="noopener noreferrer">
+              <a href={lookupUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink size={14} />
                 {t('receipts.paste.open')}
               </a>
             </Button>
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void copyUrl()}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => void copy(lookupUrl, 'receipts.paste.linkCopied')}
+            >
               <Copy size={14} />
               {t('receipts.paste.copyLink')}
+            </Button>
+            {/* What a consultation form asks for. Offered next to the link
+                because where the link is a form — Espírito Santo — the two
+                are one action: open it, put the key in, press Consultar. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => void copy(receipt.access_key, 'receipts.paste.keyCopied')}
+            >
+              <Copy size={14} />
+              {t('receipts.paste.copyKey')}
             </Button>
           </div>
           {/* Installed to the home screen, iOS opens links in an in-app

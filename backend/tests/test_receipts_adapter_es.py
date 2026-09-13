@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.receipts.adapters.base import FetchedPage, PageKind, ParseError
-from app.receipts.adapters.es import EsAdapter
+from app.receipts.adapters.es import CONSULTA_FORM, EsAdapter
 from app.receipts.adapters.registry import adapter_for, supported_ufs
 from app.receipts.adapters.tabresult import parse_brl
 from app.receipts.canonical import CanonicalItem, CanonicalReceipt, Issuer, Totals
@@ -48,13 +48,25 @@ class TestEsAdapter:
         assert adapter_for("32") is not None and "ES" in supported_ufs()
         assert adapter_for("00") is None
 
-    def test_prefers_the_qr_url(self):
+    def test_the_form_is_the_answer_even_when_the_qr_carried_a_link(self):
+        """This is the state's whole route in. The deep link the QR
+        carries does not open (2026-09-13), so returning it would send a
+        person — and the browser — to a page that never shows the note.
+        The form does open, and a form can be filled in."""
         qr = parse_qr_payload(f"http://app.sefaz.es.gov.br/ConsultaNFCe?p={KEY}|2|1|1|abc")
-        assert EsAdapter().consulta_url(qr) == qr.url
+        assert qr.url is not None, "the payload really does carry one"
+        assert EsAdapter().consulta_url(qr) == CONSULTA_FORM
 
-    def test_bare_key_asks_by_chnfe(self):
-        url = EsAdapter().consulta_url(parse_qr_payload(KEY))
-        assert url == f"http://app.sefaz.es.gov.br/ConsultaNFCe?chNFe={KEY}"
+    def test_a_bare_key_gets_the_same_form(self):
+        assert EsAdapter().consulta_url(parse_qr_payload(KEY)) == CONSULTA_FORM
+
+    def test_the_form_is_on_the_allowed_host(self):
+        """Belt and braces: a URL the adapter names that the fetcher would
+        refuse is worse than useless, since it fails as `unsupported_host`
+        and marks the receipt invalid."""
+        from app.receipts.fetcher import host_allowed
+
+        assert host_allowed(CONSULTA_FORM, EsAdapter().allowed_hosts)
 
     def test_allowed_hosts(self):
         assert EsAdapter().allowed_hosts == frozenset({"app.sefaz.es.gov.br"})

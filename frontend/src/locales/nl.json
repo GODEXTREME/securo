@@ -2759,6 +2759,8 @@
       "open": "Pagina van de bon openen",
       "copyLink": "Link kopiëren",
       "linkCopied": "Link gekopieerd.",
+      "copyKey": "Sleutel kopiëren",
+      "keyCopied": "Toegangssleutel gekopieerd.",
       "standaloneHint": "Als app op het beginscherm openen links in een ingebouwde browser zonder bladwijzers — vastleggen met één tik werkt daar niet. Kopieer de link en plak hem in Safari. Gebruik altijd deze: het adres waarheen de bon doorstuurt geldt alleen binnen die sessie.",
       "noUrl": "Deze bon is via de sleutel ingevoerd en heeft geen QR-link. Zoek hem zelf op in het portaal van de staat en plak de pagina hier.",
       "qrRefused": "Het portaal heeft de QR-link geweigerd. Zoek de bon op via de toegangssleutel op het portaal en plak de pagina hier.",

@@ -2804,6 +2804,8 @@
       "open": "Abrir a página da nota",
       "copyLink": "Copiar link",
       "linkCopied": "Link copiado.",
+      "copyKey": "Copiar chave",
+      "keyCopied": "Chave de acesso copiada.",
       "standaloneHint": "No app instalado, o link abre num navegador embutido que não tem favoritos — a captura rápida não funciona lá. Copie o link e cole no Safari. Use sempre este link: o endereço para onde a nota redireciona vale só naquela sessão.",
       "noUrl": "Esta nota foi digitada pela chave e não tem link do QR. Consulte no portal da Sefaz e cole a página aqui.",
       "qrRefused": "O portal recusou o link do QR. Consulte pela chave de acesso no portal da Sefaz e cole a página aqui.",

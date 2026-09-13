@@ -6,6 +6,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.receipt import Receipt, ReceiptItem, ReceiptLink
+from app.receipts.lookup import lookup_url
 
 
 class ScanRequest(BaseModel):
@@ -87,8 +88,13 @@ class ReceiptRead(BaseModel):
     #: error, a parser code. What a person needs to tell the states apart.
     last_error: Optional[str] = None
     #: The URL the QR carried, when the note was scanned rather than typed.
-    #: What the UI opens in a browser tab when the portal wants a human.
     qr_url: Optional[str] = None
+    #: Where a person should go to look this note up — what the UI opens
+    #: when the portal wants a human. Usually the QR's own URL; in a state
+    #: whose deep links do not open, the consultation form instead, which
+    #: is why this is the state's answer rather than `qr_url`. None when
+    #: no adapter claims the state, since then there is nothing to offer.
+    consulta_url: Optional[str] = None
     source: Optional[str] = None
     store: Optional[StoreRead] = None
     issued_at: Optional[datetime] = None
@@ -123,6 +129,13 @@ class ReceiptRead(BaseModel):
             next_attempt_at=receipt.next_attempt_at,
             last_error=receipt.last_error,
             qr_url=receipt.qr_url,
+            consulta_url=lookup_url(
+                receipt.access_key,
+                receipt.c_uf,
+                qr_url=receipt.qr_url,
+                qr_version=receipt.qr_version,
+                tp_amb=receipt.tp_amb,
+            ),
             source=receipt.source,
             store=StoreRead.model_validate(receipt.store) if receipt.store else None,
             issued_at=receipt.issued_at,

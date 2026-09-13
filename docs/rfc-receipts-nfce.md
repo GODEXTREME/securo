@@ -142,6 +142,10 @@ That route is not universal, and the difference was measured, not assumed
 | Rio de Janeiro | `?p=<chave>\|3\|1` — the 3-field form | the DANFE |
 | Espírito Santo | `?chNFe=<chave>` | an empty search form; the key must be typed behind the Turnstile |
 
+Since 2026-09-13 the same is known of that state's `?p=…` link, which is
+why it now consults a form and nothing else — see "Espírito Santo has no
+link, only a form" below.
+
 `UFAdapter.key_route_answers` records which is which, and Espírito Santo
 spends no request on a page that cannot answer. Where the route does
 exist, only an authorised or cancelled note displaces the refusal: a form,
@@ -482,6 +486,46 @@ portal's own script, and a person does the clicking. Synthesising the
 interaction through the debugger would be defeating the check rather
 than passing it, and is not something this project does — quite apart
 from a synthetic event being exactly the pattern these widgets measure.
+
+## Espírito Santo has no link, only a form
+
+Recorded here because it cost two rounds to learn and it changes a
+premise the rest of this file leans on: that the QR's URL is where a
+note lives, and that the app's job is to go there.
+
+In Espírito Santo it is not. `?chNFe=` was already known to land on an
+empty search form (2026-09-07). The `?p=…` link the QR itself carries
+does not open either (2026-09-13, a person driving a real browser): it
+does not end on the note. The only route in is the consultation form —
+open `/ConsultaNFCe/`, pass the check, put the key in, press Consultar.
+
+So the adapter names that form and nothing else, for the browser and for
+the person alike, and `_fetch_url` no longer prefers the stored QR URL
+over the adapter's answer. It used to, which is why the adapter's
+opinion never mattered: the URL was chosen before the state was asked.
+Every other state is unaffected — their `consulta_url` starts by
+returning `qr.url`, so the QR's signature is still what they are asked
+with.
+
+Two consequences follow, and both are real costs rather than details:
+
+- **The signature is lost.** It is the part of the QR the portal checks,
+  and it cannot be typed into a form. Against that, a link that does not
+  open carries it nowhere.
+- **The URL stops identifying the note.** Every receipt in the state is
+  consulted at the same address, so "the tab open on this URL" no longer
+  means "the tab about this note". A tab is now claimed only when the
+  page on it is a challenge, a form or an error — which belongs to
+  nobody — or is a note printing this receipt's key. Getting that wrong
+  would not be a near miss: reading another note ends in `key_mismatch`,
+  which is terminal until somebody retries by hand.
+
+What is still unknown is where the tab ends up after a person searches
+in it. If the portal posts back to the same address, the next attempt
+claims that tab and reads the note. If it navigates, the note is in a
+tab this code will not look at, and the way through is the paste panel.
+That is one observation away and is not worth guessing at: the entry
+above this one is what guessing at this portal has cost so far.
 
 ## What is not done
 

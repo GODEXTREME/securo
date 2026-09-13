@@ -2804,6 +2804,8 @@
       "open": "Seite des Bons öffnen",
       "copyLink": "Link kopieren",
       "linkCopied": "Link kopiert.",
+      "copyKey": "Schlüssel kopieren",
+      "keyCopied": "Zugriffsschlüssel kopiert.",
       "standaloneHint": "Auf dem Home-Bildschirm installiert, öffnet die App Links in einem eingebetteten Browser ohne Lesezeichen — die Erfassung mit einem Tipp ist dort nicht erreichbar. Kopieren Sie den Link und fügen Sie ihn in Safari ein. Nehmen Sie immer diesen: die Adresse, auf die der Beleg weiterleitet, gilt nur in jener Sitzung.",
       "noUrl": "Dieser Bon wurde per Schlüssel eingegeben und hat keinen QR-Link. Suchen Sie ihn selbst im Staatsportal und fügen Sie die Seite hier ein.",
       "qrRefused": "Das Portal hat den QR-Link abgelehnt. Suchen Sie den Beleg über seinen Zugangsschlüssel im Portal und fügen Sie die Seite hier ein.",

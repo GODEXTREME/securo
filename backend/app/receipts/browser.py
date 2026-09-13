@@ -86,6 +86,15 @@ class CdpTransport(Protocol):
 #: adapter and therefore what a refusal looks like there.
 KeepOpen = Callable[[FetchedPage], bool]
 
+#: Whether a tab already open on the target URL may be read for *this*
+#: request. Same division of labour as `KeepOpen`: the browser knows which
+#: tabs exist, the caller knows which of them is about the note it is
+#: asking for. It matters where one URL serves every receipt in a state —
+#: Espírito Santo's consultation form does — because there the address no
+#: longer tells two receipts apart, and reading somebody else's note is
+#: not a near miss: it is a `key_mismatch`, which stops that receipt dead.
+Claimable = Callable[[FetchedPage], bool]
+
 
 @dataclass
 class BrowserFetcher:
@@ -186,23 +195,36 @@ class BrowserFetcher:
             return None
         return str(url), body
 
-    async def _claim_tab(self, url: str) -> str:
+    async def _claim_tab(self, url: str, claimable: Claimable | None = None) -> str:
         """The tab for this URL: the one a previous attempt left open, or
         a new one.
 
         A tab is only ever left behind when the page was a challenge and
         somebody might act on it. Finding it again is the whole point —
         it is where that person passed the check, and it now holds the
-        note. Anything left on *another* portal URL is a leftover nobody
-        is coming back to, and is closed.
+        note.
 
+        `claimable` is the second question, and it only has an answer
+        outside this class: *is that page about the note being asked
+        for?* Where every receipt in a state is consulted at one URL, the
+        first question alone would hand one receipt the tab another one
+        is waiting on. A tab that cannot be read is not claimed either —
+        opening a second tab beside it costs little, and reading a page
+        nobody has identified costs a receipt.
         """
         try:
             tabs = await self.transport.list_tabs()
         except Exception:  # noqa: BLE001 — an older browser may not list
             tabs = []
         for target_id, open_url in tabs:
-            if open_url == url:
+            if open_url != url:
+                continue
+            if claimable is None:
+                return target_id
+            html = await self._best_effort_html(target_id)
+            if html and claimable(
+                FetchedPage(url=open_url, status_code=200, html=html, fetched_at=datetime.now(timezone.utc))
+            ):
                 return target_id
         return await self.transport.open_tab(url)
 
@@ -214,6 +236,7 @@ class BrowserFetcher:
         *,
         follow: FollowUp | None = None,
         keep_open: KeepOpen | None = None,
+        claimable: Claimable | None = None,
     ) -> FetchResult:
         if not host_allowed(url, allowed_hosts):
             return FetchResult("blocked", detail=f"host not allowed for {uf}: {url}")
@@ -233,7 +256,7 @@ class BrowserFetcher:
         keep = False
         try:
             async with asyncio.timeout(self.timeout_seconds):
-                target_id = await self._claim_tab(url)
+                target_id = await self._claim_tab(url, claimable)
                 html = await self._settled_html(target_id)
                 if follow is not None:
                     html, url = await self._follow(html, url, follow, allowed_hosts)
