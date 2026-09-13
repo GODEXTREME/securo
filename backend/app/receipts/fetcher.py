@@ -62,10 +62,11 @@ class PageSource(Protocol):
         uf: str,
         *,
         follow: "FollowUp | None" = None,
-        #: Only the browser can act on this: an HTTP fetch has no tab to
-        #: leave open. Accepted here so the caller does not have to know
-        #: which kind of source it holds.
+        #: Only the browser can act on these two: an HTTP fetch has no tab
+        #: to leave open and none to claim. Accepted here so the caller
+        #: does not have to know which kind of source it holds.
         keep_open: "Callable[[FetchedPage], bool] | None" = None,
+        claimable: "Callable[[FetchedPage], bool] | None" = None,
     ) -> "FetchResult": ...
 
 
@@ -216,9 +217,11 @@ class Fetcher:
         uf: str,
         *,
         follow: FollowUp | None = None,
-        #: Accepted and ignored: there is no tab to leave open here. The
-        #: caller hands the same arguments to whichever source it holds.
+        #: Accepted and ignored: there is no tab here to leave open or to
+        #: claim. The caller hands the same arguments to whichever source
+        #: it holds.
         keep_open: Callable[[FetchedPage], bool] | None = None,
+        claimable: Callable[[FetchedPage], bool] | None = None,
     ) -> FetchResult:
         if not host_allowed(url, allowed_hosts):
             return FetchResult("blocked", detail=f"host not allowed for {uf}: {url}")

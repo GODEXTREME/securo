@@ -1479,6 +1479,10 @@ export interface Receipt {
   last_error: string | null
   /** The URL the QR carried; null when the key was typed. */
   qr_url?: string | null
+  /** Where this note is looked up, as the state answers it — usually the
+   *  QR's own URL, but the consultation form where no deep link opens.
+   *  Null for a state with no adapter. */
+  consulta_url?: string | null
   source: string | null
   store: Store | null
   issued_at: string | null

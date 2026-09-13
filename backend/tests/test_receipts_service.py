@@ -75,7 +75,7 @@ class _TimingOut:
         self.calls = 0
         self.kept = False
 
-    async def fetch(self, url, allowed_hosts, uf, *, follow=None, keep_open=None):
+    async def fetch(self, url, allowed_hosts, uf, *, follow=None, keep_open=None, claimable=None):
         self.calls += 1
         page = (
             FetchedPage(url=url, status_code=200, html=self.html, fetched_at=NOW)
@@ -92,6 +92,23 @@ class _TimingOut:
             detail="browser is waiting for you" if self.kept else "browser did not answer in 30s",
             kept_open=self.kept,
         )
+
+
+class _AskingWhoseTab:
+    """A source that does what the browser does with `claimable`: holds up
+    each page it found already open and asks whether it may be read for
+    this receipt. Answers are kept so a test can assert on the judgement
+    itself rather than on what a tab did afterwards."""
+
+    def __init__(self, pages: dict[str, str]):
+        self.pages = pages
+        self.answers: dict[str, bool] = {}
+
+    async def fetch(self, url, allowed_hosts, uf, *, follow=None, keep_open=None, claimable=None):
+        for label, page_html in self.pages.items():
+            page = FetchedPage(url=url, status_code=200, html=page_html, fetched_at=NOW)
+            self.answers[label] = bool(claimable and claimable(page))
+        return FetchResult("portal_down", detail="only asked whose tab it was")
 
 
 @pytest.fixture
@@ -284,6 +301,79 @@ async def test_rate_limited_waits_briefly_without_spending_an_attempt(session, t
     assert r is not None and r.status == "waiting_sefaz" and r.status_reason == "rate_limited"
     assert r.attempts == 0 and r.next_attempt_at is not None
     assert _same_instant(r.next_attempt_at, NOW + timedelta(seconds=30))
+
+
+@pytest.mark.asyncio
+async def test_espirito_santo_is_asked_at_the_form_not_at_the_link_the_qr_carried(
+    session, test_user, test_workspace, html
+):
+    """The state decides where its notes are looked up, and this one says
+    the form. Its deep links do not open — neither `?chNFe=` nor the
+    `?p=…` the QR itself carries — so asking the stored URL first, as
+    this used to, meant the adapter's answer was never consulted and the
+    browser was sent somewhere it could not arrive."""
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(200, text=html)
+
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
+    assert out.receipt.qr_url == URL, "the QR is still kept exactly as scanned"
+
+    r = await receipt_service.process_receipt(
+        session, out.receipt.id, fetcher=_fetcher(handler), now=NOW
+    )
+
+    assert asked == ["http://app.sefaz.es.gov.br/ConsultaNFCe/"]
+    assert r is not None and r.status == "authorized"
+
+
+@pytest.mark.asyncio
+async def test_a_state_whose_link_works_is_still_asked_at_the_link(
+    session, test_user, test_workspace
+):
+    """The other side of the same change. Rio de Janeiro's QR URL carries
+    the signature the portal checks, and rebuilding the query from the key
+    would drop it — so moving the choice into the adapters must not have
+    moved this one."""
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(200, text=RJ_FIXTURE.read_text(encoding="utf-8"))
+
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, RJ_URL, now=NOW)
+    await receipt_service.process_receipt(
+        session, out.receipt.id, fetcher=_fetcher(handler), now=NOW
+    )
+
+    assert asked == [RJ_URL]
+
+
+@pytest.mark.asyncio
+async def test_a_tab_is_claimed_by_the_note_on_it_not_by_its_address(
+    session, test_user, test_workspace, html
+):
+    """Espírito Santo consults every receipt at one URL, so a tab left
+    open is identified by the note on the screen. A challenge or a form
+    belongs to nobody and is shared; a note belongs to the key printed on
+    it, and reading the wrong one is terminal rather than a near miss."""
+    other_key = "32260800063960006050650050003784571128411294".replace("3784571", "9999999")
+    theirs = html.replace("3784 5711", "9999 9991")
+    assert other_key not in html and "9999 9991" in theirs
+
+    out = await receipt_service.scan(session, test_workspace.id, test_user.id, URL, now=NOW)
+    source = _AskingWhoseTab({
+        "ours": html,
+        "theirs": theirs,
+        "challenge": "<html><div class='cf-turnstile'></div></html>",
+        "form": "<html><body><form>Chave de acesso</form></body></html>",
+    })
+
+    await receipt_service.process_receipt(session, out.receipt.id, fetcher=source, now=NOW)
+
+    assert source.answers == {"ours": True, "theirs": False, "challenge": True, "form": True}
 
 
 @pytest.mark.asyncio

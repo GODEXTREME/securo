@@ -9,7 +9,11 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('@/lib/api', () => api)
 vi.mock('sonner', () => ({ toast }))
 
-const QR_URL = 'http://app.sefaz.es.gov.br/ConsultaNFCe?p=32260800063960006050650050003784571128411294|2|1|1|abc'
+const KEY = '32260800063960006050650050003784571128411294'
+const QR_URL = `http://app.sefaz.es.gov.br/ConsultaNFCe?p=${KEY}|2|1|1|abc`
+/** Where the state says the note is looked up. In Espírito Santo that is
+ *  the form rather than the QR's link, which is the point of the field. */
+const FORM = 'http://app.sefaz.es.gov.br/ConsultaNFCe/'
 const PAGE = 'NFC-e\nChave de acesso\n3226 0800 0639 6000 6050 6500 5000 3784 5711 2841 1294'
 
 beforeEach(() => {
@@ -17,8 +21,8 @@ beforeEach(() => {
 })
 
 describe('ReceiptPastePanel', () => {
-  it('explains the flow and opens the QR link in a new tab', () => {
-    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} />)
+  it('explains the flow and opens the link in a new tab', () => {
+    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', access_key: KEY, qr_url: QR_URL, status_reason: 'captcha' }} />)
 
     expect(screen.getByText(t('receipts.paste.intro'))).toBeInTheDocument()
     const link = screen.getByRole('link', { name: t('receipts.paste.open') })
@@ -27,15 +31,40 @@ describe('ReceiptPastePanel', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
+  it('opens where the state says to look, not where the QR pointed', () => {
+    // Espírito Santo: the QR's own link does not open, so offering it
+    // sends a person to a page that never shows the note.
+    renderWithProviders(
+      <ReceiptPastePanel
+        receipt={{ id: 'r1', access_key: KEY, qr_url: QR_URL, consulta_url: FORM, status_reason: 'captcha' }}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: t('receipts.paste.open') })).toHaveAttribute('href', FORM)
+  })
+
+  it('offers the key, which is what a consultation form asks for', async () => {
+    const { user } = renderWithProviders(
+      <ReceiptPastePanel
+        receipt={{ id: 'r1', access_key: KEY, qr_url: QR_URL, consulta_url: FORM, status_reason: 'captcha' }}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: t('receipts.paste.copyKey') }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(t('receipts.paste.keyCopied')))
+    expect(await navigator.clipboard.readText()).toBe(KEY)
+  })
+
   it('says so when the receipt was typed by key and has no link', () => {
-    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: null, status_reason: 'captcha' }} />)
+    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', access_key: KEY, qr_url: null, status_reason: 'captcha' }} />)
 
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
     expect(screen.getByText(t('receipts.paste.noUrl'))).toBeInTheDocument()
   })
 
   it('withholds a link the portal has already refused', () => {
-    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'qr_rejected' }} />)
+    renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', access_key: KEY, qr_url: QR_URL, status_reason: 'qr_rejected' }} />)
 
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
     expect(screen.getByText(t('receipts.paste.qrRefused'))).toBeInTheDocument()
@@ -46,7 +75,7 @@ describe('ReceiptPastePanel', () => {
     api.receipts.submitHtml.mockResolvedValue(authorized)
     const onDone = vi.fn()
     const { user, queryClient } = renderWithProviders(
-      <ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} onDone={onDone} />,
+      <ReceiptPastePanel receipt={{ id: 'r1', access_key: KEY, qr_url: QR_URL, status_reason: 'captcha' }} onDone={onDone} />,
     )
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
@@ -71,7 +100,7 @@ describe('ReceiptPastePanel', () => {
     api.receipts.submitHtml.mockRejectedValue({
       response: { status: 422, data: { detail: { code: 'page_captcha' } } },
     })
-    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} />)
+    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', access_key: KEY, qr_url: QR_URL, status_reason: 'captcha' }} />)
 
     await user.click(screen.getByRole('textbox', { name: t('receipts.paste.title') }))
     await user.paste('<html>turnstile</html>')
@@ -83,7 +112,7 @@ describe('ReceiptPastePanel', () => {
 
   it('falls back to a generic line for a failure it cannot name', async () => {
     api.receipts.submitHtml.mockRejectedValue(new Error('Network Error'))
-    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} />)
+    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', access_key: KEY, qr_url: QR_URL, status_reason: 'captcha' }} />)
 
     await user.click(screen.getByRole('textbox', { name: t('receipts.paste.title') }))
     await user.paste('whatever')
@@ -94,7 +123,7 @@ describe('ReceiptPastePanel', () => {
 
   it('reports a cancelled note as read, not as a failure', async () => {
     api.receipts.submitHtml.mockResolvedValue({ id: 'r1', status: 'cancelled', items: [] })
-    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', qr_url: QR_URL, status_reason: 'captcha' }} />)
+    const { user } = renderWithProviders(<ReceiptPastePanel receipt={{ id: 'r1', access_key: KEY, qr_url: QR_URL, status_reason: 'captcha' }} />)
 
     await user.click(screen.getByRole('textbox', { name: t('receipts.paste.title') }))
     await user.paste(PAGE)

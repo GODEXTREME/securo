@@ -386,6 +386,68 @@ async def test_a_tab_left_on_another_page_is_not_mistaken_for_ours():
 
 
 @pytest.mark.asyncio
+async def test_a_tab_showing_somebody_else_s_note_is_not_taken():
+    """Where one URL serves a whole state — Espírito Santo's form — the
+    address stops telling two receipts apart, and the tab a person filled
+    in holds exactly one of them. Taking it for the other would read the
+    wrong note, which is terminal: `key_mismatch` stops that receipt
+    until somebody retries it by hand."""
+    cdp = FakeCdp(html=NOTE, tabs=[("tab-theirs", URL)])
+
+    result = await _fetcher(cdp).fetch(
+        URL, HOSTS, "ES", claimable=lambda page: "mine" in page.html
+    )
+
+    assert result.outcome == "page"
+    assert cdp.opened == [URL], "a tab of our own, beside theirs"
+    assert "tab-theirs" not in cdp.closed, "and theirs is left exactly as it was"
+
+
+@pytest.mark.asyncio
+async def test_a_tab_showing_our_own_note_is_taken():
+    """The other half: the person passed the check and searched for *this*
+    note, so this is the tab the whole arrangement exists to read."""
+    cdp = FakeCdp(html="<html>mine</html>", tabs=[("tab-ours", URL)])
+
+    result = await _fetcher(cdp).fetch(
+        URL, HOSTS, "ES", claimable=lambda page: "mine" in page.html
+    )
+
+    assert result.outcome == "page"
+    assert cdp.opened == [], "no second tab"
+    assert cdp.closed == ["tab-ours"]
+
+
+@pytest.mark.asyncio
+async def test_a_tab_that_cannot_be_read_is_left_alone():
+    """Claiming means reading, and a tab that answers nothing cannot be
+    identified. A spare tab costs a little memory; reading a page nobody
+    has identified costs a receipt."""
+    cdp = FakeCdp(fail_on="html", tabs=[("tab-silent", URL)])
+
+    result = await _fetcher(cdp, timeout_seconds=1).fetch(
+        URL, HOSTS, "ES", claimable=lambda page: True
+    )
+
+    assert cdp.opened == [URL], "ours was opened rather than theirs taken"
+    assert "tab-silent" not in cdp.closed, "and the unreadable one is left where it was"
+    assert result.outcome == "portal_down", "this browser answers nothing at all"
+
+
+@pytest.mark.asyncio
+async def test_without_a_question_to_ask_the_url_is_enough():
+    """No `claimable` means no way to tell two receipts apart, which is
+    every state but one: there the URL carries the key and a tab on it is
+    unambiguous."""
+    cdp = FakeCdp(tabs=[("tab-left", URL)])
+
+    result = await _fetcher(cdp).fetch(URL, HOSTS, "RJ")
+
+    assert result.outcome == "page"
+    assert cdp.opened == [] and cdp.closed == ["tab-left"]
+
+
+@pytest.mark.asyncio
 async def test_a_browser_that_cannot_list_its_tabs_still_works():
     """`/json/list` is the newest thing asked of the browser. If it is not
     there, the fetch opens a tab as it always did rather than failing."""

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import re
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -27,9 +28,10 @@ from app.receipts.adapters.base import FetchedPage, PageKind, ParseError, UFAdap
 from app.receipts.adapters.registry import ADAPTERS
 from app.receipts.canonical import CanonicalReceipt
 from app.receipts.fetcher import PageSource, host_allowed
+from app.receipts.lookup import payload_for
 from app.receipts.uf_table import current_portal_url
 from app.receipts.pasted import normalize_pasted
-from app.receipts.qr import NFCE_MODEL, QrPayload, parse_access_key, parse_qr_payload
+from app.receipts.qr import NFCE_MODEL, QrPayload, parse_qr_payload
 from app.receipts.adapters.tabresult import looks_like_html, parse_tabresult_text
 from app.services import notification_service, price_service
 
@@ -45,6 +47,11 @@ RETRY_SCHEDULE: tuple[timedelta, ...] = (
     timedelta(hours=12),
     timedelta(hours=24),
 )
+#: The access key as a page prints it: in groups of four, sometimes with
+#: the label in between. Comparing digits to digits is what makes "is this
+#: page about my note" a question the markup cannot answer wrongly.
+_DIGITS = re.compile(r"\D+")
+
 #: Throttled by the portal: try again soon, and do not spend an attempt on it.
 RATE_LIMIT_BACKOFF = timedelta(seconds=30)
 #: A worker that has held a claim this long has died with it.
@@ -581,6 +588,7 @@ async def process_receipt(
                 receipt.uf,
                 follow=adapter.follow_up,
                 keep_open=lambda page: adapter.classify(page) == PageKind.CAPTCHA,
+                claimable=lambda page: _is_about(page, receipt, adapter),
             )
             if result.outcome == "blocked":
                 _finish_invalid(receipt, "unsupported_host", result.detail)
@@ -704,14 +712,19 @@ async def expire_raw_html(session: AsyncSession, *, now: Optional[datetime] = No
 def _fetch_url(receipt: Receipt, adapter: UFAdapter) -> str:
     """Where to ask for this note.
 
-    The QR's own URL is preferred — it carries the signature the portal
-    checks — except when it names a host the state has since left. Paper
-    outlives a migration, so an old receipt points somewhere that now
-    answers a refusal; the query is still right, only the host is stale.
+    The state decides, not this function. Most adapters prefer the QR's
+    own URL — it carries the signature the portal checks — and that is
+    still what comes back for them, because `_payload_from` hands the
+    stored URL to `consulta_url`. Espírito Santo is why the choice moved:
+    there, no deep link opens at all, and asking the QR's URL first meant
+    the adapter's answer was never consulted.
+
+    The host migration is applied afterwards either way. Paper outlives
+    a migration, so an old receipt points somewhere that now answers a
+    refusal; the query is still right, only the host is stale.
     """
-    if receipt.qr_url:
-        return current_portal_url(receipt.qr_url, receipt.uf) or receipt.qr_url
-    return adapter.consulta_url(_payload_from(receipt))
+    url = adapter.consulta_url(_payload_from(receipt))
+    return current_portal_url(url, receipt.uf) or url
 
 
 def _key_only_url(receipt: Receipt, adapter: UFAdapter) -> str:
@@ -721,10 +734,26 @@ def _key_only_url(receipt: Receipt, adapter: UFAdapter) -> str:
 
 
 def _payload_from(receipt: Receipt) -> QrPayload:
-    return QrPayload(
-        key=parse_access_key(receipt.access_key), url=receipt.qr_url, version=receipt.qr_version,
-        tp_amb=receipt.tp_amb, c_id_token=None, signature=None,
+    return payload_for(
+        receipt.access_key, qr_url=receipt.qr_url, qr_version=receipt.qr_version, tp_amb=receipt.tp_amb
     )
+
+
+def _is_about(page: FetchedPage, receipt: Receipt, adapter: UFAdapter) -> bool:
+    """Whether a tab already open on this URL may be read for this receipt.
+
+    A challenge, a form, an error — none of them belongs to anybody, and
+    two receipts waiting on the same page are better off sharing one tab
+    than opening two. A *note* belongs to the key printed on it, and
+    reading the wrong one is not a near miss: `_check_key` turns it into
+    `key_mismatch`, which is terminal until somebody retries by hand.
+
+    Only where one URL serves a whole state does this arise at all —
+    Espírito Santo, whose form is the only page that opens there.
+    """
+    if adapter.classify(page) != PageKind.AUTHORIZED:
+        return True
+    return receipt.access_key in _DIGITS.sub("", page.html)
 
 
 def _check_key(receipt: Receipt, canonical: CanonicalReceipt) -> None:

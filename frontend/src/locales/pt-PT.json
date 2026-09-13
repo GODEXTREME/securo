@@ -2804,6 +2804,8 @@
       "open": "Abrir a página do talão",
       "copyLink": "Copiar ligação",
       "linkCopied": "Ligação copiada.",
+      "copyKey": "Copiar chave",
+      "keyCopied": "Chave de acesso copiada.",
       "standaloneHint": "Na app instalada, a ligação abre num navegador embutido que não tem favoritos — a captura rápida não funciona aí. Copie a ligação e cole no Safari. Use sempre esta: o endereço para onde a nota redireciona só vale naquela sessão.",
       "noUrl": "Este talão foi introduzido pela chave e não tem ligação do QR. Consulte-o no portal do estado e cole a página aqui.",
       "qrRefused": "O portal recusou a ligação do código QR. Consulte pela chave de acesso no portal da Sefaz e cole a página aqui.",
