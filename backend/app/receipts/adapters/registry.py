@@ -8,6 +8,7 @@ from app.receipts.adapters.go import GoAdapter
 from app.receipts.adapters.mg import MgAdapter
 from app.receipts.adapters.pe import PeAdapter
 from app.receipts.adapters.rj import RjAdapter
+from app.receipts.adapters.sp import SpAdapter
 
 ADAPTERS: dict[str, UFAdapter] = {
     EsAdapter.c_uf: EsAdapter(),
@@ -15,6 +16,7 @@ ADAPTERS: dict[str, UFAdapter] = {
     MgAdapter.c_uf: MgAdapter(),
     PeAdapter.c_uf: PeAdapter(),
     RjAdapter.c_uf: RjAdapter(),
+    SpAdapter.c_uf: SpAdapter(),
 }
 
 
